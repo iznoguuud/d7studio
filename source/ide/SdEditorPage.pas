@@ -3081,17 +3081,19 @@ begin
   NameTimer.Enabled := True;
 end;
 
-{ a Pascal text code insight reads, in a theme with a kind's colour not Identifier's }
+{ a Pascal text code insight reads, in a theme with a kind's colour or font style not Identifier's }
 function TEditorPage.NamesWanted: Boolean;
 var
   E: TEditorElement;
   Ident: TColor;
+  C: TEditorColors;
 begin
   Result := IsPascal and (FEditor.TextLength <= MaxNamesText) and (IDE <> nil) and (IDE.CodeInsight <> nil);
   if not Result then Exit;
-  Ident := ElementFore(EditorOptions.Colors, eeIdentifier);
+  C := EditorOptions.Colors;
+  Ident := ElementFore(C, eeIdentifier);
   for E := eeType to eeUnitName do
-    if ElementFore(EditorOptions.Colors, E) <> Ident then Exit;
+    if (ElementFore(C, E) <> Ident) or (ElementFontStyles(C[E]) <> ElementFontStyles(C[eeIdentifier])) then Exit;
   Result := False;
 end;
 

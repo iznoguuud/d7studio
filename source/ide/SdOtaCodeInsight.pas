@@ -411,24 +411,21 @@ begin
   end;
 end;
 
-{ the colour of an expert's symbol: the editor theme's Code Insight elements }
-function FlagColor(Flag: TOTAViewerSymbolFlags): TColor;
-var
-  E: TEditorElement;
+{ the element of an expert's symbol: the editor theme's Code Insight elements }
+function FlagElement(Flag: TOTAViewerSymbolFlags): TEditorElement;
 begin
   case Flag of
-    vsfProcedure, vsfConstructor, vsfDestructor: E := eeCompProcedure;
-    vsfFunction: E := eeCompFunction;
-    vsfProperty, vsfEvent: E := eeCompProperty;
-    vsfVariable: E := eeCompVariable;
-    vsfConstant: E := eeCompConstant;
-    vsfType, vsfInterface: E := eeCompType;
-    vsfUnit: E := eeCompUnit;
-    vsfLabel: E := eeCompLabel;
+    vsfProcedure, vsfConstructor, vsfDestructor: Result := eeCompProcedure;
+    vsfFunction: Result := eeCompFunction;
+    vsfProperty, vsfEvent: Result := eeCompProperty;
+    vsfVariable: Result := eeCompVariable;
+    vsfConstant: Result := eeCompConstant;
+    vsfType, vsfInterface: Result := eeCompType;
+    vsfUnit: Result := eeCompUnit;
+    vsfLabel: Result := eeCompLabel;
   else
-    E := eeCompletion;
+    Result := eeCompletion;
   end;
-  Result := ElementFore(EditorOptions.Colors, E);
 end;
 
 { ---------------------------------------------------------------- TSdOtaCodeInsightServices }
@@ -1502,6 +1499,7 @@ var
   Back, Fore: TColor;
   Cls, Txt, Typ: string;
   Flag: TOTAViewerSymbolFlags;
+  E: TEditorElement;
   X: Integer;
 begin
   S := CIServices;
@@ -1548,15 +1546,16 @@ begin
     Exit;
   end;
   DC := C.Handle;
-  SelectObject(DC, Popup.Font.Handle);
+  { the symbol's class in its element's colour and font styles (an abstract method's: Abstract
+    method's) }
+  if Abstr then E := eeCompAbstract else E := FlagElement(Flag);
+  SelectObject(DC, StyledFont(Popup.Font, EditorOptions.Colors[E]));
   RC := Classes.Rect(Rect.Left + 3, Rect.Top, Rect.Left + Popup.TextLeft - 4, Rect.Bottom);
   if Sel then
     UIText(DC, Cls, RC, DT_SINGLELINE or DT_VCENTER or DT_NOPREFIX or DT_END_ELLIPSIS, clHighlightText)
-  else if Abstr then
-    UIText(DC, Cls, RC, DT_SINGLELINE or DT_VCENTER or DT_NOPREFIX or DT_END_ELLIPSIS,
-      ElementFore(EditorOptions.Colors, eeCompAbstract))
   else
-    UIText(DC, Cls, RC, DT_SINGLELINE or DT_VCENTER or DT_NOPREFIX or DT_END_ELLIPSIS, FlagColor(Flag));
+    UIText(DC, Cls, RC, DT_SINGLELINE or DT_VCENTER or DT_NOPREFIX or DT_END_ELLIPSIS,
+      ElementFore(EditorOptions.Colors, E));
   if not Def then Exit;
   SelectObject(DC, Popup.BoldFont.Handle);
   X := R.Left + UITextWidth(DC, Txt);

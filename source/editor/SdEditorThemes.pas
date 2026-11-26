@@ -121,11 +121,13 @@ const
     'CompletionList', 'CompletionProcedure', 'CompletionFunction', 'CompletionProperty',
     'CompletionVariable', 'CompletionConstant', 'CompletionType', 'CompletionUnit',
     'CompletionLabel', 'CompletionAbstract');
-  { what each element has: the text's tokens all three; a line, bar, box or guide its colour
-    (Fore); a ground its Back }
+  { what each element has: the text's tokens all three - the names by kind and the completion
+    list's kinds their colour and font styles, on the ground of an identifier or of the list -; a
+    line, bar, box or guide its colour (Fore); a ground its Back }
   ElementParts: array[TEditorElement] of TElementParts = (
     [epFore, epBack, epStyle], [epFore, epBack, epStyle], [epFore, epBack, epStyle],
-    [epFore], [epFore], [epFore], [epFore], [epFore], [epFore], [epFore], [epFore], [epFore],
+    [epFore, epStyle], [epFore, epStyle], [epFore, epStyle], [epFore, epStyle], [epFore, epStyle],
+    [epFore, epStyle], [epFore, epStyle], [epFore, epStyle], [epFore, epStyle],
     [epFore, epBack, epStyle], [epFore, epBack, epStyle], [epFore, epBack, epStyle],
     [epFore, epBack, epStyle], [epFore, epBack, epStyle], [epFore, epBack, epStyle],
     [epFore, epBack, epStyle], [epFore, epBack, epStyle],
@@ -133,8 +135,8 @@ const
     [epFore], [epFore], [epFore], [epFore], [epFore], [epFore], [epFore],
     [epFore], [epFore], [epFore], [epBack], [epFore], [epBack], [epFore], [epFore], [epFore],
     [epFore, epBack], [epFore, epBack], [epFore, epBack], [epFore, epBack], [epFore, epBack],
-    [epFore, epBack], [epFore], [epFore], [epFore], [epFore], [epFore], [epFore], [epFore],
-    [epFore], [epFore]);
+    [epFore, epBack], [epFore, epStyle], [epFore, epStyle], [epFore, epStyle], [epFore, epStyle],
+    [epFore, epStyle], [epFore, epStyle], [epFore, epStyle], [epFore, epStyle], [epFore, epStyle]);
 
   DelphiElementKeys: array[TDelphiElement] of string = ('Whitespace', 'Comment',
     'Reserved word', 'Identifier', 'Symbol', 'String', 'Number', 'Assembler', 'Hot Link',
@@ -169,6 +171,8 @@ function SameColors(const A, B: TEditorColors): Boolean;
 function BuiltinThemeOf(const C: TEditorColors): string;
 { a colour that stands for the element's Default: clDefault (clNone too) }
 function IsDefaultColor(C: TColor): Boolean;
+{ an element's Bold, Italic and Underline as a font's styles }
+function ElementFontStyles(const C: TEditorColor): TFontStyles;
 { a Pascal element's colours (ElementGroups egPascal) with its Default worked out: Plain text's
   - a name by kind's Identifier's -, Plain text's own Default the window's colours }
 function PascalFore(const C: TEditorColors; E: TEditorElement): TColor;
@@ -402,6 +406,14 @@ end;
 function IsDefaultColor(C: TColor): Boolean;
 begin
   Result := (C = clDefault) or (C = clNone);
+end;
+
+function ElementFontStyles(const C: TEditorColor): TFontStyles;
+begin
+  Result := [];
+  if C.Bold then Include(Result, fsBold);
+  if C.Italic then Include(Result, fsItalic);
+  if C.Underline then Include(Result, fsUnderline);
 end;
 
 function PascalFore(const C: TEditorColors; E: TEditorElement): TColor;

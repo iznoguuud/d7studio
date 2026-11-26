@@ -112,8 +112,8 @@ modernized RTL/VCL in full is in [MODERNIZATION.md](MODERNIZATION.md).
   debugger's lines and the completion list, shown at once in a live sample. An element left at
   *Default* follows the theme, so a new background is one change.
 - **Names coloured by kind**: types, routines, properties, fields, variables, local variables,
-  parameters, constants and units each have a colour of their own in Light and Dark. Classic
-  colours them all as identifiers, as Delphi 7 does.
+  parameters, constants and units each have a colour of their own in Light and Dark, and can be
+  bold, italic or underlined. Classic colours them all as identifiers, as Delphi 7 does.
 - **The navigation bar** over the code: a *Class* box and a *Methods/functions* box that follow the
   caret and jump to what you choose (*Editor Options ▸ Display ▸ Navigation bar*).
 - **Code folding** of routines, blocks and `{$REGION}`s, with *Edit ▸ Folding* and RAD Studio's

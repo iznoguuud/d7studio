@@ -11,6 +11,14 @@ installing in [README.md](README.md).
 
 ## [Unreleased]
 
+## [1.0.1.0] - 2026-11-26
+
+### Changed
+
+- **Code editor**: on the Color page, the names by kind (Type, Routine, Property, Field, Variable,
+  Local variable, Parameter, Constant, Unit) and the completion list's kinds can now be bold,
+  italic or underlined, and the editor keeps those styles while you type.
+
 ## [1.0.0.0] - 2026-11-25
 
 The first release.
@@ -63,5 +71,6 @@ The first release.
   its settings. It also installs Microsoft's WinHelp viewer, which shows Delphi 7's help on
   Windows 10 and 11.
 
-[Unreleased]: https://github.com/iznoguuud/d7studio/compare/v1.0.0.0...HEAD
+[Unreleased]: https://github.com/iznoguuud/d7studio/compare/v1.0.1.0...HEAD
+[1.0.1.0]: https://github.com/iznoguuud/d7studio/compare/v1.0.0.0...v1.0.1.0
 [1.0.0.0]: https://github.com/iznoguuud/d7studio/releases/tag/v1.0.0.0

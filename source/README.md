@@ -214,7 +214,9 @@ IDE, area by area: what is new and what works better.
 - **Names by kind**: in a Pascal unit, names are coloured by what code insight finds they are -
   types, routines, properties, fields, variables, local variables, parameters, constants and units
   - a moment after you stop typing or scrolling. A name it does not know keeps the identifier
-  colour. Light and Dark colour the kinds; Classic, like Delphi 7, does not.
+  colour. Light and Dark colour the kinds; Classic, like Delphi 7, does not. Each kind can also be
+  bold, italic or underlined (Tools ▸ Editor Options ▸ Color), as can the kinds of the completion
+  list.
 - **Error Insight** (Tools ▸ Editor Options ▸ Code Insight, on by default): a second after you stop
   typing, the errors of the unit shown are underlined with a wavy line, in Delphi 7's compiler's
   words - syntax errors, undeclared identifiers and members, routines and methods declared without

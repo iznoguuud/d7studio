@@ -397,11 +397,8 @@ var
     St: TFontStyles;
   begin
     St := Extra;
-    if E <> eePlainText then          // the blanks between the tokens
-    begin
-      if C[E].Bold then Include(St, fsBold);
-      if C[E].Italic then Include(St, fsItalic);
-    end;
+    if E <> eePlainText then          // the blanks between the tokens; no underline in a tip
+      St := St + (ElementFontStyles(C[E]) - [fsUnderline]);
     AddTipRun(Runs, Text, ElementFore(C, E), St, True, Boxed);
   end;
 

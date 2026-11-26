@@ -1317,8 +1317,8 @@ begin
   C := FOpts.Colors;
   with CompletionRows[Index] do
     DrawCompletionRow(lbCompletionSample.Canvas.Handle, Rect, Kind, Name, Rest, ElementFore(C, E),
-      ElementFore(C, eeCompletion), ElementBack(C, eeCompletion), lbCompletionSample.Font.Handle,
-      FSampleBold.Handle, KindColWidth);
+      ElementFore(C, eeCompletion), ElementBack(C, eeCompletion), StyledFont(lbCompletionSample.Font, C[E]),
+      lbCompletionSample.Font.Handle, FSampleBold.Handle, KindColWidth);
 end;
 
 { Display: the versions kept per file count only while the files' history is kept }
@@ -1452,7 +1452,7 @@ begin
         Exit;
       end;
     for E := eeType to eeUnitName do
-      if Ind(IND_NAMES + Ord(E) - Ord(eeType)) then
+      if Ind(IND_NAMES + NameKind(E)) then
       begin
         Result := E;
         Exit;

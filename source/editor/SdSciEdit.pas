@@ -47,7 +47,8 @@ const
   MK_LINE_MASK = (1 shl 16) or (1 shl 17) or (1 shl 18) or (1 shl 19) or (1 shl 20);
   { indicators. Of those that colour the text (INDIC_TEXTFORE) the one with the higher number wins:
     the names by kind lie below the line colours, the link and the find matches }
-  IND_NAMES = 0;             // 0 .. 8: the names by kind, Type .. Unit (ShowNameKinds); Pascal's lexer uses none
+  IND_NAMES = 0;             // 0 .. 8: the names by kind, Type .. Unit (ShowNameKinds); Pascal's lexer uses none.
+                             // They also keep where the names' styles (STYLE_NAMES) go while the text changes
   IND_LINK = 9;
   IND_FIND = 10;
   IND_ERROR = 11;
@@ -86,6 +87,9 @@ const
   STYLE_DIFF_REMOVED_SIGN = 203;   // ... its sign
   STYLE_DIFF_ADDED_SIGN = 204;
   STYLE_DIFF_NOTE = 205;
+  { the styles of the names by kind, Type .. Unit (ShowNameKinds): their kinds' colours and font
+    styles; above every lexer's and a comparison's. StyleAt gives them as SCE_PAS_IDENTIFIER }
+  STYLE_NAMES = 210;
   RainbowColours = 3;
   SampleScrollBar = -2;      // TSciSampleClickEvent's Margin of a scroll bar
 
@@ -212,6 +216,7 @@ type
     FDoc: Integer;               // the Scintilla document (0: not made yet)
     FFresh: Boolean;             // ... made, Scintilla's settings of a document not applied yet
     FLexerPending: Boolean;      // the language changed while no window had the document
+    FNameLexer: Pointer;         // the Pascal lexer's hook that keeps the names' styles (nil: none)
     FOptionsPending: Boolean;    // ... the options did (ApplyOptions)
     FView: TSciViewState;        // the view while no window has the document
     FModifiedCache: Boolean;     // Modified and ReadOnly while no window has the document (it
@@ -292,6 +297,14 @@ type
     procedure RestoreView;
     function ViewKey: string;
     procedure ApplyView;
+    { the names by kind's styles. RestyleNames: the text of FromPos .. ToPos a kind's indicator
+      covers gets the kind's style where it has an identifier's (Revert: an identifier's again
+      where it has the kind's); RestyleRun: NewStyle for OldStyle in a range; NamesLexed: after
+      the lexer styled a range }
+    procedure RestyleNames(FromPos, ToPos: Integer; Revert: Boolean);
+    procedure RestyleRun(FromPos, ToPos, OldStyle, NewStyle: Integer);
+    procedure NamesLexed(FromPos, ToPos: Integer);
+    procedure SetStyling(Pos, Len, Style: Integer);
     function Bars: TSciScrollBars;
     function SciStr(Msg: Cardinal; W: Cardinal): string;
     { ... and what the window gets: its messages for the editor shown }
@@ -547,8 +560,8 @@ type
     { The names by kind: the document lines a window shows, with
       Margin lines above and below, as positions - False when no window shows the editor; the
       names between two positions by the lexer's styles (not in comments, strings, directives or
-      asm), in text order, their Element eeIdentifier; their kinds' text colours, the earlier ones
-      of FromPos .. ToPos taken off first; all of them taken off }
+      asm), in text order, their Element eeIdentifier; their kinds' colours and font styles
+      (STYLE_NAMES), the earlier ones of FromPos .. ToPos taken off first; all of them taken off }
     function ViewRange(Margin: Integer; out FromPos, ToPos: Integer): Boolean;
     function NamesBetween(FromPos, ToPos: Integer; var Names: TSciNames): Integer;
     procedure ShowNameKinds(FromPos, ToPos: Integer; const Names: TSciNames; Count: Integer);
@@ -837,6 +850,8 @@ var
 
 function ScintillaAvailable: Boolean;
 function ScintillaLoadError: string;
+{ a name by kind's number, Type 0 .. Unit 8: its indicator IND_NAMES + it, its style STYLE_NAMES + it }
+function NameKind(E: TEditorElement): Integer;
 function LanguageFromFileName(const FileName: string): TSciLanguage;
 function IsPascalKeyword(const S: string): Boolean;
 { Editor Options | Zoom on every editor that takes the editors' zoom (OnZoom: a file's page, a text
@@ -898,6 +913,84 @@ end;
 function ScintillaLoadError: string;
 begin
   Result := SciError;
+end;
+
+{ --- the names by kind in their styles ---
+  The Pascal lexer gives every name SCE_PAS_IDENTIFIER. A name of a kind gets its kind's style
+  (STYLE_NAMES + kind: the element's colour, bold, italic, underline), and its kind's indicator
+  (IND_NAMES + kind) keeps where it is while the text changes. The lexer restyles what an edit
+  touches with its own styles: its object (Lexilla's, ILexer5 with __stdcall methods, this on the
+  stack) gets a copy of its table of virtual methods with Lex and Release replaced, and every Lex
+  is followed by the names' styles in the range it styled (TSciEdit.NamesLexed). }
+
+const
+  LexerSlots = 29;           // ILexer5's 28 methods, then the lexer's virtual destructor
+  SlotRelease = 1;
+  SlotLex = 8;
+  NameKindCount = Ord(eeUnitName) - Ord(eeType) + 1;   // NameKind's
+
+type
+  TLexerSlots = array[0..LexerSlots - 1] of Pointer;
+  PLexerSlots = ^TLexerSlots;
+  TLexerRelease = procedure(This: Pointer); stdcall;
+  TLexerLex = procedure(This: Pointer; StartPos, Length, InitStyle: Integer; Access: Pointer); stdcall;
+  PNameLexer = ^TNameLexer;
+  TNameLexer = record
+    Slots: TLexerSlots;      // the lexer object's table: its first field points here
+    Original: PLexerSlots;   // Lexilla's table
+    Edit: TSciEdit;          // the editor of the lexer's document (nil: gone)
+  end;
+
+function NameKind(E: TEditorElement): Integer;
+begin
+  Result := Ord(E) - Ord(eeType);
+end;
+
+function IsNameStyle(Style: Integer): Boolean;
+begin
+  Result := (Style >= STYLE_NAMES) and (Style < STYLE_NAMES + NameKindCount);
+end;
+
+procedure NameLexerLex(This: Pointer; StartPos, Length, InitStyle: Integer; Access: Pointer); stdcall;
+var
+  H: PNameLexer;
+begin
+  H := PPointer(This)^;
+  { the lexer knows its own styles: a name's is an identifier }
+  if IsNameStyle(InitStyle) then InitStyle := SCE_PAS_IDENTIFIER;
+  TLexerLex(H^.Original^[SlotLex])(This, StartPos, Length, InitStyle, Access);
+  if H^.Edit <> nil then
+    try
+      H^.Edit.NamesLexed(StartPos, StartPos + Length);
+    except
+      { no exception may reach Scintilla's code: the names keep an identifier's style }
+    end;
+end;
+
+procedure NameLexerRelease(This: Pointer); stdcall;
+var
+  H: PNameLexer;
+begin
+  H := PPointer(This)^;
+  PPointer(This)^ := H^.Original;
+  if (H^.Edit <> nil) and (H^.Edit.FNameLexer = H) then H^.Edit.FNameLexer := nil;
+  Dispose(H);
+  TLexerRelease(PLexerSlots(PPointer(This)^)^[SlotRelease])(This);
+end;
+
+{ Lexer (a Pascal lexer of Lexilla's, for Edit's document) keeps the names' styles }
+procedure HookNameLexer(Lexer: Pointer; Edit: TSciEdit);
+var
+  H: PNameLexer;
+begin
+  New(H);
+  H^.Original := PPointer(Lexer)^;
+  H^.Slots := H^.Original^;
+  H^.Slots[SlotLex] := @NameLexerLex;
+  H^.Slots[SlotRelease] := @NameLexerRelease;
+  H^.Edit := Edit;
+  PPointer(Lexer)^ := H;
+  Edit.FNameLexer := H;
 end;
 
 function SciColor(C: TColor): Integer;
@@ -1343,6 +1436,7 @@ end;
 
 destructor TSciEdit.Destroy;
 begin
+  if FNameLexer <> nil then PNameLexer(FNameLexer)^.Edit := nil;
   if FWindow <> nil then FWindow.Let(Self, False);
   if FDoc <> 0 then ReleaseDocument(FDoc);
   FDoc := 0;
@@ -3815,17 +3909,29 @@ end;
 procedure TSciEdit.ShowNameKinds(FromPos, ToPos: Integer; const Names: TSciNames; Count: Integer);
 var
   E: TEditorElement;
-  K: Integer;
+  K, Style, EndStyled: Integer;
 begin
   if not Ready or (ToPos <= FromPos) then Exit;
   for E := eeType to eeUnitName do
   begin
-    Sci(SCI_SETINDICATORCURRENT, IND_NAMES + Ord(E) - Ord(eeType));
+    Sci(SCI_SETINDICATORCURRENT, IND_NAMES + NameKind(E));
     Sci(SCI_INDICATORCLEARRANGE, FromPos, ToPos - FromPos);
   end;
+  { every name of the range in its kind's style, the others in an identifier's; the lexer goes on
+    from where it had styled to }
+  EndStyled := Sci(SCI_GETENDSTYLED);
   for K := 0 to Count - 1 do
+  begin
     if Names[K].Element in [eeType..eeUnitName] then
-      FillIndicator(IND_NAMES + Ord(Names[K].Element) - Ord(eeType), Names[K].Start, Names[K].Len);
+    begin
+      FillIndicator(IND_NAMES + NameKind(Names[K].Element), Names[K].Start, Names[K].Len);
+      Style := STYLE_NAMES + NameKind(Names[K].Element);
+    end
+    else
+      Style := SCE_PAS_IDENTIFIER;
+    if Sci(SCI_GETSTYLEINDEXAT, Names[K].Start) <> Style then SetStyling(Names[K].Start, Names[K].Len, Style);
+  end;
+  Sci(SCI_STARTSTYLING, EndStyled);
 end;
 
 procedure TSciEdit.ClearNameKinds;
@@ -3833,7 +3939,64 @@ var
   E: TEditorElement;
 begin
   if not Ready then Exit;
-  for E := eeType to eeUnitName do ClearIndicator(IND_NAMES + Ord(E) - Ord(eeType));
+  RestyleNames(0, TextLength, True);
+  for E := eeType to eeUnitName do ClearIndicator(IND_NAMES + NameKind(E));
+end;
+
+procedure TSciEdit.SetStyling(Pos, Len, Style: Integer);
+begin
+  Sci(SCI_STARTSTYLING, Pos);
+  Sci(SCI_SETSTYLING, Len, Style);
+end;
+
+procedure TSciEdit.RestyleNames(FromPos, ToPos: Integer; Revert: Boolean);
+var
+  K, Ind, P, Q, EndStyled: Integer;
+begin
+  EndStyled := Sci(SCI_GETENDSTYLED);
+  for K := 0 to NameKindCount - 1 do
+  begin
+    Ind := IND_NAMES + K;
+    P := FromPos;
+    while P < ToPos do
+    begin
+      { the end of the run P is in, of the indicator or of the text without it (0: no such
+        indicator at all) }
+      Q := Sci(SCI_INDICATOREND, Ind, P);
+      if Q <= P then Break;
+      if Q > ToPos then Q := ToPos;
+      if Sci(SCI_INDICATORVALUEAT, Ind, P) <> 0 then
+        if Revert then RestyleRun(P, Q, STYLE_NAMES + K, SCE_PAS_IDENTIFIER)
+        else RestyleRun(P, Q, SCE_PAS_IDENTIFIER, STYLE_NAMES + K);
+      P := Q;
+    end;
+  end;
+  Sci(SCI_STARTSTYLING, EndStyled);
+end;
+
+procedure TSciEdit.RestyleRun(FromPos, ToPos, OldStyle, NewStyle: Integer);
+var
+  P, S: Integer;
+begin
+  P := FromPos;
+  while P < ToPos do
+    if Sci(SCI_GETSTYLEINDEXAT, P) <> OldStyle then Inc(P)
+    else
+    begin
+      S := P;
+      repeat
+        Inc(P);
+      until (P >= ToPos) or (Sci(SCI_GETSTYLEINDEXAT, P) <> OldStyle);
+      SetStyling(S, P - S, NewStyle);
+    end;
+end;
+
+{ the lexer styled FromPos .. ToPos (TNameLexer): its names in their kinds' styles again - only
+  while the document is in a window, whose messages reach the indicators; any other way to Sci
+  would move the document while Scintilla styles it }
+procedure TSciEdit.NamesLexed(FromPos, ToPos: Integer);
+begin
+  if FDirectPtr <> nil then RestyleNames(FromPos, ToPos, False);
 end;
 
 procedure TSciEdit.MarkMatches(const Text: string; MatchCase, WholeWord, RegExp: Boolean);
@@ -4739,6 +4902,8 @@ end;
 function TSciEdit.StyleAt(Pos: Integer): Integer;
 begin
   Result := Sci(SCI_GETSTYLEINDEXAT, Pos);
+  { a name by kind is the lexer's identifier }
+  if IsNameStyle(Result) then Result := SCE_PAS_IDENTIFIER;
 end;
 
 function TSciEdit.CaretPos: Integer;
@@ -5884,7 +6049,7 @@ begin
   LineFore(IND_LINEFORE_ERROR, eeErrorLine);
   Sci(SCI_INDICSETSTYLE, IND_LINKTEXT, INDIC_TEXTFORE);
   Sci(SCI_INDICSETFORE, IND_LINKTEXT, SciColor(ThemeFore(eeHotLink)));
-  for E := eeType to eeUnitName do LineFore(IND_NAMES + Ord(E) - Ord(eeType), E);
+  for E := eeType to eeUnitName do LineFore(IND_NAMES + NameKind(E), E);
   { the kept block: the selection's colour under the text }
   Sci(SCI_INDICSETSTYLE, IND_BLOCK, INDIC_FULLBOX);
   Sci(SCI_INDICSETUNDER, IND_BLOCK, 1);
@@ -6014,6 +6179,7 @@ begin
   Lex := nil;
   if (Lang.Lexer <> '') and Assigned(LexCreate) then
     Lex := LexCreate(PAnsiChar(Lang.Lexer));
+  if (Lex <> nil) and (FLanguage in SciPascal) then HookNameLexer(Lex, Self);
   Sci(SCI_SETILEXER, 0, Integer(Lex));
   { the word lists, '|' between them }
   Words := Lang.Words;
@@ -6112,6 +6278,7 @@ var
   Syntax: Boolean;
   Caret, I, Band: Integer;
   Alpha: Byte;
+  Kind: TEditorElement;
 
   procedure El(Style: Integer; E: TEditorElement);
   begin
@@ -6153,6 +6320,9 @@ begin
   else
     for I := Low(SciLexStyles) to High(SciLexStyles) do
       if FLanguage in SciLexStyles[I].Langs then El(SciLexStyles[I].Style, SciLexStyles[I].Element);
+  { the names by kind (ShowNameKinds): an identifier's ground, their kinds' colours and font styles }
+  if FLanguage in SciPascal then
+    for Kind := eeType to eeUnitName do El(STYLE_NAMES + NameKind(Kind), Kind);
   { the selection; the caret }
   Sci(SCI_SETELEMENTCOLOUR, SC_ELEMENT_SELECTION_BACK, SciColorA(ElementBack(C, eeSelection)));
   Sci(SCI_SETELEMENTCOLOUR, SC_ELEMENT_SELECTION_TEXT, SciColorA(ElementFore(C, eeSelection)));

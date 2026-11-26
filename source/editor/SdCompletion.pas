@@ -16,7 +16,7 @@ interface
 
 uses
   Windows, Messages, SysUtils, Classes, Graphics, Controls, StdCtrls,
-  SdUI, SdSciEdit, SdCodeInsight, SdHints;
+  SdUI, SdSciEdit, SdCodeInsight, SdHints, SdEditorThemes;
 
 type
   { an item was chosen: True when the handler put it in (the list then only closes) }
@@ -132,13 +132,18 @@ type
   end;
 
 function KindWord(Kind: TCIKind): string;
-{ a kind's colour in the completion list (the editor theme's Code Insight elements) }
+{ a kind's element of the editor theme's Code Insight elements (eeCompletion: none), and its
+  colour in the completion list }
+function KindElement(Kind: TCIKind): TEditorElement;
 function KindColor(Kind: TCIKind): TColor;
-{ A row of the completion list, on Back: the kind's word in KindFore in a column KindWidth px
-  wide, the name bold in TextFore, the rest (parameters, type) after it, cut with an ellipsis.
-  The list draws its rows with it, the Color page's sample of the list as well. }
+{ Base in the font styles of an element (C: its Bold, Italic, Underline) - Base's own handle when
+  it has none; the fonts are kept, one per style, and made again when Base changes }
+function StyledFont(Base: TFont; const C: TEditorColor): HFONT;
+{ A row of the completion list, on Back: the kind's word in KindFore and KindFont in a column
+  KindWidth px wide, the name bold in TextFore, the rest (parameters, type) after it, cut with an
+  ellipsis. The list draws its rows with it, the Color page's sample of the list as well. }
 procedure DrawCompletionRow(DC: HDC; const Rect: TRect; const Kind, Name, Rest: string;
-  KindFore, TextFore, Back: TColor; Font, BoldFont: HFONT; KindWidth: Integer);
+  KindFore, TextFore, Back: TColor; KindFont, Font, BoldFont: HFONT; KindWidth: Integer);
 
 const
   KindColWidth = 62;
@@ -146,7 +151,7 @@ const
 implementation
 
 uses
-  UxTheme, SdSciDefs, SdEditorThemes, SdEditorOptions;
+  UxTheme, SdSciDefs, SdEditorOptions;
 
 const
   VisibleRows = 8;
@@ -173,40 +178,70 @@ begin
   end;
 end;
 
-function KindColor(Kind: TCIKind): TColor;
-var
-  E: TEditorElement;
+function KindElement(Kind: TCIKind): TEditorElement;
 begin
   case Kind of
-    ckProcedure, ckConstructor, ckDestructor: E := eeCompProcedure;
-    ckFunction: E := eeCompFunction;
-    ckProperty: E := eeCompProperty;
-    ckVar, ckField, ckParam, ckLocalVar: E := eeCompVariable;
-    ckConst, ckEnumValue, ckResourceString: E := eeCompConstant;
-    ckType, ckClass, ckInterface, ckRecord, ckEnum: E := eeCompType;
-    ckUnit: E := eeCompUnit;
-    ckLabel: E := eeCompLabel;
-    ckTemplate:
-      begin
-        { a code template: dimmed, half way to the list's ground }
-        Result := UIBlend(ElementFore(EditorOptions.Colors, eeCompletion),
-          ElementBack(EditorOptions.Colors, eeCompletion), 55);
-        Exit;
-      end;
+    ckProcedure, ckConstructor, ckDestructor: Result := eeCompProcedure;
+    ckFunction: Result := eeCompFunction;
+    ckProperty: Result := eeCompProperty;
+    ckVar, ckField, ckParam, ckLocalVar: Result := eeCompVariable;
+    ckConst, ckEnumValue, ckResourceString: Result := eeCompConstant;
+    ckType, ckClass, ckInterface, ckRecord, ckEnum: Result := eeCompType;
+    ckUnit: Result := eeCompUnit;
+    ckLabel: Result := eeCompLabel;
   else
-    E := eeCompletion;
+    Result := eeCompletion;
   end;
-  Result := ElementFore(EditorOptions.Colors, E);
+end;
+
+function KindColor(Kind: TCIKind): TColor;
+begin
+  if Kind = ckTemplate then
+    { a code template: dimmed, half way to the list's ground }
+    Result := UIBlend(ElementFore(EditorOptions.Colors, eeCompletion),
+      ElementBack(EditorOptions.Colors, eeCompletion), 55)
+  else
+    Result := ElementFore(EditorOptions.Colors, KindElement(Kind));
+end;
+
+var
+  StyleFonts: array[0..7] of TFont;   // StyledFont's, by Bold + 2 Italic + 4 Underline
+
+function StyledFont(Base: TFont; const C: TEditorColor): HFONT;
+var
+  I: Integer;
+  S: TFontStyles;
+  F: TFont;
+begin
+  I := Ord(C.Bold) or Ord(C.Italic) shl 1 or Ord(C.Underline) shl 2;
+  if I = 0 then
+  begin
+    Result := Base.Handle;
+    Exit;
+  end;
+  S := Base.Style + ElementFontStyles(C);
+  F := StyleFonts[I];
+  if F = nil then
+  begin
+    F := TFont.Create;
+    StyleFonts[I] := F;
+  end;
+  if (F.Name <> Base.Name) or (F.Height <> Base.Height) or (F.Charset <> Base.Charset) or (F.Style <> S) then
+  begin
+    F.Assign(Base);
+    F.Style := S;
+  end;
+  Result := F.Handle;
 end;
 
 procedure DrawCompletionRow(DC: HDC; const Rect: TRect; const Kind, Name, Rest: string;
-  KindFore, TextFore, Back: TColor; Font, BoldFont: HFONT; KindWidth: Integer);
+  KindFore, TextFore, Back: TColor; KindFont, Font, BoldFont: HFONT; KindWidth: Integer);
 var
   R: TRect;
   X: Integer;
 begin
   UIFill(DC, Rect, Back);
-  SelectObject(DC, Font);
+  SelectObject(DC, KindFont);
   R := Classes.Rect(Rect.Left + 3, Rect.Top, Rect.Left + KindWidth, Rect.Bottom);
   UIText(DC, Kind, R, DT_SINGLELINE or DT_VCENTER or DT_NOPREFIX, KindFore);
   SelectObject(DC, BoldFont);
@@ -656,7 +691,7 @@ begin
   else if It^.TypeName <> '' then
     S := ': ' + It^.TypeName;
   DrawCompletionRow(Canvas.Handle, Rect, KindWord(It^.Kind), It^.Name, S, KindFore, TextFore, Back,
-    Font.Handle, FBold.Handle, KindColWidth);
+    StyledFont(Font, EditorOptions.Colors[KindElement(It^.Kind)]), Font.Handle, FBold.Handle, KindColWidth);
 end;
 
 procedure TCompletionPopup.DblClick;
@@ -792,4 +827,14 @@ begin
   if Showing then HideTip;
 end;
 
+procedure FreeStyleFonts;
+var
+  I: Integer;
+begin
+  for I := Low(StyleFonts) to High(StyleFonts) do FreeAndNil(StyleFonts[I]);
+end;
+
+initialization
+finalization
+  FreeStyleFonts;
 end.
