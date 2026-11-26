@@ -11,6 +11,13 @@ installing in [README.md](README.md).
 
 ## [Unreleased]
 
+## [1.0.1.1] - 2026-11-26
+
+### Fixed
+
+- **IDE**: a click on another tab of the dock group you are working in no longer makes the group's
+  title bar flash grey.
+
 ## [1.0.1.0] - 2026-11-26
 
 ### Changed
@@ -18,11 +25,6 @@ installing in [README.md](README.md).
 - **Code editor**: on the Color page, the names by kind (Type, Routine, Property, Field, Variable,
   Local variable, Parameter, Constant, Unit) and the completion list's kinds can now be bold,
   italic or underlined, and the editor keeps those styles while you type.
-
-### Fixed
-
-- **IDE**: a click on another tab of the dock group you are working in no longer makes the group's
-  title bar flash grey.
 
 ## [1.0.0.0] - 2026-11-25
 
@@ -76,6 +78,7 @@ The first release.
   its settings. It also installs Microsoft's WinHelp viewer, which shows Delphi 7's help on
   Windows 10 and 11.
 
-[Unreleased]: https://github.com/iznoguuud/d7studio/compare/v1.0.1.0...HEAD
+[Unreleased]: https://github.com/iznoguuud/d7studio/compare/v1.0.1.1...HEAD
+[1.0.1.1]: https://github.com/iznoguuud/d7studio/compare/v1.0.1.0...v1.0.1.1
 [1.0.1.0]: https://github.com/iznoguuud/d7studio/compare/v1.0.0.0...v1.0.1.0
 [1.0.0.0]: https://github.com/iznoguuud/d7studio/releases/tag/v1.0.0.0
