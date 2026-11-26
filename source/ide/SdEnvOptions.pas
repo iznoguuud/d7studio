@@ -46,6 +46,7 @@ type
     ShowCompilerProgress: Boolean;    // the modal "Compiling" dialog
     AutoCloseCompilerProgress: Boolean;   // ... closes by itself after every successful compile
     RepositoryDir: string;
+    CheckForUpdates: Boolean;         // a check for a newer release once a day at start-up (SdUpdate)
     { Designer (grid, snap and component captions: DesignEnv) }
     ShowDesignerHints, ShowExtendedHints, NewFormsAsText, AutoCreateForms: Boolean;
     { Object Inspector }
@@ -323,6 +324,7 @@ begin
       OptFlag('ShowCompilerProgress', ShowCompilerProgress),
       OptFlag('AutoCloseCompilerProgress', AutoCloseCompilerProgress),
       OptStr('RepositoryDir', RepositoryDir),
+      OptFlag('CheckForUpdates', CheckForUpdates),
       OptFlag('ShowDesignerHints', ShowDesignerHints),
       OptFlag('ShowExtendedHints', ShowExtendedHints),
       OptFlag('NewFormsAsText', NewFormsAsText),
@@ -394,6 +396,7 @@ begin
   { Delphi 7's dialog waits for OK after Compile, Build and Syntax Check }
   AutoCloseCompilerProgress := False;
   RepositoryDir := '';
+  CheckForUpdates := True;
   ShowDesignerHints := True;
   ShowExtendedHints := True;
   NewFormsAsText := True;

@@ -208,7 +208,10 @@ uses
   SdOtaFileSystems in 'ide\SdOtaFileSystems.pas',
   SdOtaLegacyModules in 'ide\SdOtaLegacyModules.pas',
   SdOtaLegacy in 'ide\SdOtaLegacy.pas',
-  SdOtaServices in 'ide\SdOtaServices.pas';
+  SdOtaServices in 'ide\SdOtaServices.pas',
+  SdHttp in 'ide\SdHttp.pas',
+  SdUpdate in 'ide\SdUpdate.pas',
+  SdUpdateDlg in 'ide\SdUpdateDlg.pas' {UpdateDlg};
 
 { The end of the process, without finalization (the design packages are never unloaded) and
   without the unload code of the DLLs that are still loaded. Windows unloads them in the reverse
@@ -394,6 +397,8 @@ begin
     finally
       Files.Free;
     end;
+    { a newer release looked for in the background, when it is due }
+    MainForm.CheckForUpdates(False);
   except
     on E: Exception do
     begin
@@ -410,6 +415,12 @@ begin
     on E: Exception do
       OtaError(E, 'shutdown');
   end;
-  if MainForm.RestartWanted then StartAgain;
+  if MainForm.UpdateSetup <> '' then
+  begin
+    if not RunUpdateSetup(MainForm.UpdateSetup) then
+      MessageBox(0, PChar('The setup of the update could not be started:'#13#10 + MainForm.UpdateSetup +
+        #13#10#13#10 + SysErrorMessage(GetLastError)), 'D7 Studio', MB_OK or MB_ICONERROR);
+  end
+  else if MainForm.RestartWanted then StartAgain;
   EndProcess(0);
 end.

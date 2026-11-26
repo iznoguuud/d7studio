@@ -490,13 +490,19 @@ function UIOpenClipboard(Wnd: HWND): Boolean;
 function UIClipboardSet(Format: UINT; Data: Pointer; Size: Integer): Boolean;
 function UIClipboardGet(Format: UINT; out Data: string): Boolean;
 
+{ an http:// or https:// address }
+function UIIsUrl(const S: string): Boolean;
+{ the web page Url in the user's browser; False when Url is not an http(s) address or the browser
+  could not be started }
+function UIOpenUrl(const Url: string): Boolean;
+
 var
   UIMenuTextW: function(Item: TMenuItem): WideString = nil;
 
 implementation
 
 uses
-  MultiMon, ExtCtrls, CheckLst, SdEncoding, SdResImage;
+  MultiMon, ExtCtrls, CheckLst, ShellAPI, SdEncoding, SdResImage;
 
 procedure InstallTestGuard; forward;
 
@@ -4999,6 +5005,18 @@ begin
   H := TDblClickHook(UIFindHook(Tree, TDblClickHook));
   if (H <> nil) and not (htOnButton in Tree.GetHitTestInfoAt(H.FPos.X, H.FPos.Y)) then
     Result := Tree.GetNodeAt(H.FPos.X, H.FPos.Y);
+end;
+
+{ ---------------------------------------------------------------- web pages }
+
+function UIIsUrl(const S: string): Boolean;
+begin
+  Result := SameText(Copy(S, 1, 7), 'http://') or SameText(Copy(S, 1, 8), 'https://');
+end;
+
+function UIOpenUrl(const Url: string): Boolean;
+begin
+  Result := UIIsUrl(Url) and (ShellExecute(0, 'open', PChar(Url), nil, nil, SW_SHOWNORMAL) > 32);
 end;
 
 { ---------------------------------------------------------------- the clipboard }

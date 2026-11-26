@@ -94,6 +94,10 @@ procedure WriteFileU(const Path, Data: string);
 procedure BackupFileU(const Path: string);
 { the folder Path and those above it made where they are missing; False when one cannot be made }
 function ForceDirectoriesU(const Path: string): Boolean;
+{ Windows' folder for temporary files, with its backslash }
+function TempFolder: string;
+{ the folder Dir (with its backslash) and everything in it deleted, as far as it can be }
+procedure RemoveTree(const Dir: string);
 { the files of a drop (WM_DROPFILES) and of the command line, as usable names }
 procedure DroppedFiles(Drop: HDROP; L: TStrings);
 { the names an Open/Save dialog returned in its buffer (one; with MultiSelect the folder, #0, the
@@ -544,6 +548,33 @@ begin
   end
   else
     Files.Add(UsablePath(Dir));
+end;
+
+{ ---------------------------------------------------------------- temporary folders }
+
+function TempFolder: string;
+var
+  Buf: array[0..MAX_PATH] of Char;
+begin
+  SetString(Result, Buf, GetTempPath(MAX_PATH, Buf));
+  Result := IncludeTrailingPathDelimiter(Result);
+end;
+
+procedure RemoveTree(const Dir: string);
+var
+  SR: TSearchRec;
+begin
+  if FindFirst(Dir + '*', faAnyFile, SR) = 0 then
+    try
+      repeat
+        if (SR.Name = '.') or (SR.Name = '..') then Continue;
+        if SR.Attr and faDirectory <> 0 then RemoveTree(Dir + SR.Name + '\')
+        else DeleteFile(Dir + SR.Name);
+      until FindNext(SR) <> 0;
+    finally
+      FindClose(SR);
+    end;
+  RemoveDir(Dir);
 end;
 
 end.

@@ -82,6 +82,23 @@ object EnvOptionsFrame: TEnvOptionsFrame
           TabOrder = 1
         end
       end
+      object gbUpdates: TGroupBox
+        Left = 9
+        Top = 345
+        Width = 620
+        Height = 48
+        Caption = ' Updates '
+        TabOrder = 6
+        object cbCheckUpdates: TCheckBox
+          Left = 9
+          Top = 18
+          Width = 600
+          Height = 22
+          Hint = 'Once a day at start-up, look for a newer release of D7 Studio on GitHub (Help | Check for Updates looks at any time)'
+          Caption = 'C&heck for updates at start-up'
+          TabOrder = 0
+        end
+      end
       object DockingBox: TGroupBox
         Left = 9
         Top = 169

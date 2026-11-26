@@ -67,7 +67,7 @@ function PatternMatches(const Pattern, Text: string): Boolean;
 implementation
 
 uses
-  ShellAPI, SdSettings, SdDelphiDir, SdUI, SdEncoding, SdEditorPage;
+  SdSettings, SdDelphiDir, SdUI, SdEncoding, SdEditorPage;
 
 type
   { a section of the file: its patterns and their explanations, in the file's order }
@@ -324,11 +324,6 @@ begin
   end;
 end;
 
-function IsURL(const S: string): Boolean;
-begin
-  Result := SameText(Copy(S, 1, 7), 'http://') or SameText(Copy(S, 1, 8), 'https://');
-end;
-
 procedure TSdMessageHints.DrawHint(Control: TWinControl; Index: Integer; Rect: TRect; State: TOwnerDrawState);
 var
   R: THintRow;
@@ -355,7 +350,7 @@ begin
   DrawText(FList.Canvas.Handle, PChar(R.Msg), Length(R.Msg), T, DT_SINGLELINE or DT_END_ELLIPSIS or DT_NOPREFIX);
   UIListRowWidth(FList, T.Left + FList.Canvas.TextWidth(R.Msg) + 2);
   FList.Canvas.Font.Style := [];
-  if IsURL(R.Hint) and not (odSelected in State) then
+  if UIIsUrl(R.Hint) and not (odSelected in State) then
   begin
     FList.Canvas.Font.Color := clBlue;
     FList.Canvas.Font.Style := [fsUnderline];
@@ -372,7 +367,7 @@ var
 begin
   if FList.ItemIndex < 0 then Exit;
   R := THintRow(FList.Items.Objects[FList.ItemIndex]);
-  if (R <> nil) and IsURL(R.Hint) then ShellExecute(0, 'open', PChar(R.Hint), nil, nil, SW_SHOWNORMAL);
+  if R <> nil then UIOpenUrl(R.Hint);
 end;
 
 function TSdMessageHints.SelectedText: string;

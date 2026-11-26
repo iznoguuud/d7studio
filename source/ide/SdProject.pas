@@ -3011,14 +3011,6 @@ begin
   if S.Exists then Result := Int64(S.Time) else Result := -1;
 end;
 
-function TempFolder: string;
-var
-  Buf: array[0..MAX_PATH] of Char;
-begin
-  SetString(Result, Buf, GetTempPath(MAX_PATH, Buf));
-  Result := IncludeTrailingPathDelimiter(Result);
-end;
-
 procedure ResScriptInputs(const RcFile: string; Files: TStrings);
 var
   S, Dir, W: string;
@@ -3355,23 +3347,6 @@ end;
 
 { ---------------------------------------------------------------- TSdScratchBuild }
 
-procedure RemoveTree(const Dir: string);
-var
-  SR: TSearchRec;
-begin
-  if FindFirst(Dir + '*', faAnyFile, SR) = 0 then
-    try
-      repeat
-        if (SR.Name = '.') or (SR.Name = '..') then Continue;
-        if SR.Attr and faDirectory <> 0 then RemoveTree(Dir + SR.Name + '\')
-        else DeleteFile(Dir + SR.Name);
-      until FindNext(SR) <> 0;
-    finally
-      FindClose(SR);
-    end;
-  RemoveDir(Dir);
-end;
-
 constructor TSdScratchBuild.Create;
 begin
   inherited Create;
@@ -3397,7 +3372,6 @@ end;
   name from different folders go to subfolders }
 function TSdScratchBuild.NewName(const RealName: string): string;
 var
-  Buf: array[0..MAX_PATH] of Char;
   N: Integer;
 begin
   if FDir = '' then
@@ -3405,8 +3379,7 @@ begin
     { a folder dcc32 can open (it reads the system code page): the short name of a temporary
       folder with other characters - the copies keep that name in the project source and in
       dcc32's messages (RealNames) }
-    SetString(FDir, Buf, GetTempPath(MAX_PATH, Buf));
-    FDir := IncludeTrailingPathDelimiter(CompilerPath(FDir)) + Format('D7Studio-%d\', [GetCurrentProcessId]);
+    FDir := IncludeTrailingPathDelimiter(CompilerPath(TempFolder)) + Format('D7Studio-%d\', [GetCurrentProcessId]);
     RemoveTree(FDir);     // left over by an instance that crashed
   end;
   Result := FDir + ExtractFileName(RealName);

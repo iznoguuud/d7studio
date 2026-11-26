@@ -33,6 +33,8 @@ type
     lbReposDir: TLabel;
     ecRepositoryDir: TEdit;
     RepositoryBtn: TButton;
+    gbUpdates: TGroupBox;
+    cbCheckUpdates: TCheckBox;
     DockingBox: TGroupBox;
     DockHint: TLabel;
     cbAutoDragDocking: TCheckBox;
@@ -372,6 +374,7 @@ begin
   if Settings.ReadInteger('UI', 'DialogBackground', 0) = 1 then cbDialogBackground.ItemIndex := 1
   else cbDialogBackground.ItemIndex := 0;
   ecRepositoryDir.Text := E.RepositoryDir;
+  cbCheckUpdates.Checked := E.CheckForUpdates;
   { Designer }
   cbDisplayGrid.Checked := DesignEnv.ShowGrid;
   cbSnapToGrid.Checked := DesignEnv.SnapToGrid;
@@ -482,6 +485,7 @@ begin
     Settings.WriteString('UI', 'ZoomKey', WheelZoomKeyKeys[TSdWheelZoomKey(cbZoomKey.ItemIndex)]);
   if cbDialogBackground.ItemIndex >= 0 then Settings.WriteInteger('UI', 'DialogBackground', cbDialogBackground.ItemIndex);
   E.RepositoryDir := Trim(ecRepositoryDir.Text);
+  E.CheckForUpdates := cbCheckUpdates.Checked;
   DesignEnv.ShowGrid := cbDisplayGrid.Checked;
   DesignEnv.SnapToGrid := cbSnapToGrid.Checked;
   DesignEnv.GridX := StrToIntDef(ecGridSizeX.Text, 8);

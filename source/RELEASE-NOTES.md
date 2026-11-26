@@ -11,6 +11,17 @@ installing in [README.md](README.md).
 
 ## [Unreleased]
 
+## [1.0.2.0] - 2026-11-26
+
+### Added
+
+- **IDE**: *Help ▸ Check for Updates...* looks for a newer release of D7 Studio on GitHub, and D7
+  Studio also looks once a day when it starts (*Tools ▸ Environment Options ▸ Preferences ▸ Check
+  for updates at start-up*, on by default). When there is one, a dialog shows its release notes;
+  *Update* downloads its setup, checks it against the release's SHA-256, closes D7 Studio - asking
+  about unsaved files as usual - and starts the setup, which updates D7 Studio in place and keeps
+  its settings.
+
 ## [1.0.1.1] - 2026-11-26
 
 ### Fixed
@@ -78,7 +89,8 @@ The first release.
   its settings. It also installs Microsoft's WinHelp viewer, which shows Delphi 7's help on
   Windows 10 and 11.
 
-[Unreleased]: https://github.com/iznoguuud/d7studio/compare/v1.0.1.1...HEAD
+[Unreleased]: https://github.com/iznoguuud/d7studio/compare/v1.0.2.0...HEAD
+[1.0.2.0]: https://github.com/iznoguuud/d7studio/compare/v1.0.1.1...v1.0.2.0
 [1.0.1.1]: https://github.com/iznoguuud/d7studio/compare/v1.0.1.0...v1.0.1.1
 [1.0.1.0]: https://github.com/iznoguuud/d7studio/compare/v1.0.0.0...v1.0.1.0
 [1.0.0.0]: https://github.com/iznoguuud/d7studio/releases/tag/v1.0.0.0

@@ -18,8 +18,9 @@ It needs:
 - Windows 10 1903 or later, with the visual styles on;
 - administrator rights.
 
-A newer setup updates an installed D7 Studio in place and keeps its settings. Uninstalling D7
-Studio gives Delphi 7 its own files back.
+A newer setup updates an installed D7 Studio in place and keeps its settings; D7 Studio finds a
+newer release itself (*Help | Check for Updates*, and once a day at start-up), downloads its setup,
+checks its SHA-256 and starts it. Uninstalling D7 Studio gives Delphi 7 its own files back.
 
 ## What you get
 

@@ -28,7 +28,7 @@ uses
   SdCustomizeDlg, SdKeymaps, SdCpuView, SdDebugInspector, SdWatchViewFrame, SdTodo, SdAddTodoDlg, SdNewCompDlg, SdPackageViewFrame,
   SdPackageAddDlg, SdNavHistory, SdOptionsDlg, SdOtaCore, SdMessageView, SdResourceViewFrame, SdResources,
   SdResImage, SdResPage, SdOtaPalette, SdOtaViews, SdOtaToDo, SdNavBar, SdPageBar, SdZoom, SdHistory,
-  SdHistoryFrame;
+  SdHistoryFrame, SdUpdate;
 
 const
   WM_SDTESTKEY = WM_APP + 76;          // test mode: the postkey command's key, from the message loop (CMTestKey)
@@ -39,6 +39,7 @@ const
   WM_SDCLOSEBESIDE = WM_APP + 90;      // the editor of a package open beside the group was closed: the package closes (WMCloseBeside)
   WM_SDSWAPFORM = WM_APP + 91;         // an expert's View as Text / View as Form of a page, posted (WMSwapForm)
   WM_SDBROWSERREBUILD = WM_APP + 92;   // a unit of the active project was saved: the Browser made again (WMBrowserRebuild)
+  WM_SDSHOWUPDATE = WM_APP + 93;       // a check for updates found a newer release: its dialog, out of the idle handler (WMShowUpdate)
 
 type
   TMainForm = class;
@@ -306,6 +307,7 @@ type
     ComponentInstallPackagesCommand: TAction;
     ToolsOptionsCommand: TAction;
     HelpAboutCommand: TAction;
+    aCheckUpdates: TAction;
     aPaneLeft: TAction;
     aPaneFloat: TAction;
     aPaneRight: TAction;
@@ -634,6 +636,7 @@ type
     HelpProgGuideSeparater: TMenuItem;
     HelpAboutSeparator: TMenuItem;
     HelpAboutItem: TMenuItem;
+    miCheckUpdates: TMenuItem;
     ClosedFilesPopup: TPopupMenu;
     ProcessMenu: TPopupMenu;
     DesktopsMenu: TPopupMenu;
@@ -1011,6 +1014,11 @@ type
     FExpFilled: Boolean;        // it shows a Pascal unit: the next one keeps its nodes' state
     FClosing: Boolean;
     FRestart: Boolean;          // closing to start again (a new UI font): D7Studio.dpr starts the EXE
+    FUpdateCheck: TSdUpdateCheck; // the check for updates that runs, nil when none
+    FUpdateFound: Boolean;      // it found a newer release: its dialog shows once the window is idle and enabled
+    FUpdateRelease: TSdRelease; // ... that release
+    FUpdateShowing: Boolean;    // its dialog is open: a second WM_SDSHOWUPDATE is dropped
+    FUpdateSetup: string;       // closing to run this release's setup: D7Studio.dpr starts it
     FClosingAll: Boolean;       // every page closes (project closed): none is activated on the way
     FCheckingFiles: Boolean;    // AppActivate asks about files changed on the disk (its boxes activate again)
     FErrorPage: TEditorPage;
@@ -1133,6 +1141,9 @@ type
     procedure RebuildBrowser;
     procedure BrowserFileSaved(const FileName: string);
     procedure WMBrowserRebuild(var Message: TMessage); message WM_SDBROWSERREBUILD;
+    procedure UpdateCheckEnded(Sender: TObject);
+    procedure UpdateCheckFailed(const Error: string);   // Help | Check for Updates could not check
+    procedure WMShowUpdate(var Message: TMessage); message WM_SDSHOWUPDATE;
     procedure RefreshResourceView(const Key: string = '');
     procedure UpdateResourceActions;
     procedure ResourceDone(const Key: string);
@@ -1584,6 +1595,11 @@ type
     { the IDE closed to start again (Restart now after a new UI font): D7Studio.dpr starts its EXE
       once the experts are shut down }
     property RestartWanted: Boolean read FRestart;
+    { the check for updates in the background: Manual (Help | Check for Updates) reports every result,
+      else it runs only when it is due (SdUpdate.UpdateCheckDue) and reports only a newer release }
+    procedure CheckForUpdates(Manual: Boolean);
+    { the IDE closed to update: D7Studio.dpr starts this setup once the experts are shut down }
+    property UpdateSetup: string read FUpdateSetup;
   end;
 
 var
@@ -1595,7 +1611,7 @@ uses
   ShlObj, SdDbgTD32, SdCompInfoDlg, SdCompListDlg, SdNewItemsDlg, SdNewThreadDlg,
   SdPrintDlg, SdPasLex, SdWatchEditDlg, TypInfo, FileCtrl, CommCtrl, PropertyCategories,
   SdFormatter, SdFormatterOptions, SdDiagram, SdPEHeader, ToolsAPI, SdOtaModules, SdOtaServices,
-  SdOtaDesktop, SdOtaCodeInsight, SdOtaEditWindow, SdDesignMenus, SdHints, Dialogs;
+  SdOtaDesktop, SdOtaCodeInsight, SdOtaEditWindow, SdDesignMenus, SdHints, Dialogs, SdUpdateDlg;
 
 {$R *.dfm}
 
@@ -5247,7 +5263,11 @@ begin
     Result := DoCloseQuery;
   finally
     { a close that does not happen does not start D7 Studio again later }
-    if not Result then FRestart := False;
+    if not Result then
+    begin
+      FRestart := False;
+      FUpdateSetup := '';
+    end;
   end;
 end;
 
@@ -5405,6 +5425,13 @@ begin
   if not FClosing then FlushOtaOptions;
   UpdateActionStates;
   if (FDesignWindows <> nil) and not FClosing then FDesignWindows.Sync;
+  { a newer release found in the background: its dialog once D7 Studio is the active program and no
+    dialog of its own is open }
+  if FUpdateFound and not FClosing and Application.Active and IsWindowEnabled(Handle) then
+  begin
+    FUpdateFound := False;
+    PostMessage(Handle, WM_SDSHOWUPDATE, 0, 0);
+  end;
   Done := True;
 end;
 
@@ -6331,6 +6358,98 @@ begin
   FBrowserPosted := False;
   if FClosing or not FBrowserStale or not FBrowserPanel.Showing then Exit;
   RebuildBrowser;
+end;
+
+{ ---------------------------------------------------------------- updates }
+
+procedure TMainForm.CheckForUpdates(Manual: Boolean);
+begin
+  if FUpdateCheck <> nil then Exit;
+  if not Manual then
+  begin
+    if not UpdateCheckDue then Exit;
+    { a setup that a former update downloaded has run by now }
+    RemoveUpdateFolder;
+  end
+  else if StatusBar <> nil then
+    StatusBar.Panels[spMessage].Text := 'Checking for updates...';
+  aCheckUpdates.Enabled := False;
+  try
+    FUpdateCheck := TSdUpdateCheck.Create(Manual, UpdateCheckEnded);
+  except
+    { no thread: the command reports it, the check at start-up says nothing (as when it fails) }
+    on E: Exception do
+    begin
+      aCheckUpdates.Enabled := True;
+      if not Manual then Exit;
+      if StatusBar <> nil then StatusBar.Panels[spMessage].Text := '';
+      UpdateCheckFailed(E.Message);
+    end;
+  end;
+end;
+
+procedure TMainForm.UpdateCheckFailed(const Error: string);
+begin
+  MessageBox(Handle, PChar('D7 Studio could not check for updates.'#13#10#13#10 + Error), AppTitle,
+    MB_OK or MB_ICONERROR);
+end;
+
+{ the check's OnTerminate, in the main thread. An automatic check that failed says nothing and runs
+  again at the next start }
+procedure TMainForm.UpdateCheckEnded(Sender: TObject);
+var
+  C: TSdUpdateCheck;
+  Latest: string;
+begin
+  C := Sender as TSdUpdateCheck;
+  FUpdateCheck := nil;
+  aCheckUpdates.Enabled := True;
+  if C.Manual and (StatusBar <> nil) then StatusBar.Panels[spMessage].Text := '';
+  if FClosing then Exit;
+  if C.Error <> '' then
+  begin
+    if C.Manual then UpdateCheckFailed(C.Error);
+    Exit;
+  end;
+  if not C.Manual then UpdateCheckDone;
+  if C.HasRelease and IsNewerRelease(C.Release) then
+  begin
+    FUpdateRelease := C.Release;
+    { Help | Check for Updates answers at once; the automatic check waits until AppIdle finds D7 Studio
+      active and free }
+    if C.Manual then PostMessage(Handle, WM_SDSHOWUPDATE, 0, 0)
+    else FUpdateFound := True;
+  end
+  else if C.Manual then
+  begin
+    if C.HasRelease then Latest := 'the latest release is ' + C.Release.Version
+    else Latest := 'there is no release with a setup';
+    MessageBox(Handle, PChar(Format('D7 Studio %s is up to date: %s.', [CurrentVersion, Latest])), AppTitle,
+      MB_OK or MB_ICONINFORMATION);
+  end;
+end;
+
+{ the newer release's dialog; with its setup downloaded and checked, D7 Studio closes as File | Exit
+  does (modified files are asked about) and D7Studio.dpr starts the setup. The dialog shows once for
+  both checks: a release the automatic check still holds is dropped with it }
+procedure TMainForm.WMShowUpdate(var Message: TMessage);
+var
+  Setup: string;
+  OK: Boolean;
+begin
+  FUpdateFound := False;
+  if FClosing or FUpdateShowing then Exit;
+  FUpdateShowing := True;
+  try
+    OK := TUpdateDlg.Execute(Self, FUpdateRelease, Setup);
+  finally
+    FUpdateShowing := False;
+  end;
+  if OK then
+  begin
+    FUpdateSetup := Setup;
+    PostMessage(Handle, WM_CLOSE, 0, 0);
+  end;
 end;
 
 procedure TMainForm.BrowserGoto(Sender: TObject; const FileName: string; Line, Col: Integer);
@@ -15961,7 +16080,9 @@ begin
   else if Sender = ComponentNewCommand then
     NewComponent
   else if Sender = HelpAboutCommand then
-    AboutDialog(Self);
+    AboutDialog(Self)
+  else if Sender = aCheckUpdates then
+    CheckForUpdates(True);
 end;
 
 { Edit | Format Source (Ctrl+D) and Project | Format Project Sources }

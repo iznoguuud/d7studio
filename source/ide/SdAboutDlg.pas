@@ -50,10 +50,13 @@ type
 var
   AboutDlg: TAboutDlg;
 
+{ the file version of the program's version resource, "1.0.0.0"; '' when it has none }
+function ProgramVersion: string;
+
 implementation
 
 uses
-  ShellAPI, WindowsEx, SdUI, SdDelphiDir, SdEncoding;
+  WindowsEx, SdUI, SdDelphiDir, SdEncoding;
 
 {$R *.dfm}
 
@@ -260,7 +263,7 @@ end;
 
 procedure TAboutDlg.lblRepoClick(Sender: TObject);
 begin
-  ShellExecute(Handle, 'open', RepositoryURL, nil, nil, SW_SHOWNORMAL);
+  UIOpenUrl(RepositoryURL);
 end;
 
 procedure TAboutDlg.lblRepoMouseEnter(Sender: TObject);

@@ -24,7 +24,10 @@ Requirements:
   - A D7 Studio that Setup installed into the same Delphi 7 is updated in place: its settings
     stay (`D7Studio.ini` and the other files it keeps in `Bin`,
     `HKEY_CURRENT_USER\Software\D7Studio`), and so does the backup of Delphi 7's files. For fresh
-    settings, uninstall it first (Windows' Settings, Apps).
+    settings, uninstall it first (Windows' Settings, Apps). D7 Studio offers such updates itself:
+    *Help | Check for Updates...*, and once a day at start-up (*Tools | Environment Options |
+    Preferences | Check for updates at start-up*), look for a newer release on GitHub; *Update*
+    downloads its setup, checks it against the release's SHA-256, closes D7 Studio and starts it.
   - Any other one Setup offers to remove first with its own uninstaller; if you say no, or it is
     still there afterwards, Setup stops. It stops too while an earlier installation's
     `<Delphi 7>\D7Studio` folder is left.

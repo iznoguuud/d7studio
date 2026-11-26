@@ -277,6 +277,10 @@ modernized RTL/VCL in full is in [MODERNIZATION.md](MODERNIZATION.md).
   Delphi 7's registry key, so Delphi 7's IDE keeps its own settings.
 - **A crash log**: an unexpected error is written with its call stack to `error.log` next to the
   settings.
+- **Updates from GitHub**: *Help ▸ Check for Updates...*, and once a day at start-up (*Tools ▸ Environment
+  Options ▸ Preferences ▸ Check for updates at start-up*), look for a newer release. Its dialog
+  shows the release notes; *Update* downloads the setup, checks its SHA-256, closes D7 Studio and
+  starts the setup, which updates D7 Studio in place with its settings kept.
 
 ## Experts
 

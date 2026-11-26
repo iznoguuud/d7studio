@@ -9679,6 +9679,11 @@ object AppBuilder: TMainForm
       Hint = 'About'
       OnExecute = ActTools
     end
+    object aCheckUpdates: TAction
+      Caption = 'Check for &Updates...'
+      Hint = 'Check for a newer release of D7 Studio'
+      OnExecute = ActTools
+    end
     object aPaneLeft: TAction
       Category = 'Window'
       Caption = 'Dock &Left'
@@ -11140,6 +11145,9 @@ object AppBuilder: TMainForm
       end
       object HelpAboutSeparator: TMenuItem
         Caption = '-'
+      end
+      object miCheckUpdates: TMenuItem
+        Action = aCheckUpdates
       end
       object HelpAboutItem: TMenuItem
         Action = HelpAboutCommand
