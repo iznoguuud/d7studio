@@ -19,6 +19,11 @@ installing in [README.md](README.md).
   Local variable, Parameter, Constant, Unit) and the completion list's kinds can now be bold,
   italic or underlined, and the editor keeps those styles while you type.
 
+### Fixed
+
+- **IDE**: a click on another tab of the dock group you are working in no longer makes the group's
+  title bar flash grey.
+
 ## [1.0.0.0] - 2026-11-25
 
 The first release.

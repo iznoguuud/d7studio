@@ -2154,12 +2154,15 @@ begin
 end;
 
 { The caption of the group the keyboard is in shows the active title colours, the others a
-  quiet grey; called when the focused control changes }
+  quiet grey; called when the focused control changes. Not while Layout runs: hiding the view
+  that has the keyboard takes it away before the view shown next gets it (a click on a tab), and
+  Layout paints at once - the caption would show grey in between. Layout calls it at its end. }
 procedure TSdDock.FocusChanged;
 var
   P: TSdDockPanel;
   G: TSdDockGroup;
 begin
+  if FInLayout then Exit;
   G := nil;
   if Screen.ActiveControl <> nil then
   begin
@@ -2749,6 +2752,7 @@ begin
     if Assigned(FOnPanelShow) then
       for I := 0 to Fresh.Count - 1 do FOnPanelShow(Self, TSdDockPanel(Fresh[I]));
     RestoreFocus;
+    FocusChanged;
   finally
     Fresh.Free;
   end;
