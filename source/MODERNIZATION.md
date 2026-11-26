@@ -176,7 +176,8 @@ Delphi 7 assumed that the desktop starts at 0,0 and that the primary monitor is 
   scaled toolbar buttons twice.
 - `Clipbrd`: "Cannot open clipboard" while another process briefly held it.
 - `StdCtrls`: combo box strings were not trimmed to the length copied; memo lines were cut at 4096
-  bytes in UTF-8 mode.
+  bytes in UTF-8 mode; with visual styles, pressing Alt erased buttons, check boxes and radio
+  buttons but for their access keys' underlines.
 - `SysUtils`: `Languages` (`TLanguages.Create`) ran a call stub it built on the stack, so a
   program with DEP (NX compatible) ended with an access violation there.
 - `UxTheme`: `GetThemeBackgroundExtent` was bound to `GetThemeBackgroundContentRect`.

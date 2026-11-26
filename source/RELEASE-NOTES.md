@@ -11,6 +11,14 @@ installing in [README.md](README.md).
 
 ## [Unreleased]
 
+## [1.0.2.2] - 2026-11-26
+
+### Fixed
+
+- **RTL/VCL**: pressing Alt no longer erases buttons, check boxes and radio buttons, leaving only
+  the underlines of their access keys - in D7 Studio's dialogs and in programs built with the
+  modernized VCL. It was a bug of Delphi 7's VCL with the visual styles.
+
 ## [1.0.2.1] - 2026-11-26
 
 ### Changed
@@ -99,7 +107,8 @@ The first release.
   its settings. It also installs Microsoft's WinHelp viewer, which shows Delphi 7's help on
   Windows 10 and 11.
 
-[Unreleased]: https://github.com/iznoguuud/d7studio/compare/v1.0.2.1...HEAD
+[Unreleased]: https://github.com/iznoguuud/d7studio/compare/v1.0.2.2...HEAD
+[1.0.2.2]: https://github.com/iznoguuud/d7studio/compare/v1.0.2.1...v1.0.2.2
 [1.0.2.1]: https://github.com/iznoguuud/d7studio/compare/v1.0.2.0...v1.0.2.1
 [1.0.2.0]: https://github.com/iznoguuud/d7studio/compare/v1.0.1.1...v1.0.2.0
 [1.0.1.1]: https://github.com/iznoguuud/d7studio/compare/v1.0.1.0...v1.0.1.1
