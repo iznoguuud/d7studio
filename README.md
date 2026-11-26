@@ -1,11 +1,11 @@
+![D7 Studio with a form in the designer, the Code Explorer, the Object Inspector, the Project Manager and the Components view](screenshot1.png)
+
 # D7 Studio
 
 An IDE for Borland Delphi 7 projects, written in Delphi 7. It keeps the layout and the muscle
 memory of the Delphi 7 IDE, with the look of the running Windows. Its setup also modernizes the
 installed Delphi 7's RTL and VCL in place: native Unicode, per-monitor DPI awareness and the
 current Windows API.
-
-![D7 Studio with a form in the designer, the Code Explorer, the Object Inspector, the Project Manager and the Components view](screenshot1.png)
 
 ## Download
 
