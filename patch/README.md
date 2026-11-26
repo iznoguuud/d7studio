@@ -19,6 +19,9 @@ reverse-engineers Borland's code:
 - **No original source is deployed.** The patch carries none of Borland's source files (see
   "No original sources" below).
 
+You don't have to take this on trust: [PATCH-AUDIT.md](PATCH-AUDIT.md) shows how to compare
+Borland's files with the patched ones on your own disk, and reports the audit made that way.
+
 ## What the patch contains
 
 | Item | What it is |
@@ -29,6 +32,7 @@ reverse-engineers Borland's code:
 | `patch.ps1` | Applies the patch to an installed Delphi 7 and takes it back. |
 | `README.md` | This document. |
 | `MODERNIZATION.md` | What the patch installs: the modernized RTL/VCL's features and what a developer should know. D7 Studio's Setup installs it into Delphi 7's `Bin`. |
+| `PATCH-AUDIT.md` | How to check the patch yourself: since it cannot carry Borland's code, you compare Borland's files with the patched ones on your own disk, with an AI agent and a ready-made prompt; then the report of the audit made that way. D7 Studio's Setup installs it into Delphi 7's `Bin`. |
 
 **No file of Borland's is in the patch**, not even in part. A delta holds only what the
 modernized file has that Borland's does not, plus the instructions for putting it together.
@@ -135,7 +139,7 @@ Every file in `out\Bin`, `out\Lib` and `out\Source` is handled in one of three w
   `-CopyOriginal`, that Borland file is taken into `original\` and the list, and the file gets a
   delta like the others.
 
-Last, `manifest.txt` is written, and `patch.ps1`, this `README.md` and `MODERNIZATION.md` are copied next to it.
+Last, `manifest.txt` is written, and `patch.ps1`, this `README.md`, `MODERNIZATION.md` and `PATCH-AUDIT.md` are copied next to it.
 
 ## Applying it
 
