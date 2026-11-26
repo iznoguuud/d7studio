@@ -23,7 +23,7 @@ modernized RTL/VCL in full is in [MODERNIZATION.md](MODERNIZATION.md).
   are grey.
 - **Hints** are white and flat, and appear at once.
 - **A UI font of your choice.** D7 Studio uses Windows' UI font, Segoe UI 9.
-  *Tools ▸ Environment Options ▸ Preferences ▸ User interface ▸ Font and Size* chooses another one
+  *Tools ▸ Environment Options ▸ Preferences ▸ User interface ▸ Font* (a name and a size) chooses another one
   (Tahoma 8 gives Delphi 7's proportions); it applies at the next start, and D7 Studio offers to
   restart at once.
 - **Modern icons** - JetBrains' IntelliJ icons and drawings in their style - on every command and view, at 32 × 32 in *File ▸ New ▸
@@ -261,7 +261,8 @@ modernized RTL/VCL in full is in [MODERNIZATION.md](MODERNIZATION.md).
   and selected from one stop to the next.
 - **The Watch List** opens a value with members, as Local Variables does; Delphi 7's cannot. A
   watch moved to another group keeps its group and its *Break When Changed* breakpoint.
-- **A font for the debugger views** (*Tools ▸ Debugger Options ▸ General ▸ Debugger views font*):
+- **A font for the debugger views** (*Tools ▸ Environment Options ▸ Preferences ▸ User interface ▸
+  Fixed-size font*, also the font of the update notes):
   Windows' fixed-width font by default.
 
 ## Files and settings
@@ -279,7 +280,7 @@ modernized RTL/VCL in full is in [MODERNIZATION.md](MODERNIZATION.md).
   settings.
 - **Updates from GitHub**: *Help ▸ Check for Updates...*, and once a day at start-up (*Tools ▸ Environment
   Options ▸ Preferences ▸ Check for updates at start-up*), look for a newer release. Its dialog
-  shows the release notes; *Update* downloads the setup, checks its SHA-256, closes D7 Studio and
+  shows what's new: the release notes of every version since yours; *Update* downloads the setup, checks its SHA-256, closes D7 Studio and
   starts the setup, which updates D7 Studio in place with its settings kept.
 
 ## Experts

@@ -11,6 +11,16 @@ installing in [README.md](README.md).
 
 ## [Unreleased]
 
+## [1.0.2.1] - 2026-11-26
+
+### Changed
+
+- **IDE**: the update dialog shows the release notes of every version since the one you have, newest
+  first, not only those of the latest release, in the fixed-size font.
+- **IDE**: the font of the debugger's views is now the *Fixed-size font* of *Tools ▸ Environment
+  Options ▸ Preferences ▸ User interface*, next to the UI font; it is no longer on *Debugger Options ▸
+  General*. A font chosen there before is kept. The UI font's name and size share one row.
+
 ## [1.0.2.0] - 2026-11-26
 
 ### Added
@@ -89,7 +99,8 @@ The first release.
   its settings. It also installs Microsoft's WinHelp viewer, which shows Delphi 7's help on
   Windows 10 and 11.
 
-[Unreleased]: https://github.com/iznoguuud/d7studio/compare/v1.0.2.0...HEAD
+[Unreleased]: https://github.com/iznoguuud/d7studio/compare/v1.0.2.1...HEAD
+[1.0.2.1]: https://github.com/iznoguuud/d7studio/compare/v1.0.2.0...v1.0.2.1
 [1.0.2.0]: https://github.com/iznoguuud/d7studio/compare/v1.0.1.1...v1.0.2.0
 [1.0.1.1]: https://github.com/iznoguuud/d7studio/compare/v1.0.1.0...v1.0.1.1
 [1.0.1.0]: https://github.com/iznoguuud/d7studio/compare/v1.0.0.0...v1.0.1.0

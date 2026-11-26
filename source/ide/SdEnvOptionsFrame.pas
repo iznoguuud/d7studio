@@ -11,7 +11,7 @@ unit SdEnvOptionsFrame;
 
 { D7 Studio - Tools | Environment Options: Delphi 7's dialog, D7 Studio's additions on its pages
   (Preferences: Auto close on successful compile under Show compiler progress, User interface -
-  the UI font, the zoom key; Designer: Show form positioner,
+  the UI font, the fixed-size font, the zoom key, the dialogs' background; Designer: Show form positioner,
   Snap lines) and its own page Components. The values: SdEnvOptions, the form grid in
   DesignEnv. A frame: the section Environment Options of the Options dialog (SdOptionsDlg), its
   pages without tabs. The editor's options are a section of their own (SdEditorOptionsFrame). }
@@ -47,9 +47,10 @@ type
     gbUserInterface: TGroupBox;
     lblUIFont: TLabel;
     cbUIFont: TComboBox;
-    lblUIFontSize: TLabel;
     cbUIFontSize: TComboBox;
-    lblRestartNote: TLabel;
+    lblFixedFont: TLabel;
+    cbFixedFont: TComboBox;
+    cbFixedFontSize: TComboBox;
     lblZoomKey: TLabel;
     cbZoomKey: TComboBox;
     lblDialogBackground: TLabel;
@@ -329,8 +330,10 @@ begin
   UIListHeader(ToolListBox, ToolListHeader);     // the columns scroll with the rows
 
   { Preferences | User interface: the UI font (default: the message font of the system), the
-    keys that make the wheel zoom in the order of TSdWheelZoomKey (SdZoom) }
+    fixed-size font of the debugger's views and the update notes (default: SdUI.UIAssignFixedFont),
+    the keys that make the wheel zoom in the order of TSdWheelZoomKey (SdZoom) }
   FillFontChoice(cbUIFont, cbUIFontSize);
+  FillFontChoice(cbFixedFont, cbFixedFontSize);
   for K := Low(TSdWheelZoomKey) to High(TSdWheelZoomKey) do cbZoomKey.Items.Add(WheelZoomKeyNames[K]);
 end;
 
@@ -370,6 +373,7 @@ begin
   cbWarnPackageRebuild.Checked := E.WarnPackageRebuild;
   cbMinimizeOnRun.Checked := E.MinimizeOnRun;
   LoadFontChoice(cbUIFont, cbUIFontSize, 'FontName', 'FontSize');
+  LoadFontChoice(cbFixedFont, cbFixedFontSize, UIFixedFontNameKey, UIFixedFontSizeKey);
   cbZoomKey.ItemIndex := Ord(WheelZoomKeyOf(Settings.ReadString('UI', 'ZoomKey', '')));
   if Settings.ReadInteger('UI', 'DialogBackground', 0) = 1 then cbDialogBackground.ItemIndex := 1
   else cbDialogBackground.ItemIndex := 0;
@@ -481,6 +485,7 @@ begin
   E.WarnPackageRebuild := cbWarnPackageRebuild.Checked;
   E.MinimizeOnRun := cbMinimizeOnRun.Checked;
   SaveFontChoice(cbUIFont, cbUIFontSize, 'FontName', 'FontSize');
+  SaveFontChoice(cbFixedFont, cbFixedFontSize, UIFixedFontNameKey, UIFixedFontSizeKey);
   if cbZoomKey.ItemIndex >= 0 then
     Settings.WriteString('UI', 'ZoomKey', WheelZoomKeyKeys[TSdWheelZoomKey(cbZoomKey.ItemIndex)]);
   if cbDialogBackground.ItemIndex >= 0 then Settings.WriteInteger('UI', 'DialogBackground', cbDialogBackground.ItemIndex);

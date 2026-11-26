@@ -96,7 +96,7 @@ constructor TBreakpointsView.Create(AOwner: TComponent);
 begin
   inherited Create(AOwner);
   { the UI font, as every form of the IDE: a form docked as a child keeps its own font (the list
-    gets the debug views' font from the IDE: TMainForm.ApplyDebugFont) }
+    gets the fixed-size font from the IDE: TMainForm.ApplyFixedFont) }
   UIApplyFont(Self);
   InitIcons;
   { the IDE's icons: the main form's list, there at run time only }

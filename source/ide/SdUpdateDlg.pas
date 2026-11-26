@@ -62,6 +62,8 @@ uses
 procedure TUpdateDlg.FormCreate(Sender: TObject);
 begin
   UIPrepareForm(Self);
+  { the notes in the fixed-size font (Environment Options | Preferences | User interface) }
+  UIAssignFixedFont(mmNotes.Font);
 end;
 
 procedure TUpdateDlg.FormCloseQuery(Sender: TObject; var CanClose: Boolean);

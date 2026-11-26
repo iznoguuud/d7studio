@@ -185,48 +185,6 @@ object DebuggerOptionsFrame: TDebuggerOptionsFrame
           TabOrder = 2
         end
       end
-      object gbDebugFont: TGroupBox
-        Left = 9
-        Top = 324
-        Width = 620
-        Height = 53
-        Caption = ' Debugger views font '
-        TabOrder = 3
-        object lblDebugFont: TLabel
-          Left = 9
-          Top = 23
-          Width = 27
-          Height = 15
-          Caption = '&Font:'
-          FocusControl = cbDebugFont
-        end
-        object lblDebugFontSize: TLabel
-          Left = 299
-          Top = 23
-          Width = 23
-          Height = 15
-          Caption = '&Size:'
-          FocusControl = cbDebugFontSize
-        end
-        object cbDebugFont: TComboBox
-          Left = 50
-          Top = 20
-          Width = 233
-          Height = 23
-          Style = csDropDownList
-          ItemHeight = 0
-          TabOrder = 0
-        end
-        object cbDebugFontSize: TComboBox
-          Left = 334
-          Top = 20
-          Width = 79
-          Height = 23
-          Style = csDropDownList
-          ItemHeight = 0
-          TabOrder = 1
-        end
-      end
     end
     object tsEventLog: TTabSheet
       Caption = 'Event Log'

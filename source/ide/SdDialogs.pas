@@ -252,8 +252,8 @@ procedure SaveComboTable(Form: TComponent; Project: TSdProject; const Table: arr
 { the check boxes of Table in Form (their owner) from the project's options, and back }
 procedure LoadCheckTable(Form: TComponent; Project: TSdProject; const Table: array of TOptionCheck);
 procedure SaveCheckTable(Form: TComponent; Project: TSdProject; const Table: array of TOptionCheck);
-{ a font of [UI] in a name and a size box (the UI font of Environment Options | Preferences, the
-  debugger views' font of Debugger Options | General). FillFontChoice: the system's fonts and the
+{ a font of [UI] in a name and a size box (the UI font and the fixed-size font of Environment
+  Options | Preferences | User interface). FillFontChoice: the system's fonts and the
   sizes, each list after "(Default)"; LoadFontChoice shows the value ('' and 0 are "(Default)"),
   SaveFontChoice writes the boxes' value }
 procedure FillFontChoice(Name, Size: TComboBox);

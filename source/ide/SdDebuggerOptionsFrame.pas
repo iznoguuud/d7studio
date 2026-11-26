@@ -11,8 +11,7 @@ unit SdDebuggerOptionsFrame;
 
 { D7 Studio - Tools | Debugger Options: Delphi 7's dialog,
   its pages as Delphi's: General, Event Log,
-  Language Exceptions, OS Exceptions, and Integrated debugging below them (Footer); General also
-  has D7 Studio's Debugger views font ([UI] DebugFontName / DebugFontSize). The values are
+  Language Exceptions, OS Exceptions, and Integrated debugging below them (Footer). The values are
   SdDebuggerOptions'; the section edits a copy and gives it back with OK. A frame: the section
   Debugger Options of the Options dialog (SdOptionsDlg), its pages without tabs. }
 
@@ -45,11 +44,6 @@ type
     cbShowInherited: TCheckBox;
     cbShowQualNames: TCheckBox;
     cbSortByName: TCheckBox;
-    gbDebugFont: TGroupBox;
-    lblDebugFont: TLabel;
-    cbDebugFont: TComboBox;
-    lblDebugFontSize: TLabel;
-    cbDebugFontSize: TComboBox;
     tsEventLog: TTabSheet;
     LogGroupBox: TGroupBox;
     cbProcessMessages: TCheckBox;
@@ -146,9 +140,6 @@ begin
   FOpts.OSExceptions := Copy(DebuggerOptions.OSExceptions, 0, Length(DebuggerOptions.OSExceptions));
   lstbxColors.Items.Clear;
   for K := Low(K) to High(K) do lstbxColors.Items.Add(EventKindNames[K]);
-  { the debugger views' font: by default the monospace font of the system (TMainForm.ApplyDebugFont) }
-  FillFontChoice(cbDebugFont, cbDebugFontSize);
-  LoadFontChoice(cbDebugFont, cbDebugFontSize, 'DebugFontName', 'DebugFontSize');
   LoadControls;
 end;
 
@@ -156,7 +147,6 @@ procedure TDebuggerOptionsFrame.SaveOptions;
 begin
   SaveControls;
   DebuggerOptions := FOpts;
-  SaveFontChoice(cbDebugFont, cbDebugFontSize, 'DebugFontName', 'DebugFontSize');
 end;
 
 procedure TDebuggerOptionsFrame.LoadControls;

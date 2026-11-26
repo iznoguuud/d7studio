@@ -1382,7 +1382,7 @@ type
     function SaveAllFiles: Boolean;
     procedure PageViewChanged(Page: TEditorPage);
     procedure ApplyEditorOptions;
-    procedure ApplyDebugFont;
+    procedure ApplyFixedFont;
     { project }
     procedure OpenProject(const FileName: string; Mode: TOpenMode = omOpen);
     { a project or package loaded - of the group or beside it -, or the group's file }
@@ -3083,7 +3083,7 @@ begin
   WireViewMenu(FDebugInsp.DebugInspPopup, FDebugInsp.MenuActions, ActDebugInsp);
   FDebugInsp.Parent := DockSite;
   FDebugInsp.OnDescend := ViewDblClick;
-  ApplyDebugFont;                      // the debugger's views exist now (their lists of the .dfm too)
+  ApplyFixedFont;                      // the debugger's views exist now (their lists of the .dfm too)
   FMachinePanels[0] := FDock.AddTab(ThreadList, 'Threads', 'Thread Status', FBottomPanels[BT_MESSAGES]);
   FMachinePanels[1] := FDock.AddTab(ModuleList, 'Modules', 'Modules', FBottomPanels[BT_MESSAGES]);
   FMachinePanels[2] := FDock.AddTab(FCpuView, 'CPU', 'CPU', FBottomPanels[BT_MESSAGES]);
@@ -8512,36 +8512,20 @@ end;
 
 { after Environment Options: the editors, the designers, the inspector and the Code Explorer
   take the new options }
-{ Debugger Options | General | Debugger views font: [UI] DebugFontName / DebugFontSize, by
-  default the system's monospace font (Consolas, before Vista Courier New) at the UI font's size.
-  Only the debugger's views (the Event Log, the watches ...): the Messages view keeps the UI font. }
-procedure TMainForm.ApplyDebugFont;
-var
-  Name: string;
-  Size: Integer;
-
-  procedure Put(F: TFont);
-  begin
-    F.Name := Name;
-    F.Size := Size;
-  end;
-
+{ Environment Options | Preferences | User interface | Fixed-size font (SdUI.UIAssignFixedFont). Only the
+  debugger's views (the Event Log, the watches ...): the Messages view keeps the UI font. }
+procedure TMainForm.ApplyFixedFont;
 begin
-  Name := Settings.ReadString('UI', 'DebugFontName', '');
-  if Name = '' then
-    if Screen.Fonts.IndexOf('Consolas') >= 0 then Name := 'Consolas' else Name := 'Courier New';
-  Size := Settings.ReadInteger('UI', 'DebugFontSize', 0);
-  if Size <= 0 then Size := UIFont.Size;
-  Put(FBreakView.BreakList.Font);
-  Put(CallStackList.Font);
-  Put(LocalsTree.Font);
-  Put(EventLogList.Font);
-  Put(ThreadList.Font);
-  Put(ModuleList.Font);
-  Put(FpuList.Font);
+  UIAssignFixedFont(FBreakView.BreakList.Font);
+  UIAssignFixedFont(CallStackList.Font);
+  UIAssignFixedFont(LocalsTree.Font);
+  UIAssignFixedFont(EventLogList.Font);
+  UIAssignFixedFont(ThreadList.Font);
+  UIAssignFixedFont(ModuleList.Font);
+  UIAssignFixedFont(FpuList.Font);
   FCpuView.FontChanged(CallStackList.Font);
   FDebugInsp.FontChanged(CallStackList.Font);
-  Put(FWatchView.Tree.Font);
+  UIAssignFixedFont(FWatchView.Tree.Font);
   FWatchView.FontChanged;
 end;
 
@@ -8550,7 +8534,7 @@ var
   I: Integer;
 begin
   LoadWheelZoomKey;                           // Preferences | Zoom key
-  ApplyDebugFont;
+  ApplyFixedFont;
   EditWindowFontChanged;                      // the editor control's font, as experts measure it (SdOtaEditWindow)
   CopyInspectorOptions;
   if FInspector <> nil then FInspector.OptionsChanged;

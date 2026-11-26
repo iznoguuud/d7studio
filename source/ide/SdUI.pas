@@ -49,6 +49,13 @@ procedure InitAppearance;                   // call once, before the first windo
 procedure UISetDialogBackground(Choice: Integer);
 procedure UIApplyFont(AFont: TFont); overload;
 procedure UIApplyFont(AForm: TCustomForm); overload;
+{ Environment Options | Preferences | User interface | Fixed-size font ([UI] DebugFontName /
+  DebugFontSize) into F - the font of the debugger's views and of text that keeps its columns: by
+  default the system's monospace font (Consolas, before Vista Courier New) at the UI font's size }
+procedure UIAssignFixedFont(F: TFont);
+const
+  UIFixedFontNameKey = 'DebugFontName';    // [UI]: the fixed-size font's name, '' its default
+  UIFixedFontSizeKey = 'DebugFontSize';    // [UI]: its size, 0 its default
 { A form from the form designer (.dfm) is laid out for the font it was designed with: Segoe
   UI 9, the UI font. UIPrepareForm gives a dialog the UI font and - when that has other metrics
   (a font the user chose, a system with another message font) - lays its controls out for it.
@@ -502,7 +509,7 @@ var
 implementation
 
 uses
-  MultiMon, ExtCtrls, CheckLst, ShellAPI, SdEncoding, SdResImage;
+  MultiMon, ExtCtrls, CheckLst, ShellAPI, SdEncoding, SdResImage, SdSettings;
 
 procedure InstallTestGuard; forward;
 
@@ -789,6 +796,21 @@ end;
 procedure UIApplyFont(AForm: TCustomForm);
 begin
   UIApplyFont(TForm(AForm).Font);
+end;
+
+procedure UIAssignFixedFont(F: TFont);
+var
+  Name: string;
+  Size: Integer;
+begin
+  if UIFont = nil then SetupFonts;
+  Name := Settings.ReadString('UI', UIFixedFontNameKey, '');
+  if Name = '' then
+    if Screen.Fonts.IndexOf('Consolas') >= 0 then Name := 'Consolas' else Name := 'Courier New';
+  Size := Settings.ReadInteger('UI', UIFixedFontSizeKey, 0);
+  if Size <= 0 then Size := UIFont.Size;
+  F.Name := Name;
+  F.Size := Size;
 end;
 
 function UITestMode: Boolean;
@@ -2068,7 +2090,7 @@ begin
       begin
         FOldProc(Message);
         Restart;
-        { a font chosen later (Debugger views font): the rows of an owner-drawn list follow it -
+        { a font chosen later (the fixed-size font): the rows of an owner-drawn list follow it -
           Windows measures them once, when the list is made (a plain list box re-measured them
           itself) }
         if (Message.Msg = WM_SETFONT) and not FNoPad and (TListBoxAccess(FList).Style = lbOwnerDrawFixed) then

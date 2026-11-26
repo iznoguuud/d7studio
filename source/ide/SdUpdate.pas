@@ -26,7 +26,7 @@ uses
 
 const
   UpdateRepository = 'iznoguuud/d7studio';
-  UpdateReleasesUrl = 'https://api.github.com/repos/' + UpdateRepository + '/releases/latest';
+  UpdateReleasesUrl = 'https://api.github.com/repos/' + UpdateRepository + '/releases?per_page=100';
   UpdateSection = 'Updates';          // D7Studio.ini: LastCheck (the option: [Environment] CheckForUpdates)
 
 type
@@ -81,6 +81,10 @@ function CompareVersions(const A, B: string): Integer;
 function IsNewerRelease(const Release: TSdRelease): Boolean;
 { the release in the JSON of GitHub's API; False when it is not one with a setup }
 function ParseRelease(const Json: string; out R: TSdRelease): Boolean;
+{ the releases in the JSON of GitHub's API (an array): Latest is the newest published one with a setup
+  (False: none), its Notes those of every published release newer than Since up to it, newest first,
+  each under its title and without what follows its rule ('---': the release's files) }
+function ParseReleases(const Json, Since: string; out Latest: TSdRelease): Boolean;
 { release notes in Markdown as plain text: the lines of a paragraph or a list item joined, headings
   and items without their marks, no emphasis or code marks, rules as blank lines }
 function MarkdownToText(const Notes: string): string;
@@ -364,9 +368,10 @@ begin
   Result := AdjustLineBreaks(WideToIde(UTF8Decode(S)));
 end;
 
-function ParseRelease(const Json: string; out R: TSdRelease): Boolean;
+{ the release object J stands at: True for a published one (no draft, no pre-release) with a tag; its
+  SetupName '' when it has no setup }
+function ReadRelease(J: TJsonReader; out R: TSdRelease): Boolean;
 var
-  J: TJsonReader;
   First, AFirst, EFirst: Boolean;
   Key, AKey, Tag, Name, Url, Draft, Pre: string;
   Size: Integer;
@@ -387,7 +392,6 @@ begin
   Pre := '';
   { the assets' names, each with its URL (Values) and its size (Objects) }
   Assets := TStringList.Create;
-  J := TJsonReader.Create(Json);
   try
     First := True;
     while J.NextMember(First, Key) do
@@ -425,10 +429,6 @@ begin
         end;
       end
       else J.SkipValue;
-  finally
-    J.Free;
-  end;
-  try
     if (Draft = 'true') or (Pre = 'true') or (Tag = '') then Exit;
     if Tag[1] in ['v', 'V'] then R.Version := Copy(Tag, 2, MaxInt) else R.Version := Tag;
     if R.Title = '' then R.Title := 'D7 Studio ' + R.Version;
@@ -441,13 +441,93 @@ begin
         R.SetupSize := Integer(Assets.Objects[I]);
         Break;
       end;
-    if R.SetupName = '' then Exit;
-    I := Assets.IndexOfName(R.SetupName + '.sha256');
-    if I >= 0 then R.HashUrl := Assets.Values[Assets.Names[I]];
+    if R.SetupName <> '' then
+    begin
+      I := Assets.IndexOfName(R.SetupName + '.sha256');
+      if I >= 0 then R.HashUrl := Assets.Values[Assets.Names[I]];
+    end;
     Result := True;
   finally
     Assets.Free;
   end;
+end;
+
+function ParseRelease(const Json: string; out R: TSdRelease): Boolean;
+var
+  J: TJsonReader;
+begin
+  J := TJsonReader.Create(Json);
+  try
+    Result := ReadRelease(J, R) and (R.SetupName <> '');
+  finally
+    J.Free;
+  end;
+end;
+
+{ a release's notes up to its rule: what follows describes the release's files }
+function NotesBeforeRule(const Notes: string): string;
+var
+  L: TStringList;
+  I: Integer;
+begin
+  L := TStringList.Create;
+  try
+    L.Text := Notes;
+    for I := 0 to L.Count - 1 do
+      if Trim(L[I]) = '---' then
+      begin
+        while L.Count > I do L.Delete(L.Count - 1);
+        Break;
+      end;
+    Result := TrimRight(L.Text);
+  finally
+    L.Free;
+  end;
+end;
+
+function ParseReleases(const Json, Since: string; out Latest: TSdRelease): Boolean;
+var
+  J: TJsonReader;
+  First: Boolean;
+  R: TSdRelease;
+  Newer: array of TSdRelease;     // the releases newer than Since, newest first
+  I, K: Integer;
+  Notes: string;
+begin
+  Result := False;
+  J := TJsonReader.Create(Json);
+  try
+    First := True;
+    while J.NextElement(First) do
+      if J.Peek <> '{' then J.SkipValue
+      else if ReadRelease(J, R) then
+      begin
+        if (R.SetupName <> '') and (not Result or (CompareVersions(R.Version, Latest.Version) > 0)) then
+        begin
+          Latest := R;
+          Result := True;
+        end;
+        if CompareVersions(R.Version, Since) > 0 then
+        begin
+          K := Length(Newer);
+          SetLength(Newer, K + 1);
+          while (K > 0) and (CompareVersions(Newer[K - 1].Version, R.Version) < 0) do
+          begin
+            Newer[K] := Newer[K - 1];
+            Dec(K);
+          end;
+          Newer[K] := R;
+        end;
+      end;
+  finally
+    J.Free;
+  end;
+  if not Result then Exit;
+  Notes := '';
+  for I := 0 to High(Newer) do
+    if CompareVersions(Newer[I].Version, Latest.Version) <= 0 then
+      Notes := Notes + '# ' + Newer[I].Title + #13#10#13#10 + NotesBeforeRule(Newer[I].Notes) + #13#10#13#10;
+  if Notes <> '' then Latest.Notes := Notes;
 end;
 
 { ---------------------------------------------------------------- notes }
@@ -628,10 +708,10 @@ begin
     Headers.Add('Accept: application/vnd.github+json');
     Headers.Add('X-GitHub-Api-Version: 2022-11-28');
     try
-      HasRelease := ParseRelease(Http.Get(UpdateReleasesUrl, Headers), Release);
+      HasRelease := ParseReleases(Http.Get(UpdateReleasesUrl, Headers), CurrentVersion, Release);
     except
       on E: ESdHttpError do
-        if E.Status = 404 then HasRelease := False     // no published release yet
+        if E.Status = 404 then HasRelease := False     // no such repository
         else if E.Status = 403 then
           Error := 'GitHub refused the request; its limit for requests without an account may have been ' +
             'reached. Try again later.'

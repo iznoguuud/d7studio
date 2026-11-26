@@ -194,21 +194,13 @@ object EnvOptionsFrame: TEnvOptionsFrame
           Caption = 'Fo&nt:'
           FocusControl = cbUIFont
         end
-        object lblUIFontSize: TLabel
+        object lblFixedFont: TLabel
           Left = 9
           Top = 54
-          Width = 24
+          Width = 75
           Height = 15
-          Caption = 'Si&ze:'
-          FocusControl = cbUIFontSize
-        end
-        object lblRestartNote: TLabel
-          Left = 159
-          Top = 54
-          Width = 135
-          Height = 15
-          AutoSize = False
-          Caption = '(at the next start)'
+          Caption = 'Fi&xed-size font:'
+          FocusControl = cbFixedFont
         end
         object lblZoomKey: TLabel
           Left = 9
@@ -227,42 +219,64 @@ object EnvOptionsFrame: TEnvOptionsFrame
           FocusControl = cbDialogBackground
         end
         object cbUIFont: TComboBox
-          Left = 72
+          Left = 92
           Top = 20
-          Width = 222
+          Width = 122
           Height = 23
+          Hint = 'The font of the user interface; it takes effect when D7 Studio starts again'
           Style = csDropDownList
           ItemHeight = 0
           TabOrder = 0
         end
         object cbUIFontSize: TComboBox
-          Left = 72
-          Top = 51
-          Width = 79
+          Left = 222
+          Top = 20
+          Width = 72
           Height = 23
+          Hint = 'The size of the user interface font; it takes effect when D7 Studio starts again'
           Style = csDropDownList
           ItemHeight = 0
           TabOrder = 1
         end
-        object cbZoomKey: TComboBox
-          Left = 72
-          Top = 82
-          Width = 222
+        object cbFixedFont: TComboBox
+          Left = 92
+          Top = 51
+          Width = 122
           Height = 23
-          Hint = 'The key held with the mouse wheel to zoom the editors, the designer, the diagram and the resources'
+          Hint = 'The fixed-size font of the debugger'#39's views (Watch List, Call Stack, Event Log, CPU ...) and of the update notes'
           Style = csDropDownList
           ItemHeight = 0
           TabOrder = 2
         end
+        object cbFixedFontSize: TComboBox
+          Left = 222
+          Top = 51
+          Width = 72
+          Height = 23
+          Hint = 'The size of the fixed-size font'
+          Style = csDropDownList
+          ItemHeight = 0
+          TabOrder = 3
+        end
+        object cbZoomKey: TComboBox
+          Left = 92
+          Top = 82
+          Width = 202
+          Height = 23
+          Hint = 'The key held with the mouse wheel to zoom the editors, the designer, the diagram and the resources'
+          Style = csDropDownList
+          ItemHeight = 0
+          TabOrder = 4
+        end
         object cbDialogBackground: TComboBox
-          Left = 72
+          Left = 92
           Top = 113
-          Width = 222
+          Width = 202
           Height = 23
           Hint = 'The background of the dialogs; the band of their buttons stays gray'
           Style = csDropDownList
           ItemHeight = 0
-          TabOrder = 3
+          TabOrder = 5
           Items.Strings = (
             'White (the system'#39's window color)'
             'Gray (the system'#39's button face)')
