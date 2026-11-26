@@ -28,7 +28,7 @@ object EnvOptionsFrame: TEnvOptionsFrame
       object AutoSave: TGroupBox
         Left = 9
         Top = 9
-        Width = 303
+        Width = 220
         Height = 70
         Caption = ' Autosave options '
         TabOrder = 0
@@ -102,14 +102,14 @@ object EnvOptionsFrame: TEnvOptionsFrame
       object DockingBox: TGroupBox
         Left = 9
         Top = 169
-        Width = 303
+        Width = 220
         Height = 81
         Caption = ' Docking '
         TabOrder = 2
         object DockHint: TLabel
           Left = 9
           Top = 40
-          Width = 283
+          Width = 202
           Height = 31
           AutoSize = False
           Transparent = True
@@ -118,7 +118,7 @@ object EnvOptionsFrame: TEnvOptionsFrame
         object cbAutoDragDocking: TCheckBox
           Left = 9
           Top = 18
-          Width = 272
+          Width = 202
           Height = 22
           Caption = 'A&uto drag docking'
           TabOrder = 0
@@ -127,7 +127,7 @@ object EnvOptionsFrame: TEnvOptionsFrame
       object DesktopContents: TRadioGroup
         Left = 9
         Top = 89
-        Width = 303
+        Width = 220
         Height = 72
         Caption = ' Desktop contents '
         Items.Strings = (
@@ -136,9 +136,9 @@ object EnvOptionsFrame: TEnvOptionsFrame
         TabOrder = 1
       end
       object CompilingRunning: TGroupBox
-        Left = 326
+        Left = 243
         Top = 9
-        Width = 303
+        Width = 386
         Height = 114
         Caption = ' Compiling and running '
         TabOrder = 3
@@ -180,9 +180,9 @@ object EnvOptionsFrame: TEnvOptionsFrame
         end
       end
       object gbUserInterface: TGroupBox
-        Left = 326
+        Left = 243
         Top = 133
-        Width = 303
+        Width = 386
         Height = 146
         Caption = ' User interface '
         TabOrder = 4
@@ -221,15 +221,16 @@ object EnvOptionsFrame: TEnvOptionsFrame
         object cbUIFont: TComboBox
           Left = 92
           Top = 20
-          Width = 122
+          Width = 205
           Height = 23
           Hint = 'The font of the user interface; it takes effect when D7 Studio starts again'
           Style = csDropDownList
           ItemHeight = 0
           TabOrder = 0
+          OnDropDown = WideListDropDown
         end
         object cbUIFontSize: TComboBox
-          Left = 222
+          Left = 305
           Top = 20
           Width = 72
           Height = 23
@@ -241,15 +242,16 @@ object EnvOptionsFrame: TEnvOptionsFrame
         object cbFixedFont: TComboBox
           Left = 92
           Top = 51
-          Width = 122
+          Width = 205
           Height = 23
           Hint = 'The fixed-size font of the debugger'#39's views (Watch List, Call Stack, Event Log, CPU ...) and of the update notes'
           Style = csDropDownList
           ItemHeight = 0
           TabOrder = 2
+          OnDropDown = WideListDropDown
         end
         object cbFixedFontSize: TComboBox
-          Left = 222
+          Left = 305
           Top = 51
           Width = 72
           Height = 23
@@ -261,7 +263,7 @@ object EnvOptionsFrame: TEnvOptionsFrame
         object cbZoomKey: TComboBox
           Left = 92
           Top = 82
-          Width = 202
+          Width = 285
           Height = 23
           Hint = 'The key held with the mouse wheel to zoom the editors, the designer, the diagram and the resources'
           Style = csDropDownList
@@ -271,12 +273,13 @@ object EnvOptionsFrame: TEnvOptionsFrame
         object cbDialogBackground: TComboBox
           Left = 92
           Top = 113
-          Width = 202
+          Width = 285
           Height = 23
           Hint = 'The background of the dialogs; the band of their buttons stays gray'
           Style = csDropDownList
           ItemHeight = 0
           TabOrder = 5
+          OnDropDown = WideListDropDown
           Items.Strings = (
             'White (the system'#39's window color)'
             'Gray (the system'#39's button face)')

@@ -208,6 +208,7 @@ type
     procedure SpeedSettingsChange(Sender: TObject);
     procedure OverrideClick(Sender: TObject);
     procedure ShowProgressClick(Sender: TObject);
+    procedure WideListDropDown(Sender: TObject);
     procedure PageListClick(Sender: TObject);
     procedure PaletteListEnter(Sender: TObject);
     procedure PageDragOver(Sender, Source: TObject; X, Y: Integer; State: TDragState; var Accept: Boolean);
@@ -626,6 +627,13 @@ end;
 procedure TEnvOptionsFrame.ShowProgressClick(Sender: TObject);
 begin
   cbAutoCloseProgress.Enabled := cbShowProgress.Checked;
+end;
+
+{ User interface: the boxes narrower than their entries (font names, the dialogs' background) open
+  a list that shows them whole }
+procedure TEnvOptionsFrame.WideListDropDown(Sender: TObject);
+begin
+  UIFitDropDown(Sender as TComboBox);
 end;
 
 { ---------------------------------------------------------------- Palette }

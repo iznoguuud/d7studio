@@ -170,6 +170,10 @@ procedure UITipOffLine(var R: TRect; const Line: TRect);
 function UIWorkArea(Wnd: HWND): TRect;
 { ... of the monitor that holds point P (the nearest one when P is on none) }
 function UIWorkAreaAt(const P: TPoint): TRect;
+{ the drop-down list of Box as wide as its widest item (text in the box's font, ItemExtra more for
+  what an owner-drawn row shows besides it, and the list's scroll bar), never narrower than the box
+  nor wider than its monitor's work area: from the box's OnDropDown, when its items are known }
+procedure UIFitDropDown(Box: TCustomComboBox; ItemExtra: Integer = 0);
 { some monitor's work area shows enough of the top Height pixels of a window at R - its caption -
   to take it with the mouse: 32 px of them, their whole height }
 function UICaptionOnScreen(const R: TRect; Height: Integer): Boolean;
@@ -2310,6 +2314,29 @@ function UIWorkAreaAt(const P: TPoint): TRect;
 begin
   if not MonitorWorkArea(MultiMon.MonitorFromPoint(P, MONITOR_DEFAULTTONEAREST), Result) then
     SystemParametersInfo(SPI_GETWORKAREA, 0, @Result, 0);
+end;
+
+type
+  TComboAccess = class(TCustomComboBox);
+
+procedure UIFitDropDown(Box: TCustomComboBox; ItemExtra: Integer);
+var
+  I, W, Item, Most: Integer;
+  Area: TRect;
+begin
+  W := Box.Width;
+  Box.Canvas.Font := TComboAccess(Box).Font;
+  { the row's text 2 px in, as the list draws it, and as much after it; the scroll bar }
+  ItemExtra := ItemExtra + 4 + GetSystemMetrics(SM_CXVSCROLL);
+  for I := 0 to Box.Items.Count - 1 do
+  begin
+    Item := Box.Canvas.TextWidth(Box.Items[I]) + ItemExtra;
+    if Item > W then W := Item;
+  end;
+  Area := UIWorkArea(Box.Handle);
+  Most := Area.Right - Area.Left;
+  if W > Most then W := Most;
+  Box.Perform(CB_SETDROPPEDWIDTH, W, 0);
 end;
 
 type

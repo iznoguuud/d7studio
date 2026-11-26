@@ -11,6 +11,14 @@ installing in [README.md](README.md).
 
 ## [Unreleased]
 
+## [1.0.3.1] - 2026-11-26
+
+### Changed
+
+- **IDE**: *Tools ▸ Environment Options ▸ Preferences ▸ User interface* is wider: its font boxes
+  show long font names whole, and *Dialogs* its whole entry. The font and *Dialogs* boxes open a
+  list as wide as their longest entry.
+
 ## [1.0.3.0] - 2026-11-26
 
 ### Added
@@ -151,7 +159,8 @@ The first release.
   its settings. It also installs Microsoft's WinHelp viewer, which shows Delphi 7's help on
   Windows 10 and 11.
 
-[Unreleased]: https://github.com/iznoguuud/d7studio/compare/v1.0.3.0...HEAD
+[Unreleased]: https://github.com/iznoguuud/d7studio/compare/v1.0.3.1...HEAD
+[1.0.3.1]: https://github.com/iznoguuud/d7studio/compare/v1.0.3.0...v1.0.3.1
 [1.0.3.0]: https://github.com/iznoguuud/d7studio/compare/v1.0.2.2...v1.0.3.0
 [1.0.2.2]: https://github.com/iznoguuud/d7studio/compare/v1.0.2.1...v1.0.2.2
 [1.0.2.1]: https://github.com/iznoguuud/d7studio/compare/v1.0.2.0...v1.0.2.1

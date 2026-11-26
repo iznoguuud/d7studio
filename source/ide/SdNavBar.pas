@@ -79,7 +79,7 @@ implementation
 {$R *.dfm}
 
 uses
-  MultiMon, SdUI, SdIcons, SdCodeExplorer;
+  SdUI, SdIcons, SdCodeExplorer;
 
 const
   GlobalItem = '(global)';        // the Class box's first item: the unit's plain routines
@@ -346,32 +346,15 @@ begin
   if FDropped = nil then PostDone(MethodBox, True);
 end;
 
-{ the list as wide as its widest item (at most the monitor's width) }
+{ the list as wide as its widest item: the icon and the pads around it and the text }
 procedure TNavigationBar.BoxDropDown(Sender: TObject);
 var
   Box: TComboBox;
-  I, W, MaxW: Integer;
-  Info: TMonitorInfo;
 begin
   Box := Sender as TComboBox;
   FDropped := Box;
   FChosen := False;
-  W := Box.Width;
-  Box.Canvas.Font := Box.Font;
-  for I := 0 to Box.Items.Count - 1 do
-  begin
-    MaxW := Box.Canvas.TextWidth(Box.Items[I]) + 16 + 4 * ItemPad + GetSystemMetrics(SM_CXVSCROLL);
-    if MaxW > W then W := MaxW;
-  end;
-  { the monitor's width from the API: Screen's list of monitors does not know one connected after
-    the start (Screen.MonitorFromWindow answers nil for it) }
-  Info.cbSize := SizeOf(Info);
-  if MultiMon.GetMonitorInfo(MultiMon.MonitorFromWindow(Box.Handle, MONITOR_DEFAULTTONEAREST), @Info) then
-    MaxW := Info.rcMonitor.Right - Info.rcMonitor.Left
-  else
-    MaxW := GetSystemMetrics(SM_CXSCREEN);
-  if W > MaxW then W := MaxW;
-  Box.Perform(CB_SETDROPPEDWIDTH, W, 0);
+  UIFitDropDown(Box, 16 + 4 * ItemPad - 4);
 end;
 
 { closed on an item: there; cancelled: the boxes show the caret's place again. The keyboard goes
