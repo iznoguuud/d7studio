@@ -154,13 +154,6 @@ Report
 - Ask about anything it reports: "show me that routine and explain it line by line".
 - When the conversation grows long, Claude Code summarizes the older part and the work goes on.
 
-## Comparing the sources as well
-
-The patch also installs the modernized sources into `<Delphi 7>\Source` and keeps Borland's in
-`<Delphi 7>\D7Studio\Backup\Source`; the sources of the new units come whole in the patch's
-`New\Source`. These are your own files, so you can diff them. What runs, though, are the compiled
-files, and the audit above checks those directly.
-
 ---
 
 # Report
