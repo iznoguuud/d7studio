@@ -249,6 +249,12 @@ modernized RTL/VCL in full is in [MODERNIZATION.md](MODERNIZATION.md).
 - **A modern icon for new programs.** A new project gets an application window in the style of
   Windows 11 as its icon, in full colour and sharp from 16 to 64 pixels, so at every display scaling
   up to 250 %.
+- **Sharp programs on every display scale.** The programs D7 Studio builds are per-monitor DPI
+  aware by default (*Project ▸ Options ▸ Application ▸ DPI awareness*): their forms scale to the
+  monitor they are on, where Windows would stretch a Delphi 7 program and blur its text.
+- **A current manifest for every program.** Besides the visual styles, D7 Studio's manifest
+  declares Windows Vista to 11, long paths and the rights the program asks for (*Project ▸ Options ▸
+  Application ▸ Execution level*: as invoker, highest available, or require administrator).
 - **Win64.** *Project ▸ Options ▸ Application ▸ Target platform* Win64 builds the project with the
   dcc64 of the newest RAD Studio installed (XE2 or later), into folders named `Win64`; Run starts
   it, without the debugger.

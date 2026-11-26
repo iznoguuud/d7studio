@@ -145,7 +145,17 @@ file, describes them in full: every feature, its switches and what to know. In s
   `PerMonitorDpiScaling`, `DoubleBufferedViews`, `MainFormOnTaskbar` ...).
 - **`ModernMan` / `ModernManUtf8`.** Add one of them to the `.dpr`'s uses clause instead of
   `XPMan`. They give the program a current manifest: Common Controls 6, Windows Vista to 11,
-  per-monitor V2 DPI awareness, long paths. `ModernManUtf8` adds the UTF-8 code page.
+  per-monitor V2 DPI awareness, long paths, `asInvoker`. `ModernManUtf8` adds the UTF-8 code page.
+  D7 Studio gives a program this manifest itself (the project options below), so there they are
+  needed only by a program built elsewhere too.
+- **In Delphi 7's IDE**, which writes no manifest, a program gets the current one only from
+  `ModernMan` or `ModernManUtf8`; without one it has the classic look, is stretched by Windows on a
+  monitor above 100 %, and runs in the system code page. Delphi 7's IDE keeps sources in the system
+  code page, so in a `ModernManUtf8` program a string literal with characters beyond ASCII comes out
+  wrong - forms and text read at run time are fine. A project built in both IDEs: compile it once in
+  D7 Studio after adding a manifest unit, or the compiler reports a duplicate manifest ("Duplicate
+  resource(s): Type 24") - D7 Studio's in the project's `.res` - and keeps one. Details:
+  [MODERNIZATION.md](MODERNIZATION.md), "Building in Delphi 7's IDE".
 - **Unicode through UTF-8.** In UTF-8 mode `string` holds UTF-8, so any character works in the
   VCL, file names, the clipboard, sorting and formatting.
 - **Per-monitor DPI.** Forms, fonts, controls, image lists, glyphs and theme parts scale to the
@@ -162,7 +172,10 @@ file, describes them in full: every feature, its switches and what to know. In s
 
 Project options that D7 Studio applies when it builds a program (each per project):
 - **Enable runtime themes** (on by default): a Common Controls 6 manifest when the program brings
-  none.
+  none. D7 Studio's manifest also declares what `ModernMan`'s does: Windows Vista to 11
+  compatibility (so Windows does not answer the program as Windows 8), `asInvoker` (no
+  VirtualStore redirection of writes into Program Files and HKLM, and no elevation prompt for a
+  program named like `setup` or `update`) and long paths.
 - **Target Windows** (*Application*, *Output settings*): the Windows the program is for.
   - *Windows 10 1903 or later (UTF-8 code page)*, the default: the program's manifest asks for
     UTF-8, and the sources go to the compiler in UTF-8. On older Windows, which ignore that code
@@ -181,6 +194,25 @@ Project options that D7 Studio applies when it builds a program (each per projec
     header (below) gets version 5.1, which Windows XP loads - it refuses 6.0 as "not a valid Win32
     application". What the modernized RTL/VCL imports exists on Windows XP, the modernized runtime
     packages included; what is newer it binds at run time, with Delphi 7's behaviour as the fallback.
+- **DPI awareness** (*Application*, *Output settings*, under Target Windows): what the program's
+  manifest says about the DPI. *Per monitor V2*, the default, makes the modernized VCL scale its
+  forms to the monitor they are on, and again when they move to a monitor of another scale.
+  *Unaware* is Delphi 7's: Windows stretches the program's windows on a monitor above 100 %, and
+  their text is blurred - the choice for a program whose own drawing does not follow the display
+  scale. *System aware* and *Per monitor* are the older modes.
+- **Execution level** (*Application*, *Output settings*, under DPI awareness): the rights the program
+  asks for when it starts. *As invoker*, the default, runs it with the rights of the user who starts
+  it; *Highest available* with an administrator's when that user is one; *Require administrator*
+  asks for elevation every time, for an installer or an updater.
+- A program that uses `ModernMan`, `ModernManUtf8` or `XPMan` gets that unit's manifest instead of
+  D7 Studio's (a program has one manifest), and so does a project whose `.res` holds a manifest of
+  its own. `ModernMan` and `ModernManUtf8` declare per monitor V2 and as invoker, `ModernManUtf8`
+  also the UTF-8 code page, `XPMan` no DPI awareness. *Messages* warns at every build about an
+  option that manifest does not give - the UTF-8 code page with `ModernMan`, for example.
+- D7 Studio puts its manifest into the resource file that `{$R *.res}` links. A project source
+  without that line - Delphi 7's console applications have none - gets no manifest, and *Messages*
+  warns at every build; add the line, or `ModernManUtf8` to the uses clause. *File ▸ New ▸ Console
+  Application* writes it.
 - **Modern program header (DEP, ASLR)** (on by default): after linking, the program is marked as a
   Windows 6.0 program (Delphi 7's linker writes 4.0; 5.1 for Windows XP), DEP compatible,
   terminal-server aware, and ASLR when it has relocations. With DEP, code that runs from data memory

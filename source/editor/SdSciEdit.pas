@@ -300,10 +300,14 @@ type
     { the names by kind's styles. RestyleNames: the text of FromPos .. ToPos a kind's indicator
       covers gets the kind's style where it has an identifier's (Revert: an identifier's again
       where it has the kind's); RestyleRun: NewStyle for OldStyle in a range; NamesLexed: after
-      the lexer styled a range }
+      the lexer styled a range; ClearNameIndicators: the kinds' indicators off a range;
+      NextStyleRun: the next run of a style (Names: a name's style counts as an identifier's);
+      SetStyling: a style set by hand, the lexer going on from where it had styled to }
     procedure RestyleNames(FromPos, ToPos: Integer; Revert: Boolean);
     procedure RestyleRun(FromPos, ToPos, OldStyle, NewStyle: Integer);
     procedure NamesLexed(FromPos, ToPos: Integer);
+    procedure ClearNameIndicators(FromPos, ToPos: Integer);
+    function NextStyleRun(var P: Integer; ToPos, Style: Integer; Names: Boolean; out S: Integer): Boolean;
     procedure SetStyling(Pos, Len, Style: Integer);
     function Bars: TSciScrollBars;
     function SciStr(Msg: Cardinal; W: Cardinal): string;
@@ -436,6 +440,9 @@ type
     function GetRange(StartPos, EndPos: Integer): string;
     function CharAt(Pos: Integer): Char;
     function StyleAt(Pos: Integer): Integer;
+    { the lexer's styles up to ToPos (-1: the end of the text), as Scintilla styles: from the start
+      of the line where they end. Every lexing of the editor's own goes through it }
+    procedure StyleTo(ToPos: Integer);
     function CaretPos: Integer;
     function CaretLine: Integer;
     function CaretCol: Integer;
@@ -577,8 +584,9 @@ type
     function Blocks: TPasBlocks;
     { the ranges of an indicator, 'start-end start-end ...' (tests) }
     function IndicatorRanges(Ind: Integer): string;
-    { an indicator (IND_...) on a range of the text, and off the whole text }
+    { an indicator (IND_...) on a range of the text, off a range, and off the whole text }
     procedure FillIndicator(Ind, Pos, Len: Integer);
+    procedure ClearIndicatorRange(Ind, Pos, Len: Integer);
     procedure ClearIndicator(Ind: Integer);
     { Error Insight: the errors' places under the wavy line (IND_ERROR) and in the scroll bar's
       markers - error K's range carries the value K + 1, so that it is found under the pointer
@@ -1540,8 +1548,7 @@ begin
   if Length(FView.Folds) > 0 then
   begin
     Last := FView.Folds[High(FView.Folds)] + 1;
-    if Last < LineCount then Sci(SCI_COLOURISE, Sci(SCI_GETENDSTYLED), PosFromLine(Last + 1))
-    else Sci(SCI_COLOURISE, Sci(SCI_GETENDSTYLED), -1);
+    if Last < LineCount then StyleTo(PosFromLine(Last + 1)) else StyleTo(-1);
     for I := 0 to High(FView.Folds) do
       if Sci(SCI_GETFOLDLEVEL, FView.Folds[I]) and SC_FOLDLEVELHEADERFLAG <> 0 then
         Sci(SCI_FOLDLINE, FView.Folds[I], SC_FOLDACTION_CONTRACT);
@@ -2904,11 +2911,11 @@ begin
   if not FBlockShown or not BlockValid then Exit;
   case FBlockMode of
     sbInclusive, sbLine:
-      if BlockSpan(S, E) and (E > S) then Sci(SCI_INDICATORFILLRANGE, S, E - S);
+      if BlockSpan(S, E) and (E > S) then FillIndicator(IND_BLOCK, S, E - S);
     sbColumn:
       if BlockRowRange(First, Last) then
         for L := First to Last do
-          if BlockRow(L, S, E) then Sci(SCI_INDICATORFILLRANGE, S, E - S);
+          if BlockRow(L, S, E) then FillIndicator(IND_BLOCK, S, E - S);
   end;
 end;
 
@@ -3635,10 +3642,15 @@ begin
   Sci(SCI_INDICATORFILLRANGE, Pos, Len);
 end;
 
-procedure TSciEdit.ClearIndicator(Ind: Integer);
+procedure TSciEdit.ClearIndicatorRange(Ind, Pos, Len: Integer);
 begin
   Sci(SCI_SETINDICATORCURRENT, Ind);
-  Sci(SCI_INDICATORCLEARRANGE, 0, TextLength);
+  Sci(SCI_INDICATORCLEARRANGE, Pos, Len);
+end;
+
+procedure TSciEdit.ClearIndicator(Ind: Integer);
+begin
+  ClearIndicatorRange(Ind, 0, TextLength);
 end;
 
 procedure TSciEdit.ShowErrors(const Starts, Lens: array of Integer; Count: Integer);
@@ -3656,7 +3668,7 @@ begin
     if P + L > N then L := N - P;
     if (P < 0) or (L <= 0) then Continue;
     Sci(SCI_SETINDICATORVALUE, K + 1);
-    Sci(SCI_INDICATORFILLRANGE, P, L);
+    FillIndicator(IND_ERROR, P, L);
   end;
   Sci(SCI_SETINDICATORVALUE, 1);      // the value every other fill takes
   FMarksDirty := True;
@@ -3754,13 +3766,9 @@ var
 begin
   for I := 0 to RainbowColours - 1 do ClearIndicator(IND_RAINBOW + I);
   if not EditorOptions.RainbowBrackets or (FBlocks = nil) then Exit;
-  for I := 0 to RainbowColours - 1 do
-  begin
-    Sci(SCI_SETINDICATORCURRENT, IND_RAINBOW + I);
-    for K := 0 to FBlocks.BracketCount - 1 do
-      with FBlocks.Brackets[K] do
-        if (Partner >= 0) and (Depth mod RainbowColours = I) then Sci(SCI_INDICATORFILLRANGE, Start, 1);
-  end;
+  for K := 0 to FBlocks.BracketCount - 1 do
+    with FBlocks.Brackets[K] do
+      if Partner >= 0 then FillIndicator(IND_RAINBOW + Depth mod RainbowColours, Start, 1);
 end;
 
 { the bracket at the caret and its partner (a box; red without partner), the words of the block
@@ -3885,41 +3893,28 @@ begin
   if FromPos < 0 then FromPos := 0;
   if ToPos > TextLength then ToPos := TextLength;
   { the lexer styles lazily: up to ToPos now }
-  if Sci(SCI_GETENDSTYLED) < ToPos then Sci(SCI_COLOURISE, Sci(SCI_GETENDSTYLED), ToPos);
+  StyleTo(ToPos);
   P := FromPos;
   { a name the range begins inside is not one of its names }
   if P > 0 then
     while (P < ToPos) and (StyleAt(P - 1) = SCE_PAS_IDENTIFIER) and (StyleAt(P) = SCE_PAS_IDENTIFIER) do Inc(P);
-  while P < ToPos do
-    if StyleAt(P) <> SCE_PAS_IDENTIFIER then Inc(P)
-    else
-    begin
-      S := P;
-      repeat
-        Inc(P);
-      until (P >= ToPos) or (StyleAt(P) <> SCE_PAS_IDENTIFIER);
-      if Result = Length(Names) then SetLength(Names, 2 * Result + 64);
-      Names[Result].Start := S;
-      Names[Result].Len := P - S;
-      Names[Result].Element := eeIdentifier;
-      Inc(Result);
-    end;
+  while NextStyleRun(P, ToPos, SCE_PAS_IDENTIFIER, True, S) do
+  begin
+    if Result = Length(Names) then SetLength(Names, 2 * Result + 64);
+    Names[Result].Start := S;
+    Names[Result].Len := P - S;
+    Names[Result].Element := eeIdentifier;
+    Inc(Result);
+  end;
 end;
 
 procedure TSciEdit.ShowNameKinds(FromPos, ToPos: Integer; const Names: TSciNames; Count: Integer);
 var
-  E: TEditorElement;
-  K, Style, EndStyled: Integer;
+  K, Style: Integer;
 begin
   if not Ready or (ToPos <= FromPos) then Exit;
-  for E := eeType to eeUnitName do
-  begin
-    Sci(SCI_SETINDICATORCURRENT, IND_NAMES + NameKind(E));
-    Sci(SCI_INDICATORCLEARRANGE, FromPos, ToPos - FromPos);
-  end;
-  { every name of the range in its kind's style, the others in an identifier's; the lexer goes on
-    from where it had styled to }
-  EndStyled := Sci(SCI_GETENDSTYLED);
+  ClearNameIndicators(FromPos, ToPos);
+  { every name of the range in its kind's style, the others in an identifier's }
   for K := 0 to Count - 1 do
   begin
     if Names[K].Element in [eeType..eeUnitName] then
@@ -3931,47 +3926,61 @@ begin
       Style := SCE_PAS_IDENTIFIER;
     if Sci(SCI_GETSTYLEINDEXAT, Names[K].Start) <> Style then SetStyling(Names[K].Start, Names[K].Len, Style);
   end;
-  Sci(SCI_STARTSTYLING, EndStyled);
 end;
 
 procedure TSciEdit.ClearNameKinds;
-var
-  E: TEditorElement;
 begin
   if not Ready then Exit;
   RestyleNames(0, TextLength, True);
-  for E := eeType to eeUnitName do ClearIndicator(IND_NAMES + NameKind(E));
+  ClearNameIndicators(0, TextLength);
+end;
+
+procedure TSciEdit.ClearNameIndicators(FromPos, ToPos: Integer);
+var
+  K: Integer;
+begin
+  for K := 0 to NameKindCount - 1 do ClearIndicatorRange(IND_NAMES + K, FromPos, ToPos - FromPos);
 end;
 
 procedure TSciEdit.SetStyling(Pos, Len, Style: Integer);
+var
+  EndStyled: Integer;
 begin
+  EndStyled := Sci(SCI_GETENDSTYLED);
   Sci(SCI_STARTSTYLING, Pos);
   Sci(SCI_SETSTYLING, Len, Style);
+  Sci(SCI_STARTSTYLING, EndStyled);
+end;
+
+function TSciEdit.NextStyleRun(var P: Integer; ToPos, Style: Integer; Names: Boolean; out S: Integer): Boolean;
+
+  function Has(Q: Integer): Boolean;
+  begin
+    if Names then Result := StyleAt(Q) = Style else Result := Sci(SCI_GETSTYLEINDEXAT, Q) = Style;
+  end;
+
+begin
+  while (P < ToPos) and not Has(P) do Inc(P);
+  S := P;
+  while (P < ToPos) and Has(P) do Inc(P);
+  Result := P > S;
 end;
 
 procedure TSciEdit.RestyleNames(FromPos, ToPos: Integer; Revert: Boolean);
 var
-  K, Ind, P, Q, EndStyled: Integer;
+  K, P, E: Integer;
 begin
-  EndStyled := Sci(SCI_GETENDSTYLED);
   for K := 0 to NameKindCount - 1 do
   begin
-    Ind := IND_NAMES + K;
     P := FromPos;
-    while P < ToPos do
+    while (P < ToPos) and NextIndicatorRun(IND_NAMES + K, P, E) and (P < ToPos) do
     begin
-      { the end of the run P is in, of the indicator or of the text without it (0: no such
-        indicator at all) }
-      Q := Sci(SCI_INDICATOREND, Ind, P);
-      if Q <= P then Break;
-      if Q > ToPos then Q := ToPos;
-      if Sci(SCI_INDICATORVALUEAT, Ind, P) <> 0 then
-        if Revert then RestyleRun(P, Q, STYLE_NAMES + K, SCE_PAS_IDENTIFIER)
-        else RestyleRun(P, Q, SCE_PAS_IDENTIFIER, STYLE_NAMES + K);
-      P := Q;
+      if E > ToPos then E := ToPos;
+      if Revert then RestyleRun(P, E, STYLE_NAMES + K, SCE_PAS_IDENTIFIER)
+      else RestyleRun(P, E, SCE_PAS_IDENTIFIER, STYLE_NAMES + K);
+      P := E;
     end;
   end;
-  Sci(SCI_STARTSTYLING, EndStyled);
 end;
 
 procedure TSciEdit.RestyleRun(FromPos, ToPos, OldStyle, NewStyle: Integer);
@@ -3979,16 +3988,7 @@ var
   P, S: Integer;
 begin
   P := FromPos;
-  while P < ToPos do
-    if Sci(SCI_GETSTYLEINDEXAT, P) <> OldStyle then Inc(P)
-    else
-    begin
-      S := P;
-      repeat
-        Inc(P);
-      until (P >= ToPos) or (Sci(SCI_GETSTYLEINDEXAT, P) <> OldStyle);
-      SetStyling(S, P - S, NewStyle);
-    end;
+  while NextStyleRun(P, ToPos, OldStyle, False, S) do SetStyling(S, P - S, NewStyle);
 end;
 
 { the lexer styled FromPos .. ToPos (TNameLexer): its names in their kinds' styles again - only
@@ -4243,7 +4243,7 @@ var
   Line: Integer;
 begin
   Line := LineFromPos(Pos);
-  Sci(SCI_COLOURISE, PosFromLine(Line), LineEndPos(Line));
+  StyleTo(LineEndPos(Line));
   Result := (Pos > PosFromLine(Line)) and IsCommentOrString(Pos - 1) and
     ((Pos >= LineEndPos(Line)) or IsCommentOrString(Pos));
 end;
@@ -4265,8 +4265,7 @@ begin
   if (Sci(SCI_GETSELECTIONEMPTY) <> 0) and (CharAt(P) = Ch) and (Ch in [')', ']', '}', '''', '"']) and
     (Sci(SCI_INDICATORVALUEAT, IND_AUTOCLOSE, P) <> 0) then
   begin
-    Sci(SCI_SETINDICATORCURRENT, IND_AUTOCLOSE);
-    Sci(SCI_INDICATORCLEARRANGE, P, 1);
+    ClearIndicatorRange(IND_AUTOCLOSE, P, 1);
     GotoPos(P + 1);
     if Assigned(FOnCharAdded) then FOnCharAdded(Self, Ord(Ch));
     Ch := #0;
@@ -4343,7 +4342,7 @@ begin
   S := PosFromLine(Line);
   P := LineEndPos(Line);
   WordStart := P;
-  Sci(SCI_COLOURISE, S, P);
+  StyleTo(P);
   while (P > S) and ((CharAt(P - 1) in [' ', #9]) or (StyleAt(P - 1) in PasCommentStyles)) do Dec(P);
   if P <= S then Exit;
   WordStart := P - 1;
@@ -4364,7 +4363,7 @@ var
 begin
   Result := '';
   Len := TextLength;
-  Sci(SCI_COLOURISE, Pos, Min(Len, Pos + 4096));
+  StyleTo(Min(Len, Pos + 4096));
   while (Pos < Len) and ((CharAt(Pos) in [' ', #9, #13, #10]) or (StyleAt(Pos) in PasCommentStyles)) do Inc(Pos);
   E := Pos;
   while (E < Len) and IdentTab[CharAt(E)] do Inc(E);
@@ -4389,7 +4388,7 @@ begin
   if (Wd <> 'end') and (Wd <> 'until') and (Wd <> 'except') and (Wd <> 'finally') and (Wd <> 'begin') then Exit;
   Line := LineFromPos(S);
   if S <> Sci(SCI_GETLINEINDENTPOSITION, Line) then Exit;      // not the line's first word
-  Sci(SCI_COLOURISE, PosFromLine(Line), EndPos + 1);
+  StyleTo(EndPos + 1);
   if StyleAt(S) <> SCE_PAS_WORD then Exit;
   Target := -1;
   if Wd = 'begin' then
@@ -4794,9 +4793,8 @@ begin
   Places := TList.Create;
   try
     WordPlaces(W, Places, False);
-    Sci(SCI_SETINDICATORCURRENT, IND_OCCURRENCE);
     for K := 0 to Places.Count - 1 do
-      if Integer(Places[K]) <> S then Sci(SCI_INDICATORFILLRANGE, Integer(Places[K]), Length(W));
+      if Integer(Places[K]) <> S then FillIndicator(IND_OCCURRENCE, Integer(Places[K]), Length(W));
   finally
     Places.Free;
   end;
@@ -4815,9 +4813,9 @@ begin
   Flags := SCFIND_WHOLEWORD;
   if not SciLanguages[FLanguage].NoCase then Flags := Flags or SCFIND_MATCHCASE;
   Sci(SCI_SETSEARCHFLAGS, Flags);
-  { styled to the end, from the line where the styles end (where Scintilla itself would go on):
-    the lines before keep theirs, so the whole text is not lexed again for each search }
-  if Code then Sci(SCI_COLOURISE, PosFromLine(LineFromPos(Sci(SCI_GETENDSTYLED))), -1);
+  { styled to the end; the lines before keep theirs, so the whole text is not lexed again for each
+    search }
+  if Code then StyleTo(-1);
   P := 0;
   while (P < DocLen) and (Places.Count < 5000) do
   begin
@@ -4904,6 +4902,20 @@ begin
   Result := Sci(SCI_GETSTYLEINDEXAT, Pos);
   { a name by kind is the lexer's identifier }
   if IsNameStyle(Result) then Result := SCE_PAS_IDENTIFIER;
+end;
+
+{ A lexer begins in the state of the style before its first character. Begun inside a line, it
+  takes the style of the word there for a state: Lexilla's Pascal lexer, begun right after a
+  reserved word, stays in the reserved word's style to the end of its run - and the text after it
+  counts as styled. Begun on a line after the styled ones, it would leave the lines between
+  unstyled. So it begins where Scintilla begins: at the start of the line the styles end in }
+procedure TSciEdit.StyleTo(ToPos: Integer);
+var
+  E: Integer;
+begin
+  E := Sci(SCI_GETENDSTYLED);
+  if (ToPos >= 0) and (ToPos <= E) then Exit;
+  Sci(SCI_COLOURISE, PosFromLine(LineFromPos(E)), ToPos);
 end;
 
 function TSciEdit.CaretPos: Integer;

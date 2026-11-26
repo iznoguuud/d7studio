@@ -2626,7 +2626,7 @@ begin
     lines are styled as they are shown) }
   if Ed.Language = slExpert then
   begin
-    if P >= Ed.Sci(SCI_GETENDSTYLED) then Ed.Sci(SCI_COLOURISE, Ed.Sci(SCI_GETENDSTYLED), P + 1);
+    Ed.StyleTo(P + 1);
     Result := Ed.StyleAt(P);
     Exit;
   end;

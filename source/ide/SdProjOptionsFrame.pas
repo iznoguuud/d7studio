@@ -59,6 +59,10 @@ type
     cbPlatform: TComboBox;
     lblTargetWindows: TLabel;
     cbTargetWindows: TComboBox;
+    lblDpiAwareness: TLabel;
+    cbDpiAwareness: TComboBox;
+    lblExecLevel: TLabel;
+    cbExecLevel: TComboBox;
     tsCompiler: TTabSheet;
     cpGroupBox4: TGroupBox;
     cbDebugInfo: TCheckBox;
@@ -934,6 +938,14 @@ begin
     cbPlatform.ItemIndex := Ord(P.Platform);
     chkThemes.Checked := P.OptInt(ThemeSection, ThemeKey, 1) <> 0;
     cbTargetWindows.ItemIndex := Ord(P.TargetWindows);
+    { a library or a package runs in its host's process, whose manifest decides the DPI awareness
+      and the execution level }
+    cbDpiAwareness.ItemIndex := Ord(P.DpiAwareness);
+    cbDpiAwareness.Enabled := not P.IsLibrary and not P.IsPackage;
+    lblDpiAwareness.Enabled := cbDpiAwareness.Enabled;
+    cbExecLevel.ItemIndex := Ord(P.ExecutionLevel);
+    cbExecLevel.Enabled := cbDpiAwareness.Enabled;
+    lblExecLevel.Enabled := cbDpiAwareness.Enabled;
     cbPlatformChange(nil);
     chkModernHeader.Checked := P.OptInt(ThemeSection, ModernHeaderKey, 1) <> 0;
     { Compiler }
@@ -1056,6 +1068,11 @@ begin
   P.SetPlatform(TSdPlatform(cbPlatform.ItemIndex));
   P.SetOptInt(ThemeSection, ThemeKey, Ord(chkThemes.Checked));
   P.SetTargetWindows(TSdTargetWindows(cbTargetWindows.ItemIndex));
+  if cbDpiAwareness.Enabled then
+  begin
+    P.SetDpiAwareness(TSdDpiAwareness(cbDpiAwareness.ItemIndex));
+    P.SetExecutionLevel(TSdExecutionLevel(cbExecLevel.ItemIndex));
+  end;
   P.SetOptInt(ThemeSection, ModernHeaderKey, Ord(chkModernHeader.Checked));
   { Directories/Conditionals }
   SaveComboTable(Self, P, DirCombos);

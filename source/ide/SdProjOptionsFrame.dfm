@@ -213,7 +213,7 @@ object ProjOptionsFrame: TProjOptionsFrame
         Left = 9
         Top = 186
         Width = 620
-        Height = 111
+        Height = 169
         Caption = ' Output settings '
         TabOrder = 1
         object apLabel19: TLabel
@@ -239,6 +239,22 @@ object ProjOptionsFrame: TProjOptionsFrame
           Height = 15
           Caption = 'Target &Windows:'
           FocusControl = cbTargetWindows
+        end
+        object lblDpiAwareness: TLabel
+          Left = 9
+          Top = 110
+          Width = 81
+          Height = 15
+          Caption = 'DPI &awareness:'
+          FocusControl = cbDpiAwareness
+        end
+        object lblExecLevel: TLabel
+          Left = 9
+          Top = 139
+          Width = 88
+          Height = 15
+          Caption = 'E&xecution level:'
+          FocusControl = cbExecLevel
         end
         object AppFileExt: TEdit
           Left = 138
@@ -272,6 +288,33 @@ object ProjOptionsFrame: TProjOptionsFrame
             'Windows 10 1903 or later (UTF-8 code page)'
             'Windows Vista or later (system code page)'
             'Windows XP or later (system code page, program header 5.1)')
+        end
+        object cbDpiAwareness: TComboBox
+          Left = 138
+          Top = 107
+          Width = 473
+          Height = 23
+          Style = csDropDownList
+          ItemHeight = 15
+          TabOrder = 3
+          Items.Strings = (
+            'Unaware (Windows stretches the windows at other scales)'
+            'System aware (the scale of the main monitor at start)'
+            'Per monitor (Windows 8.1 or later)'
+            'Per monitor V2 (Windows 10 1703 or later)')
+        end
+        object cbExecLevel: TComboBox
+          Left = 138
+          Top = 136
+          Width = 473
+          Height = 23
+          Style = csDropDownList
+          ItemHeight = 15
+          TabOrder = 4
+          Items.Strings = (
+            'As invoker (the rights of the user who starts it)'
+            'Highest available (an administrator''s when the user is one)'
+            'Require administrator (asks for elevation at start)')
         end
       end
     end

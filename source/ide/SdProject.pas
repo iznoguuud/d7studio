@@ -25,6 +25,10 @@ type
     Application | DPI awareness); unaware
     declares nothing - Windows scales the program, as without the option }
   TSdDpiAwareness = (daUnaware, daSystemAware, daPerMonitor, daPerMonitorV2);
+  { the rights a program asks Windows for when it starts (Project | Options | Application |
+    Execution level): the rights of the user who starts it, the highest that user can have, an
+    administrator's - the manifest's requestedExecutionLevel }
+  TSdExecutionLevel = (elAsInvoker, elHighestAvailable, elRequireAdministrator);
   { the Windows a Win32 program is built for (Project | Options | Application | Target Windows):
     Windows 10 1903 or later with UTF-8 as its code page, Windows Vista or later in the system
     code page, Windows XP or later in the system code page with a program header of version 5.1 }
@@ -132,6 +136,22 @@ type
       it set but gets no manifest) }
     function DpiAwareness: TSdDpiAwareness;
     procedure SetDpiAwareness(Value: TSdDpiAwareness);
+    { Project | Options | Application: Execution level, as it is set (a library or a package has it
+      set but gets none); as invoker by default }
+    function ExecutionLevel: TSdExecutionLevel;
+    procedure SetExecutionLevel(Value: TSdExecutionLevel);
+    { what D7 Studio's manifest for the project asks for (Project | Options | Application): the
+      visual styles, the DPI awareness, UTF-8 as the code page, the execution level - a library or
+      a package runs in its host's process: none of them }
+    procedure ManifestOptions(out Themes: Boolean; out Dpi: TSdDpiAwareness; out Utf8: Boolean;
+      out Level: TSdExecutionLevel);
+    { the file a $R of the project source names (Name: the editor's text, in E): * the project's
+      name, .res when it has no extension, from the project's folder }
+    function ResPath(const Name: string; const E: TSdEncoding): string;
+    { the program's own manifest: the first manifest D7 Studio did not write in a .res the project
+      source links (Source: the editor's text, in E) - its own .res ($R *.res), a resource
+      script's, a file of its own -; False when none of them holds one }
+    function LinkedManifest(const Source: string; const E: TSdEncoding; out Data: string): Boolean;
     { Project | Options | Application: Target Windows, as it is set (a Win64 program, a library or
       a package has it set, and it does nothing there); Windows 10 1903 or later by default. The
       .dof keeps it as two keys, Utf8CodePage and WindowsXP }
@@ -359,21 +379,40 @@ function NewDataModuleSource(const UnitName, ModuleName: string): string;
 function NewDataModuleDfm(const ModuleName: string): string;
 function NewFrameSource(const UnitName, FrameName: string): string;
 function NewFrameDfm(const FrameName: string): string;
-function NewConsoleSource(const ProjName: string): string;
+{ Delphi 7's console application; LinkRes: with $R *.res after the uses clause, as Delphi 7's
+  application has it - the .res that carries the program's icon and D7 Studio's manifest }
+function NewConsoleSource(const ProjName: string; LinkRes: Boolean = False): string;
 { Requires: the packages of the requires clause, separated by commas }
 function NewPackageSource(const PackageName: string; const Description: string = '';
   const Requires: string = 'rtl'): string;
 { Makes <project>.res ready for the compiler - when the project source links it ($R *.res):
   creates it with the default application icon when it does not exist, and sees that it
   carries the application manifest D7 Studio writes for the options - the visual styles of
-  Windows (Themes), the DPI awareness (Dpi), UTF-8 as the code page (Utf8) -, or none of D7
-  Studio's when none is asked for (a manifest of the project's own is never touched). Note says
-  what was done to the manifest. }
+  Windows (Themes), the DPI awareness (Dpi), UTF-8 as the code page (Utf8), the execution level
+  (Level) -, or none of D7 Studio's when none is asked for (a manifest of the project's own is
+  never touched). Note says what was done to the manifest. }
 function EnsureProjectRes(const ProjectFile, Source: string; Themes: Boolean; Dpi: TSdDpiAwareness;
-  Utf8: Boolean; var Note: string): Boolean;
+  Utf8: Boolean; Level: TSdExecutionLevel; var Note: string): Boolean;
+{ the .res of a new project that links it ($R *.res): the default application icon and the visual
+  styles' manifest, as for every new project - its first compile gives the manifest its options }
+procedure NewProjectRes(const ProjectFile: string);
+{ the options ask for a manifest: the visual styles, a DPI awareness other than unaware, UTF-8 or
+  an execution level other than as invoker }
+function ManifestAsked(Themes: Boolean; Dpi: TSdDpiAwareness; Utf8: Boolean; Level: TSdExecutionLevel): Boolean;
 { what a manifest of these options does, for Messages ("the visual styles of Windows, DPI awareness
-  per monitor, UTF-8 code page (Project | Options | Application)") }
-function ManifestSummary(Themes: Boolean; Dpi: TSdDpiAwareness; Utf8: Boolean): string;
+  per monitor, UTF-8 code page (Project | Options | Application)"): the DPI awareness unless
+  unaware, the execution level unless as invoker }
+function ManifestSummary(Themes: Boolean; Dpi: TSdDpiAwareness; Utf8: Boolean; Level: TSdExecutionLevel): string;
+{ what a manifest declares about the parts the options set, read from its text: the DPI awareness
+  (dpiAwareness's first value, else dpiAware's), UTF-8 as the code page, the execution level - an
+  element that is not there: unaware, the system code page, as invoker }
+procedure ManifestDeclares(const Text: string; out Dpi: TSdDpiAwareness; out Utf8: Boolean;
+  out Level: TSdExecutionLevel);
+{ what the options ask for - a DPI awareness other than unaware, UTF-8, an execution level other
+  than as invoker - that a manifest declaring HasDpi, HasUtf8 and HasLevel does not give, as
+  ManifestSummary says it; '' when it gives all of it }
+function ManifestMisses(Dpi: TSdDpiAwareness; Utf8: Boolean; Level: TSdExecutionLevel;
+  HasDpi: TSdDpiAwareness; HasUtf8: Boolean; HasLevel: TSdExecutionLevel): string;
 { Run's TD32 debug information is kept apart from the program: Delphi 7's debugger takes it from its
   compiler in memory, so its programs carry
   none, but D7 Studio's debugger reads what the linker writes. The linker puts it into the last
@@ -436,6 +475,9 @@ const
   { the DPI awareness as the .dof keeps it, and as Messages names it }
   DpiAwarenessKeys: array[TSdDpiAwareness] of string = ('Unaware', 'SystemAware', 'PerMonitor', 'PerMonitorV2');
   DpiAwarenessTexts: array[TSdDpiAwareness] of string = ('unaware', 'system aware', 'per monitor', 'per monitor v2');
+  { the execution level as the .dof and the manifest's requestedExecutionLevel keep it }
+  ExecutionLevelKey = 'ExecutionLevel';
+  ExecutionLevelKeys: array[TSdExecutionLevel] of string = ('asInvoker', 'highestAvailable', 'requireAdministrator');
   { Target Windows as Messages names it }
   TargetWindowsTexts: array[TSdTargetWindows] of string = ('Windows 10 1903 or later', 'Windows Vista or later',
     'Windows XP or later');
@@ -1140,45 +1182,50 @@ begin
     while Length(Result) mod 4 <> 0 do Result := Result + ' ';
 end;
 
-{ the manifest for the options, '' when they ask for none. DPI awareness in Microsoft's values:
-  dpiAware for Windows Vista to 8.1 (true: system aware, true/pm: per monitor), dpiAwareness from
-  Windows 10 1607 on, which takes precedence - per monitor v2 (Windows 10 1703) falls back to per
-  monitor there. UTF-8: activeCodePage (Windows 10 1903 on; older ones ignore it, and the mark
-  next to it makes the modernized RTL end the program there) }
-function ManifestText(const AppName: string; Themes: Boolean; Dpi: TSdDpiAwareness; Utf8: Boolean): string;
 const
-  DpiAware: array[TSdDpiAwareness] of string = ('', 'true', 'true/pm', 'true/pm');
+  { a DPI awareness in the manifest's values: dpiAware's (Windows Vista to 8.1; true/pm is per
+    monitor), dpiAwareness's first one (Windows 10 1607 on) }
+  DpiAwareValues: array[TSdDpiAwareness] of string = ('', 'true', 'true/pm', 'true/pm');
+  DpiAwarenessValues: array[TSdDpiAwareness] of string = ('unaware', 'system', 'permonitor', 'permonitorv2');
+
+{ the index of S among Values, in any case; Missing when it is none of them }
+function TextIndex(const S: string; const Values: array of string; Missing: Integer): Integer;
+begin
+  Result := AnsiIndexText(S, Values);
+  if Result < 0 then Result := Missing;
+end;
+
+function ManifestAsked(Themes: Boolean; Dpi: TSdDpiAwareness; Utf8: Boolean; Level: TSdExecutionLevel): Boolean;
+begin
+  Result := Themes or (Dpi <> daUnaware) or Utf8 or (Level <> elAsInvoker);
+end;
+
+{ the manifest for the options, '' when they ask for none. Every manifest also carries what a
+  current program declares whatever the options say:
+  - requestedExecutionLevel, as invoker unless Level says otherwise: without it Windows takes a
+    32-bit program for one of before Vista - its writes into Program Files and HKLM go to the
+    user's VirtualStore, and a name such as setup or update asks for elevation. In the asm.v2
+    namespace, which Vista and later read as asm.v3's: Windows XP before SP3 can fail on the
+    element in asm.v3's;
+  - supportedOS Vista to 11: without Windows 10's GUID Windows answers the program as Windows 8
+    (GetVersionEx 6.2) and keeps the compatibility behaviour of older versions for it;
+  - longPathAware: paths beyond MAX_PATH where Windows 10 1607 or later has long paths enabled.
+  DPI awareness in Microsoft's values: dpiAware for Windows Vista to 8.1 (true: system aware,
+  true/pm: per monitor), dpiAwareness from Windows 10 1607 on, which takes precedence - per monitor
+  v2 (Windows 10 1703) falls back to per monitor there. UTF-8: activeCodePage (Windows 10 1903 on;
+  older ones ignore it, and the mark next to it makes the modernized RTL end the program there). }
+function ManifestText(const AppName: string; Themes: Boolean; Dpi: TSdDpiAwareness; Utf8: Boolean;
+  Level: TSdExecutionLevel): string;
+const
+  Settings2016 = 'http://schemas.microsoft.com/SMI/2016/WindowsSettings';
 begin
   Result := '';
-  if not Themes and (Dpi = daUnaware) and not Utf8 then Exit;
+  if not ManifestAsked(Themes, Dpi, Utf8, Level) then Exit;
   Result :=
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' + CRLF +
     ManifestComment + CRLF +
     '<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">' + CRLF +
     '  <assemblyIdentity type="win32" name="' + AppName + '" version="1.0.0.0" processorArchitecture="*"/>' + CRLF;
-  if (Dpi <> daUnaware) or Utf8 then
-  begin
-    Result := Result +
-      '  <application xmlns="urn:schemas-microsoft-com:asm.v3">' + CRLF +
-      '    <windowsSettings>' + CRLF;
-    if Dpi <> daUnaware then
-      Result := Result +
-        '      <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">' + DpiAware[Dpi] +
-          '</dpiAware>' + CRLF;
-    if Dpi = daPerMonitorV2 then
-      Result := Result +
-        '      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2, ' +
-          'PerMonitor</dpiAwareness>' + CRLF;
-    { the comment makes the modernized RTL end the program where Windows ignores activeCodePage
-      (before Windows 10 1903): its text is compiled as UTF-8 }
-    if Utf8 then
-      Result := Result +
-        '      <!-- requires activeCodePage UTF-8: Windows 10 version 1903 or later -->' + CRLF +
-        '      <activeCodePage xmlns="http://schemas.microsoft.com/SMI/2019/WindowsSettings">UTF-8</activeCodePage>' + CRLF;
-    Result := Result +
-      '    </windowsSettings>' + CRLF +
-      '  </application>' + CRLF;
-  end;
   if Themes then
     Result := Result +
       '  <dependency>' + CRLF +
@@ -1187,7 +1234,49 @@ begin
         'processorArchitecture="*" publicKeyToken="6595b64144ccf1df" language="*"/>' + CRLF +
       '    </dependentAssembly>' + CRLF +
       '  </dependency>' + CRLF;
-  Result := PadManifest(Result + '</assembly>' + CRLF);
+  Result := Result +
+    '  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">' + CRLF +
+    '    <security>' + CRLF +
+    '      <requestedPrivileges>' + CRLF +
+    '        <requestedExecutionLevel level="' + ExecutionLevelKeys[Level] + '" uiAccess="false"/>' + CRLF +
+    '      </requestedPrivileges>' + CRLF +
+    '    </security>' + CRLF +
+    '  </trustInfo>' + CRLF +
+    '  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">' + CRLF +
+    '    <application>' + CRLF +
+    '      <!-- Windows Vista -->' + CRLF +
+    '      <supportedOS Id="{e2011457-1546-43c5-a5fe-008deee3d3f0}"/>' + CRLF +
+    '      <!-- Windows 7 -->' + CRLF +
+    '      <supportedOS Id="{35138b9a-5d96-4fbd-8e2d-a2440225f93a}"/>' + CRLF +
+    '      <!-- Windows 8 -->' + CRLF +
+    '      <supportedOS Id="{4a2f28e3-53b9-4441-ba9c-d69d4a4a6e38}"/>' + CRLF +
+    '      <!-- Windows 8.1 -->' + CRLF +
+    '      <supportedOS Id="{1f676c76-80e1-4239-95bb-83d0f6d0da78}"/>' + CRLF +
+    '      <!-- Windows 10 and Windows 11 -->' + CRLF +
+    '      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}"/>' + CRLF +
+    '    </application>' + CRLF +
+    '  </compatibility>' + CRLF +
+    '  <application xmlns="urn:schemas-microsoft-com:asm.v3">' + CRLF +
+    '    <windowsSettings>' + CRLF;
+  if Dpi <> daUnaware then
+    Result := Result +
+      '      <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">' + DpiAwareValues[Dpi] +
+        '</dpiAware>' + CRLF;
+  if Dpi = daPerMonitorV2 then
+    Result := Result +
+      '      <dpiAwareness xmlns="' + Settings2016 + '">PerMonitorV2, PerMonitor</dpiAwareness>' + CRLF;
+  Result := Result +
+    '      <longPathAware xmlns="' + Settings2016 + '">true</longPathAware>' + CRLF;
+  { the comment makes the modernized RTL end the program where Windows ignores activeCodePage
+    (before Windows 10 1903): its text is compiled as UTF-8 }
+  if Utf8 then
+    Result := Result +
+      '      <!-- requires activeCodePage UTF-8: Windows 10 version 1903 or later -->' + CRLF +
+      '      <activeCodePage xmlns="http://schemas.microsoft.com/SMI/2019/WindowsSettings">UTF-8</activeCodePage>' + CRLF;
+  Result := PadManifest(Result +
+    '    </windowsSettings>' + CRLF +
+    '  </application>' + CRLF +
+    '</assembly>' + CRLF);
 end;
 
 { a manifest without D7 Studio's comment line: two that differ only there are the same (it named
@@ -1206,21 +1295,92 @@ begin
 end;
 
 { what a manifest of the options does, for Messages }
-function ManifestSummary(Themes: Boolean; Dpi: TSdDpiAwareness; Utf8: Boolean): string;
+function ManifestSummary(Themes: Boolean; Dpi: TSdDpiAwareness; Utf8: Boolean; Level: TSdExecutionLevel): string;
+
+  procedure Add(const Part: string);
+  begin
+    if Result <> '' then Result := Result + ', ';
+    Result := Result + Part;
+  end;
+
 begin
   Result := '';
-  if Themes then Result := 'the visual styles of Windows';
-  if Dpi <> daUnaware then
-  begin
-    if Result <> '' then Result := Result + ', ';
-    Result := Result + 'DPI awareness ' + DpiAwarenessTexts[Dpi];
-  end;
-  if Utf8 then
-  begin
-    if Result <> '' then Result := Result + ', ';
-    Result := Result + 'UTF-8 code page';
-  end;
+  if Themes then Add('the visual styles of Windows');
+  if Dpi <> daUnaware then Add('DPI awareness ' + DpiAwarenessTexts[Dpi]);
+  if Utf8 then Add('UTF-8 code page');
+  if Level <> elAsInvoker then Add('execution level ' + ExecutionLevelKeys[Level]);
   Result := Result + ' (Project | Options | Application)';
+end;
+
+{ the value of the first element of the local name Element - any namespace prefix - in a manifest
+  in lower case: its text, or its attribute Attribute; '' when there is none }
+function ManifestValue(const Text, Element, Attribute: string): string;
+var
+  P, E, Q: Integer;
+  Tag: string;
+begin
+  Result := '';
+  P := Pos(Element, Text);
+  while P > 0 do
+  begin
+    E := P + Length(Element);
+    if (P > 1) and (Text[P - 1] in ['<', ':']) and (E <= Length(Text)) and
+      (Text[E] in [' ', #9, #13, #10, '>', '/']) then
+    begin
+      while (E <= Length(Text)) and (Text[E] <> '>') do Inc(E);
+      if Attribute = '' then
+      begin
+        Q := E + 1;
+        while (Q <= Length(Text)) and (Text[Q] <> '<') do Inc(Q);
+        Result := Trim(Copy(Text, E + 1, Q - E - 1));
+      end
+      else
+      begin
+        Tag := Copy(Text, P, E - P);
+        Q := Pos(Attribute + '=', Tag);
+        if Q > 0 then
+        begin
+          Tag := Copy(Tag, Q + Length(Attribute) + 2, MaxInt);      // after the opening quote
+          Q := 1;
+          while (Q <= Length(Tag)) and not (Tag[Q] in ['"', '''']) do Inc(Q);
+          Result := Copy(Tag, 1, Q - 1);
+        end;
+      end;
+      Exit;
+    end;
+    P := PosEx(Element, Text, P + 1);
+  end;
+end;
+
+procedure ManifestDeclares(const Text: string; out Dpi: TSdDpiAwareness; out Utf8: Boolean;
+  out Level: TSdExecutionLevel);
+var
+  T, S, Aware: string;
+  I: Integer;
+begin
+  T := LowerCase(Text);
+  { dpiAwareness (Windows 10 1607 on) takes precedence: Windows takes its first value it knows,
+    else dpiAware's - "per monitor" is true/pm's other spelling }
+  S := ManifestValue(T, 'dpiawareness', '');
+  I := Pos(',', S);
+  if I > 0 then S := Copy(S, 1, I - 1);
+  Aware := ManifestValue(T, 'dpiaware', '');
+  if Aware = 'per monitor' then Aware := DpiAwareValues[daPerMonitor];
+  Dpi := TSdDpiAwareness(TextIndex(Trim(S), DpiAwarenessValues,
+    TextIndex(Aware, DpiAwareValues, Ord(daUnaware))));
+  Utf8 := ManifestValue(T, 'activecodepage', '') = 'utf-8';
+  Level := TSdExecutionLevel(TextIndex(ManifestValue(T, 'requestedexecutionlevel', 'level'),
+    ExecutionLevelKeys, Ord(elAsInvoker)));
+end;
+
+function ManifestMisses(Dpi: TSdDpiAwareness; Utf8: Boolean; Level: TSdExecutionLevel;
+  HasDpi: TSdDpiAwareness; HasUtf8: Boolean; HasLevel: TSdExecutionLevel): string;
+begin
+  if Dpi = HasDpi then Dpi := daUnaware;
+  if Level = HasLevel then Level := elAsInvoker;
+  Utf8 := Utf8 and not HasUtf8;
+  if ManifestAsked(False, Dpi, Utf8, Level) then Result := ManifestSummary(False, Dpi, Utf8, Level)
+  else Result := '';
 end;
 
 { the index of the (first) manifest - a resource of type 24 - among the entries of a .res, -1 =
@@ -1250,11 +1410,12 @@ end;
 
 function OwnManifestText(Project: TSdProject): string;
 var
+  Themes, Utf8: Boolean;
   Dpi: TSdDpiAwareness;
+  Level: TSdExecutionLevel;
 begin
-  Dpi := Project.DpiAwareness;
-  if Project.IsLibrary or Project.IsPackage then Dpi := daUnaware;
-  Result := ManifestText(ChangeFileExt(ExtractFileName(Project.FileName), ''), True, Dpi, Project.Utf8CodePage);
+  Project.ManifestOptions(Themes, Dpi, Utf8, Level);
+  Result := ManifestText(ChangeFileExt(ExtractFileName(Project.FileName), ''), True, Dpi, Utf8, Level);
   Result := PadManifest(StringReplace(Result, ManifestComment + CRLF, '', []));
 end;
 
@@ -1389,7 +1550,7 @@ begin
   end;
 end;
 function EnsureProjectRes(const ProjectFile, Source: string; Themes: Boolean; Dpi: TSdDpiAwareness;
-  Utf8: Boolean; var Note: string): Boolean;
+  Utf8: Boolean; Level: TSdExecutionLevel; var Note: string): Boolean;
 var
   ResFile, Text: string;
   RS: TResourceStream;
@@ -1415,16 +1576,9 @@ begin
     end;
     if not ReadRes(ReadFileU(ResFile), Items) then Exit;      // not a 32-bit .res: left alone
     K := ManifestIndex(Items);
-    Ours := (K >= 0) and (Pos(ManifestMark, Items[K].Data) > 0);
-    if (K >= 0) and not Ours then
-    begin
-      { the project's own manifest stays; a DPI awareness or a code page it does not get is said }
-      if (Dpi <> daUnaware) or Utf8 then
-        Note := Format('[Warning] %s: the project has a manifest of its own - %s is not applied',
-          [ExtractFileName(ResFile), ManifestSummary(False, Dpi, Utf8)]);
-      Exit;
-    end;
-    Text := ManifestText(ChangeFileExt(ExtractFileName(ProjectFile), ''), Themes, Dpi, Utf8);
+    Ours := (K >= 0) and IsIdeManifest(Items[K].Data);
+    if (K >= 0) and not Ours then Exit;                         // the project's own manifest stays
+    Text := ManifestText(ChangeFileExt(ExtractFileName(ProjectFile), ''), Themes, Dpi, Utf8, Level);
     { D7 Studio's manifest as the options want it: kept; another one (other options, or an
       earlier version's - the first ones were for x86 only, which a 64-bit program cannot load)
       is replaced }
@@ -1434,8 +1588,8 @@ begin
     begin
       WriteFileU(ResFile, JoinRes(Items) + ResEntry(RT_MANIFEST_ID, 1, '', $1030, Text));
       Result := True;
-      if Ours then Note := ExtractFileName(ResFile) + ': manifest updated - ' + ManifestSummary(Themes, Dpi, Utf8)
-      else Note := ExtractFileName(ResFile) + ': manifest added - ' + ManifestSummary(Themes, Dpi, Utf8);
+      if Ours then Note := 'updated' else Note := 'added';
+      Note := Format('%s: manifest %s - %s', [ExtractFileName(ResFile), Note, ManifestSummary(Themes, Dpi, Utf8, Level)]);
     end
     else if Ours then
     begin
@@ -1446,6 +1600,13 @@ begin
   except
     Result := False;
   end;
+end;
+
+procedure NewProjectRes(const ProjectFile: string);
+var
+  Note: string;
+begin
+  EnsureProjectRes(ProjectFile, '{$R *.res}', True, daUnaware, False, elAsInvoker, Note);
 end;
 
 { ---------------------------------------------------------------- templates }
@@ -1573,13 +1734,15 @@ begin
     'end' + CRLF;
 end;
 
-function NewConsoleSource(const ProjName: string): string;
+function NewConsoleSource(const ProjName: string; LinkRes: Boolean = False): string;
 begin
   Result :=
     'program ' + ProjName + ';' + CRLF + CRLF +
     '{$APPTYPE CONSOLE}' + CRLF + CRLF +
     'uses' + CRLF +
-    '  SysUtils;' + CRLF + CRLF +
+    '  SysUtils;' + CRLF + CRLF;
+  if LinkRes then Result := Result + '{$R *.res}' + CRLF + CRLF;
+  Result := Result +
     'begin' + CRLF +
     '  { TODO -oUser -cConsole Main : Insert code here }' + CRLF +
     'end.' + CRLF;
@@ -1867,7 +2030,7 @@ begin
       R := TProjectResScript.Create;
       R.RelRes := Names[I];
       R.RelRc := Paths[I];
-      R.ResFileName := FullPath(EditorToAnsi(Names[I], E));
+      R.ResFileName := ResPath(Names[I], E);
       R.FileName := FullPath(EditorToAnsi(Paths[I], E));
       R.Name := ExtractFileName(R.FileName);
       FResScripts.Add(R);
@@ -2091,18 +2254,82 @@ begin
   SetOptStr(ThemeSection, PlatformKey, PlatformNames[Value]);
 end;
 
+{ per monitor v2 unless the project says otherwise: the modernized VCL scales the forms to the
+  DPI of their monitor, where Windows would stretch an unaware program's windows as bitmaps }
 function TSdProject.DpiAwareness: TSdDpiAwareness;
-var
-  S: string;
 begin
-  S := OptStr(ThemeSection, DpiKey, '');
-  Result := High(TSdDpiAwareness);
-  while (Result > daUnaware) and not SameText(S, DpiAwarenessKeys[Result]) do Dec(Result);
+  Result := TSdDpiAwareness(TextIndex(OptStr(ThemeSection, DpiKey, DpiAwarenessKeys[daPerMonitorV2]),
+    DpiAwarenessKeys, Ord(daUnaware)));
 end;
 
 procedure TSdProject.SetDpiAwareness(Value: TSdDpiAwareness);
 begin
   SetOptStr(ThemeSection, DpiKey, DpiAwarenessKeys[Value]);
+end;
+
+function TSdProject.ExecutionLevel: TSdExecutionLevel;
+begin
+  Result := TSdExecutionLevel(TextIndex(OptStr(ThemeSection, ExecutionLevelKey, ''), ExecutionLevelKeys,
+    Ord(elAsInvoker)));
+end;
+
+procedure TSdProject.SetExecutionLevel(Value: TSdExecutionLevel);
+begin
+  SetOptStr(ThemeSection, ExecutionLevelKey, ExecutionLevelKeys[Value]);
+end;
+
+procedure TSdProject.ManifestOptions(out Themes: Boolean; out Dpi: TSdDpiAwareness; out Utf8: Boolean;
+  out Level: TSdExecutionLevel);
+begin
+  Themes := UsesThemes;
+  Utf8 := Utf8CodePage;
+  Dpi := daUnaware;
+  Level := elAsInvoker;
+  if IsLibrary or IsPackage then Exit;
+  Dpi := DpiAwareness;
+  Level := ExecutionLevel;
+end;
+
+function TSdProject.ResPath(const Name: string; const E: TSdEncoding): string;
+begin
+  Result := StringReplace(EditorToAnsi(Name, E), '*', ChangeFileExt(ExtractFileName(FileName), ''), []);
+  if ExtractFileExt(Result) = '' then Result := Result + '.res';
+  Result := FullPath(Result);
+end;
+
+function TSdProject.LinkedManifest(const Source: string; const E: TSdEncoding; out Data: string): Boolean;
+var
+  Files: TStringList;
+  Items: TResItems;
+  I, K: Integer;
+  F: string;
+begin
+  Result := False;
+  Data := '';
+  Files := TStringList.Create;
+  try
+    DprGetResFiles(Source, Files);
+    for I := 0 to Files.Count - 1 do
+    begin
+      F := ResPath(Files[I], E);
+      try
+        if FileExists(F) and ReadRes(ReadFileU(F), Items) then
+        begin
+          K := ManifestIndex(Items);
+          if (K >= 0) and not IsIdeManifest(Items[K].Data) then
+          begin
+            Data := Items[K].Data;
+            Result := True;
+            Exit;
+          end;
+        end;
+      except
+        { a file that cannot be read: taken as holding none }
+      end;
+    end;
+  finally
+    Files.Free;
+  end;
 end;
 
 { WindowsXP=1 is Windows XP; otherwise Utf8CodePage (Utf8Default unless the project says

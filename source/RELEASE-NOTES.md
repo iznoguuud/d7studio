@@ -11,6 +11,50 @@ installing in [README.md](README.md).
 
 ## [Unreleased]
 
+## [1.0.3.0] - 2026-11-26
+
+### Added
+
+- **IDE**: *Project ▸ Options ▸ Application ▸ DPI awareness* chooses what a program's manifest says
+  about the display scale: unaware, system aware, per monitor, or per monitor V2.
+- **IDE**: *Project ▸ Options ▸ Application ▸ Execution level* chooses the rights a program asks
+  for when it starts: as invoker (the default), highest available, or require administrator - for
+  an installer or an updater that must run as administrator.
+
+### Changed
+
+- **IDE**: *File ▸ New ▸ Console Application* links the project's resource file (`{$R *.res}`), so a
+  console program gets its icon and D7 Studio's manifest like any other program.
+
+### Fixed
+
+- **IDE**: programs built by D7 Studio are per-monitor V2 DPI aware by default, so their text stays
+  sharp on a monitor scaled above 100 %. Before, their manifest had no DPI awareness and Windows
+  stretched their windows there, blurring them. The next compile of a project updates its manifest.
+- **IDE**: the manifest D7 Studio gives a program now also declares Windows Vista to 11
+  compatibility, `asInvoker` and long paths, as `ModernMan`'s does. Windows no longer reports
+  version 6.2 to such programs, no longer redirects their writes into Program Files and HKLM to
+  the VirtualStore, and no longer asks for elevation because of a program's name.
+- **IDE**: when a program uses `ModernMan`, `ModernManUtf8` or `XPMan`, or has a manifest of its
+  own, the warning in *Messages* names only what the project's options ask for and that manifest
+  does not declare. Before, it named the UTF-8 code page even when the manifest declared it.
+- **IDE**: a program whose project source does not link its resource file (`{$R *.res}`) gets no
+  manifest from D7 Studio, and *Messages* now says so at every build, with what the options ask for
+  that it therefore does not get and how to give it a manifest. Before, nothing was said.
+- **IDE**: a program's sources are compiled in the code page the program runs in, which its
+  manifest decides: in the system code page when it has no manifest, or one of its own without
+  UTF-8. Before, the default *Target Windows* compiled them for UTF-8 anyway, and their text beyond
+  ASCII showed garbled.
+- **IDE**: a program that links a manifest of its own in another resource file no longer also gets
+  D7 Studio's, which Windows used in its place.
+- **RTL/VCL**: the manifests of `ModernMan` and `ModernManUtf8` are language-neutral. A program
+  that links another manifest as well - one D7 Studio wrote into the project's `.res`, compiled in
+  Delphi 7's IDE - now gets the compiler's "Duplicate resource(s)" message, where Windows silently
+  used the other manifest.
+- **Code editor**: Pascal code no longer turns all into the reserved words' colour from a line
+  ending in a reserved word (`finally`, `begin`, `try` ...) to the end of the file. It could happen
+  while scrolling after an edit far above, such as the empty event handlers that saving removes.
+
 ## [1.0.2.2] - 2026-11-26
 
 ### Fixed
@@ -107,7 +151,8 @@ The first release.
   its settings. It also installs Microsoft's WinHelp viewer, which shows Delphi 7's help on
   Windows 10 and 11.
 
-[Unreleased]: https://github.com/iznoguuud/d7studio/compare/v1.0.2.2...HEAD
+[Unreleased]: https://github.com/iznoguuud/d7studio/compare/v1.0.3.0...HEAD
+[1.0.3.0]: https://github.com/iznoguuud/d7studio/compare/v1.0.2.2...v1.0.3.0
 [1.0.2.2]: https://github.com/iznoguuud/d7studio/compare/v1.0.2.1...v1.0.2.2
 [1.0.2.1]: https://github.com/iznoguuud/d7studio/compare/v1.0.2.0...v1.0.2.1
 [1.0.2.0]: https://github.com/iznoguuud/d7studio/compare/v1.0.1.1...v1.0.2.0

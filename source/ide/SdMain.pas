@@ -10515,14 +10515,22 @@ end;
   it - and get no AfterCompile }
 function TMainForm.CompileNow(P: TSdProject; Build, ForDebug, SyntaxOnly, ForRun: Boolean;
   out Cancelled: Boolean): Boolean;
+const
+  { the units that link a manifest of their own (the first one found counts), and what it declares
+    besides as invoker }
+  ManifestUnits: array[0..2] of string = ('ModernManUtf8', 'ModernMan', 'XPMan');
+  ManifestUnitDpi: array[0..2] of TSdDpiAwareness = (daPerMonitorV2, daPerMonitorV2, daUnaware);
+  ManifestUnitUtf8: array[0..2] of Boolean = (True, False, False);
 var
   Args, ResNote, DpiNote, TargetNote, CfgNote, VerNote, UnitDir, Dcc, Utf8Exe, Dir, Err: string;
   I, FirstErr: Integer;
   Hinted: TList;
   M: TCompilerMessage;
   Utf8, Utf8Dcc, HighText: Boolean;
-  OwnManifest: string;
-  Dpi: TSdDpiAwareness;
+  Missing, ProjSrc, Data, Whose: string;
+  Dpi, OwnDpi: TSdDpiAwareness;
+  Level, OwnLevel: TSdExecutionLevel;
+  Themes, OwnUtf8, HasOwn: Boolean;
   Win64: Boolean;
   Reload: TPackageEntry;
   Notes: TStringList;
@@ -10582,41 +10590,66 @@ begin
     { the resources changed through the Open Tools API are written before D7 Studio changes the
       .res below: its model of the file reads it again afterwards, with nothing of its own lost }
     OtaFlushResources;
-    { the icon and the manifest: the visual styles, the DPI awareness and the UTF-8 code page of a
-      program. One that uses ModernManUtf8, ModernMan or XPMan (in the editor's text, saved or not)
-      links that unit's manifest - a program has one - and gets none of D7 Studio's: what it then
-      cannot get is said. ModernManUtf8's manifest asks for UTF-8 itself. Utf8: the program runs
-      in UTF-8 - its sources go to dcc32 in UTF-8 (CompileTarget). }
-    Dpi := P.DpiAwareness;
-    if P.IsLibrary or P.IsPackage then Dpi := daUnaware;
-    Utf8 := P.Utf8CodePage;
-    OwnManifest := '';
+    { the icon and the manifest: the visual styles, the DPI awareness, the UTF-8 code page and the
+      execution level of a program. A program has one manifest: its own - the manifest of the
+      ModernManUtf8, ModernMan or XPMan it uses (in the editor's text, saved or not), else one D7
+      Studio did not write in a .res its source links - or D7 Studio's, in the .res of $R *.res. With
+      its own, D7 Studio writes none (it takes its own out): what the options ask for that the own
+      one does not declare is said. Utf8: the program runs in UTF-8 - its manifest says so -, and its
+      sources go to dcc32 in UTF-8 (CompileTarget); else in the system code page it runs in. }
+    P.ManifestOptions(Themes, Dpi, Utf8, Level);
+    ProjSrc := SourceOf(P.FileName);
+    HasOwn := False;
     if not P.IsLibrary and not P.IsPackage then
-      case P.FirstUsedUnit(['ModernManUtf8', 'ModernMan', 'XPMan'], SourceOf) of
-        0: OwnManifest := 'ModernManUtf8';
-        1: OwnManifest := 'ModernMan';
-        2: OwnManifest := 'XPMan';
+    begin
+      I := P.FirstUsedUnit(ManifestUnits, SourceOf);
+      if I >= 0 then
+      begin
+        HasOwn := True;
+        OwnDpi := ManifestUnitDpi[I];
+        OwnUtf8 := ManifestUnitUtf8[I];
+        OwnLevel := elAsInvoker;
+        Whose := Format('the program uses %s, whose manifest', [ManifestUnits[I]]);
+      end
+      else if P.LinkedManifest(ProjSrc, SourceEncoding(P.FileName), Data) then
+      begin
+        HasOwn := True;
+        ManifestDeclares(Data, OwnDpi, OwnUtf8, OwnLevel);
+        Whose := 'the program''s own manifest';
       end;
+    end;
     DpiNote := '';
     TargetNote := '';
-    if OwnManifest <> '' then
+    if HasOwn then
     begin
-      if (Dpi <> daUnaware) or (Utf8 and (OwnManifest <> 'ModernManUtf8')) then
-        DpiNote := Format('[Warning] %s: the program uses %s, whose manifest is linked - %s is not applied',
-          [ExtractFileName(P.FileName), OwnManifest,
-           ManifestSummary(False, Dpi, Utf8 and (OwnManifest <> 'ModernManUtf8'))]);
-      { ModernManUtf8's manifest asks for UTF-8 whatever Target Windows says, so the sources go to
-        dcc32 in UTF-8; Windows before 10 1903 ignores the manifest's code page and shows the
-        program's literals beyond ASCII garbled }
-      if (OwnManifest = 'ModernManUtf8') and (P.Platform = spWin32) and (P.TargetWindows <> twWindows10Utf8) then
-        TargetNote := Format('[Warning] %s: the program uses ModernManUtf8, whose manifest asks for UTF-8 ' +
-          'whatever Target Windows (%s) says - on Windows before 10 1903 its text beyond ASCII in code shows ' +
-          'garbled', [ExtractFileName(P.FileName), TargetWindowsTexts[P.TargetWindows]]);
-      Utf8 := OwnManifest = 'ModernManUtf8';
+      Missing := ManifestMisses(Dpi, Utf8, Level, OwnDpi, OwnUtf8, OwnLevel);
+      if Missing <> '' then
+        DpiNote := Format('[Warning] %s: %s is linked - %s is not applied', [ExtractFileName(P.FileName), Whose,
+          Missing]);
+      { a manifest of UTF-8 whatever Target Windows says: the sources go to dcc32 in UTF-8, and Windows
+        before 10 1903 ignores the manifest's code page and shows the program's literals beyond ASCII
+        garbled }
+      if OwnUtf8 and (P.Platform = spWin32) and (P.TargetWindows <> twWindows10Utf8) then
+        TargetNote := Format('[Warning] %s: %s asks for UTF-8 whatever Target Windows (%s) says - on Windows ' +
+          'before 10 1903 its text beyond ASCII in code shows garbled', [ExtractFileName(P.FileName), Whose,
+          TargetWindowsTexts[P.TargetWindows]]);
+      Utf8 := OwnUtf8;
       Dpi := daUnaware;
+      Level := elAsInvoker;
+    end
+    else if not LinksProjectRes(ProjSrc) then
+    begin
+      { no $R *.res, no manifest of its own: the program has none, and runs in the system code page }
+      if ManifestAsked(Themes, Dpi, Utf8, Level) then
+      begin
+        if Utf8 then Missing := ManifestUnits[0] else Missing := ManifestUnits[1];
+        DpiNote := Format('[Warning] %s: the project source does not link its resource file with {$R *.res}, ' +
+          'so the program gets no manifest - %s is not applied: add {$R *.res} to the project source, or %s ' +
+          'to its uses clause', [ExtractFileName(P.FileName), ManifestSummary(Themes, Dpi, Utf8, Level), Missing]);
+      end;
+      Utf8 := False;
     end;
-    EnsureProjectRes(P.FileName, SourceOf(P.FileName), P.UsesThemes and (OwnManifest = ''), Dpi,
-      Utf8 and (OwnManifest = ''), ResNote);
+    EnsureProjectRes(P.FileName, ProjSrc, Themes and not HasOwn, Dpi, Utf8 and not HasOwn, Level, ResNote);
     { a Win32 program in UTF-8 goes to the UTF-8 compiler when Delphi 7's Bin has it: dcc32 would
       turn its UTF-8 text into UTF-16 (resource strings, WideString literals) with the system code
       page }
@@ -12428,7 +12461,7 @@ end;
   the project's .res; the project is opened }
 procedure TMainForm.NewApplication(const FileName: string);
 var
-  Dir, ProjName, UnitName, Note, FormName, Def, Pas, Dfm, Cls, Src: string;
+  Dir, ProjName, UnitName, FormName, Def, Pas, Dfm, Cls, Src: string;
   E: TSdEncoding;
 begin
   Dir := ExtractFilePath(FileName);
@@ -12460,7 +12493,7 @@ begin
   { the repository's form keeps its class (not always T + its name) }
   if Def <> '' then DprRenameCreateForm(Src, '', FormName, Cls, FormName);
   WriteFileU(Dir + ProjName + '.dpr', Src);
-  EnsureProjectRes(Dir + ProjName + '.dpr', '{$R *.res}', True, daUnaware, False, Note);
+  NewProjectRes(Dir + ProjName + '.dpr');
   OpenProject(Dir + ProjName + '.dpr', FNewProjectMode);
 end;
 
@@ -12503,7 +12536,12 @@ var
 begin
   if not AskNewProject(KindNames[Kind], Exts[Kind], FileName, ProjName) then Exit;
   case Kind of
-    npConsole: WriteFileU(FileName, NewConsoleSource(ProjName));
+    npConsole:
+      begin
+        { with its .res, as a new application: the program's manifest goes there }
+        WriteFileU(FileName, NewConsoleSource(ProjName, True));
+        NewProjectRes(FileName);
+      end;
     npPackage: WriteFileU(FileName, NewPackageSource(ProjName));
   else
     WriteFileU(FileName, 'library ' + ProjName + ';'#13#10#13#10 + DllSource);
@@ -15258,6 +15296,7 @@ begin
         FProject.SetOptInt(ThemeSection, ThemeKey, 0);
         if FProject.TargetWindows = twWindows10Utf8 then FProject.SetTargetWindows(twVista);
         FProject.SetDpiAwareness(daUnaware);
+        FProject.SetExecutionLevel(elAsInvoker);
         FProject.SaveOptions;
       end;
       R.Delete(It);

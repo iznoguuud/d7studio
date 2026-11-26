@@ -93,6 +93,10 @@ function DprAddTodoFile(var Source: string; const RelName: string): Boolean;
   and the .rc the IDE compiles into it -, in their order; the names as written (from the
   project's folder), unquoted. $R with one name ($R *.res) and the switch $R+ / $R- are none. }
 procedure DprGetResScripts(const Source: string; ResFiles, RcFiles: TStrings);
+{ The .res files a project source links: the first name of each of its $R (or $RESOURCE)
+  directives - $R *.res, a resource script's .res, a file of its own -, in their order, as
+  written (from the project's folder; * stands for the project's name), unquoted }
+procedure DprGetResFiles(const Source: string; ResFiles: TStrings);
 { a script into the project source, where Delphi 7 puts one: after the last script, else - a
   program or library - after the uses clause, on the line before a $R that comes next ($R *.res),
   a package after its first $R (without one after the heading); one of the same .rc already there
@@ -2269,12 +2273,12 @@ begin
 end;
 
 { ---------------------------------------------------------------------------- }
-{ resource scripts: $R directives with two file names }
+{ $R directives; the resource scripts are those with two file names }
 
 type
   TResScriptTok = record
     Tok: Integer;              // the directive's token
-    Res, Rc: string;           // its names as written, unquoted
+    Res, Rc: string;           // its first two names as written, unquoted (Rc '' with one name)
   end;
   TResScriptToks = array of TResScriptTok;
 
@@ -2332,8 +2336,9 @@ begin
   Result := Names.Count > 0;
 end;
 
-{ the resource scripts of a project source (DprGetResScripts), in their order }
-function FindResScripts(RT: TRawToks): TResScriptToks;
+{ the $R / $RESOURCE directives of a project source with Count names, 0: any number, in their
+  order - 2 the resource scripts (DprGetResScripts), 1 those like $R *.res }
+function FindResDirectives(RT: TRawToks; Count: Integer): TResScriptToks;
 var
   I, N: Integer;
   Names: TStringList;
@@ -2342,36 +2347,40 @@ begin
   Names := TStringList.Create;
   try
     for I := 0 to RT.N - 1 do
-      if RT.IsDirective(I) and ResDirectiveNames(RT.Txt(I), Names) and (Names.Count = 2) then
+      if RT.IsDirective(I) and ResDirectiveNames(RT.Txt(I), Names) and ((Count = 0) or (Names.Count = Count)) then
       begin
         N := Length(Result);
         SetLength(Result, N + 1);
         Result[N].Tok := I;
         Result[N].Res := Names[0];
-        Result[N].Rc := Names[1];
+        if Names.Count > 1 then Result[N].Rc := Names[1];
       end;
   finally
     Names.Free;
   end;
 end;
 
-{ the first $R with one name ($R *.res); -1: none }
-function OneNameResTok(RT: TRawToks): Integer;
+{ the names of a project source's $R directives with Count names (FindResDirectives) into ResFiles
+  and RcFiles, nil: not wanted }
+procedure GetResDirectiveNames(const Source: string; Count: Integer; ResFiles, RcFiles: TStrings);
 var
+  RT: TRawToks;
+  L: TResScriptToks;
   I: Integer;
-  Names: TStringList;
 begin
-  Result := -1;
-  Names := TStringList.Create;
   try
-    for I := 0 to RT.N - 1 do
-      if RT.IsDirective(I) and ResDirectiveNames(RT.Txt(I), Names) and (Names.Count = 1) then
+    RT := TRawToks.Create(Source);
+    try
+      L := FindResDirectives(RT, Count);
+      for I := 0 to High(L) do
       begin
-        Result := I;
-        Break;
+        if ResFiles <> nil then ResFiles.Add(L[I].Res);
+        if RcFiles <> nil then RcFiles.Add(L[I].Rc);
       end;
-  finally
-    Names.Free;
+    finally
+      RT.Free;
+    end;
+  except
   end;
 end;
 
@@ -2387,48 +2396,35 @@ begin
 end;
 
 procedure DprGetResScripts(const Source: string; ResFiles, RcFiles: TStrings);
-var
-  RT: TRawToks;
-  L: TResScriptToks;
-  I: Integer;
 begin
-  try
-    RT := TRawToks.Create(Source);
-    try
-      L := FindResScripts(RT);
-      for I := 0 to High(L) do
-      begin
-        if ResFiles <> nil then ResFiles.Add(L[I].Res);
-        if RcFiles <> nil then RcFiles.Add(L[I].Rc);
-      end;
-    finally
-      RT.Free;
-    end;
-  except
-  end;
+  GetResDirectiveNames(Source, 2, ResFiles, RcFiles);
+end;
+
+procedure DprGetResFiles(const Source: string; ResFiles: TStrings);
+begin
+  GetResDirectiveNames(Source, 0, ResFiles, nil);
 end;
 
 function DprAddResScript(var Source: string; const RelRes, RelRc: string): Boolean;
 var
   RT: TRawToks;
-  L: TResScriptToks;
+  L, Ones: TResScriptToks;
   I, UT, ST, K, Ofs: Integer;
   Entries: TUsesEntries;
-  Names: TStringList;
   S, EOL, Entry: string;
 begin
   Result := False;
   try
     RT := TRawToks.Create(Source);
-    Names := TStringList.Create;
     try
-      L := FindResScripts(RT);
+      L := FindResDirectives(RT, 2);
       for I := 0 to High(L) do
         if SameRelPath(L[I].Rc, RelRc) then
         begin
           Result := True;
           Exit;
         end;
+      Ones := FindResDirectives(RT, 1);
       S := Source;
       EOL := DetectEOL(S);
       Entry := ResScriptText(RelRes, RelRc);
@@ -2436,9 +2432,8 @@ begin
         Insert(EOL + Entry, S, RT.EndOf(L[High(L)].Tok) + 1)
       else if IsPackageSource(RT) then
       begin
-        K := OneNameResTok(RT);
-        if K >= 0 then
-          Insert(EOL + Entry, S, RT.EndOf(K) + 1)
+        if Length(Ones) > 0 then
+          Insert(EOL + Entry, S, RT.EndOf(Ones[0].Tok) + 1)
         else
         begin
           Ofs := HeaderEndOfs(S);
@@ -2450,8 +2445,9 @@ begin
       begin
         { the $R that follows the uses clause, alone on its line: the script on the line before it }
         K := ST + 1;
-        if (K < RT.N) and RT.IsDirective(K) and ResDirectiveNames(RT.Txt(K), Names) and (Names.Count = 1) and
-          IsBlank(S, LineStartOf(S, RT.T[K].Start), RT.T[K].Start) then
+        I := 0;
+        while (I <= High(Ones)) and (Ones[I].Tok <> K) do Inc(I);
+        if (I <= High(Ones)) and IsBlank(S, LineStartOf(S, RT.T[K].Start), RT.T[K].Start) then
           Insert(Entry + EOL, S, LineStartOf(S, RT.T[K].Start) + 1)
         else
           Insert(EOL + EOL + Entry, S, RT.EndOf(ST) + 1);
@@ -2465,7 +2461,6 @@ begin
       Source := S;
       Result := True;
     finally
-      Names.Free;
       RT.Free;
     end;
   except
@@ -2484,7 +2479,7 @@ begin
   try
     RT := TRawToks.Create(Source);
     try
-      L := FindResScripts(RT);
+      L := FindResDirectives(RT, 2);
       for I := 0 to High(L) do
         if SameRelPath(L[I].Rc, RelRc) then
         begin
@@ -2519,7 +2514,7 @@ begin
   try
     RT := TRawToks.Create(Source);
     try
-      L := FindResScripts(RT);
+      L := FindResDirectives(RT, 2);
       for I := 0 to High(L) do
         if SameRelPath(L[I].Rc, RelRc) then
         begin
