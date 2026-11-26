@@ -1,0 +1,64 @@
+{**********************************************************}
+{                                                          }
+{     D7 Studio                                            }
+{                                                          }
+{     Copyright (c) 2026 iznoguuud                         }
+{     Licensed under the MIT License: see LICENSE.txt      }
+{                                                          }
+{**********************************************************}
+
+package GitExpert;
+
+{ The Git expert for the Delphi 7 IDE: an Open Tools API expert with the views Git (the changes,
+  commit, branches, stashes), Git History and Git Diff (diffs and blame), and Git in the code
+  editor's local menu. It runs git.exe of Git for Windows. README.md tells how to install and use it. }
+
+{$R 'GitIcons.res' 'GitIcons.rc'}
+{$ALIGN 8}
+{$ASSERTIONS OFF}
+{$BOOLEVAL OFF}
+{$DEBUGINFO ON}
+{$EXTENDEDSYNTAX ON}
+{$IMPORTEDDATA ON}
+{$IOCHECKS ON}
+{$LOCALSYMBOLS ON}
+{$LONGSTRINGS ON}
+{$OPENSTRINGS ON}
+{$OPTIMIZATION ON}
+{$OVERFLOWCHECKS OFF}
+{$RANGECHECKS OFF}
+{$REFERENCEINFO ON}
+{$SAFEDIVIDE OFF}
+{$STACKFRAMES OFF}
+{$TYPEDADDRESS OFF}
+{$VARSTRINGCHECKS ON}
+{$WRITEABLECONST OFF}
+{$MINENUMSIZE 1}
+{$IMAGEBASE $400000}
+{$DESCRIPTION 'Git for the Delphi 7 IDE'}
+{$DESIGNONLY}
+{$IMPLICITBUILD OFF}
+
+requires
+  rtl,
+  vcl,
+  designide;
+
+contains
+  GitText in 'GitText.pas',
+  GitProcess in 'GitProcess.pas',
+  GitUI in 'GitUI.pas',
+  GitIde in 'GitIde.pas',
+  GitCore in 'GitCore.pas',
+  GitHost in 'GitHost.pas',
+  GitViews in 'GitViews.pas',
+  GitBranchDlg in 'GitBranchDlg.pas' {GitBranchDialog},
+  GitStashDlg in 'GitStashDlg.pas' {GitStashDialog},
+  GitSettingsDlg in 'GitSettingsDlg.pas' {GitSettingsDialog},
+  GitDiff in 'GitDiff.pas' {GitDiffView},
+  GitHistory in 'GitHistory.pas' {GitHistoryView},
+  GitChanges in 'GitChanges.pas' {GitChangesView},
+  GitSelfTest in 'GitSelfTest.pas',
+  GitWizard in 'GitWizard.pas';
+
+end.

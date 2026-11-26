@@ -1,0 +1,4 @@
+/* The Git expert's images (IntelliJ's): GitIcons.bmp, a row of 16 x 16 cells in the order
+   of GitViews' constants gi.... brcc32 compiles this script into GitIcons.res, which
+   GitViews.pas links. */
+GITICONS RCDATA "GitIcons.bmp"

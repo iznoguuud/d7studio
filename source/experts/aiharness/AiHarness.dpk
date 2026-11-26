@@ -1,0 +1,76 @@
+{**********************************************************}
+{                                                          }
+{     D7 Studio                                            }
+{                                                          }
+{     Copyright (c) 2026 iznoguuud                         }
+{     Licensed under the MIT License: see LICENSE.txt      }
+{                                                          }
+{**********************************************************}
+
+package AiHarness;
+
+{ The AI harness for the Delphi 7 IDE: an Open Tools API expert with an AI assistant that works
+  with the code - reads, searches, edits, compiles and designs forms - through the IDE. The
+  model backend is abstract (AiCore.TAiBackend): Claude (AiClaude), OpenAI and the servers that
+  speak its API (AiOpenAI: OpenAI; AiCompat: OpenRouter, Ollama, LM Studio, a custom endpoint).
+  README.md tells how to install and use it. }
+
+{$R 'AiIcons.res' 'AiIcons.rc'}
+{$ALIGN 8}
+{$ASSERTIONS OFF}
+{$BOOLEVAL OFF}
+{$DEBUGINFO ON}
+{$EXTENDEDSYNTAX ON}
+{$IMPORTEDDATA ON}
+{$IOCHECKS ON}
+{$LOCALSYMBOLS ON}
+{$LONGSTRINGS ON}
+{$OPENSTRINGS ON}
+{$OPTIMIZATION ON}
+{$OVERFLOWCHECKS OFF}
+{$RANGECHECKS OFF}
+{$REFERENCEINFO ON}
+{$SAFEDIVIDE OFF}
+{$STACKFRAMES OFF}
+{$TYPEDADDRESS OFF}
+{$VARSTRINGCHECKS ON}
+{$WRITEABLECONST OFF}
+{$MINENUMSIZE 1}
+{$IMAGEBASE $400000}
+{$DESCRIPTION 'AI Harness (Claude, OpenAI) for the Delphi 7 IDE'}
+{$DESIGNONLY}
+{$IMPLICITBUILD OFF}
+
+requires
+  rtl,
+  vcl,
+  designide;
+
+contains
+  AiText in 'AiText.pas',
+  AiJson in 'AiJson.pas',
+  AiHttp in 'AiHttp.pas',
+  AiCore in 'AiCore.pas',
+  AiAgent in 'AiAgent.pas',
+  AiRemote in 'AiRemote.pas',
+  AiClaude in 'AiClaude.pas',
+  AiOpenAI in 'AiOpenAI.pas',
+  AiCompat in 'AiCompat.pas',
+  AiProcess in 'AiProcess.pas',
+  AiCompileCore in 'AiCompileCore.pas',
+  AiIde in 'AiIde.pas',
+  AiCodeTools in 'AiCodeTools.pas',
+  AiCompile in 'AiCompile.pas',
+  AiFormTools in 'AiFormTools.pas',
+  AiOptionTools in 'AiOptionTools.pas',
+  AiPrompt in 'AiPrompt.pas',
+  AiHost in 'AiHost.pas',
+  AiMarkdown in 'AiMarkdown.pas',
+  AiUI in 'AiUI.pas',
+  AiApproveDlg in 'AiApproveDlg.pas' {AiApproveDialog},
+  AiSettingsDlg in 'AiSettingsDlg.pas' {AiSettingsDialog},
+  AiChatWin in 'AiChatWin.pas' {AiChatWindow},
+  AiSelfTest in 'AiSelfTest.pas',
+  AiWizard in 'AiWizard.pas';
+
+end.

@@ -1,0 +1,83 @@
+object CpuView: TSdCpuView
+  Left = 0
+  Top = 0
+  BorderStyle = bsNone
+  Caption = 'CPU'
+  ClientHeight = 150
+  ClientWidth = 880
+  Color = clBtnFace
+  DefaultMonitor = dmDesktop
+  Font.Charset = DEFAULT_CHARSET
+  Font.Color = clWindowText
+  Font.Height = -12
+  Font.Name = 'Segoe UI'
+  Font.Style = []
+  OldCreateOrder = False
+  PixelsPerInch = 96
+  TextHeight = 15
+  object DisasmList: TListBox
+    Left = 1
+    Top = 1
+    Width = 676
+    Height = 91
+    Style = lbOwnerDrawFixed
+    BorderStyle = bsNone
+    IntegralHeight = False
+    ItemHeight = 15
+    TabOrder = 0
+    OnDrawItem = DrawItem
+    OnKeyDown = ListKeyDown
+  end
+  object RegsList: TListBox
+    Left = 681
+    Top = 1
+    Width = 128
+    Height = 91
+    Style = lbOwnerDrawFixed
+    BorderStyle = bsNone
+    IntegralHeight = False
+    ItemHeight = 15
+    TabOrder = 1
+    OnDrawItem = DrawItem
+    OnKeyDown = ListKeyDown
+  end
+  object FlagsList: TListBox
+    Left = 813
+    Top = 1
+    Width = 66
+    Height = 91
+    Style = lbOwnerDrawFixed
+    BorderStyle = bsNone
+    IntegralHeight = False
+    ItemHeight = 15
+    TabOrder = 2
+    OnDrawItem = DrawItem
+    OnKeyDown = ListKeyDown
+  end
+  object DumpList: TListBox
+    Left = 1
+    Top = 96
+    Width = 698
+    Height = 53
+    Style = lbOwnerDrawFixed
+    BorderStyle = bsNone
+    IntegralHeight = False
+    ItemHeight = 15
+    TabOrder = 3
+    OnDrawItem = DrawItem
+    OnKeyDown = ListKeyDown
+  end
+  object StackList: TListBox
+    Left = 703
+    Top = 96
+    Width = 176
+    Height = 53
+    Style = lbOwnerDrawFixed
+    BorderStyle = bsNone
+    IntegralHeight = False
+    ItemHeight = 15
+    TabOrder = 4
+    OnDrawItem = DrawItem
+    OnKeyDown = ListKeyDown
+  end
+end

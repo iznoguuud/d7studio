@@ -1,0 +1,4 @@
+/* The AI harness's images (IntelliJ's and D7 Studio's): AiIcons.bmp, a row of 16 x 16 cells in the order
+   of AiChatWin's constants ai.... brcc32 compiles this script into AiIcons.res, which
+   AiHarness.dpk links. */
+AIICONS RCDATA "AiIcons.bmp"

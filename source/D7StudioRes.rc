@@ -1,0 +1,15 @@
+/* D7 Studio's resources besides the project's own D7Studio.res (the program icon MAINICON and the
+   version information, which Project | Options writes): D7Studio.dpr links D7StudioRes.res, which
+   the IDE and the build compile from this script */
+DEFAULTICON RCDATA "default.ico"
+1 24 "D7Studio.manifest"
+/* the icons, IntelliJ's and D7 Studio's own drawings in their style: every icon at 16 x 16, and the
+   ones of SdIcons.LargeIcons at 32 x 32 */
+ICONS RCDATA "icons.bmp"
+ICONS32 RCDATA "icons32.bmp"
+/* the start-up screen's picture (SdSplash) */
+SPLASH BITMAP "splash.bmp"
+/* the empty centre's picture, a pencil drawing whose paper is transparent (SdUI.UIEmptyPicture) */
+BACKDROP RCDATA "backdrop.png"
+/* the picture of Help | About (SdAboutDlg, SdUI.UIEmptyPhoto) */
+ABOUT RCDATA "about.jpg"

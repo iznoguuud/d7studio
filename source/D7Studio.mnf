@@ -1,0 +1,4 @@
+[manifest]
+enabled=0
+level=asInvoker
+uiAccess=false

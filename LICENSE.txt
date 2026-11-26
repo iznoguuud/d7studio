@@ -1,0 +1,68 @@
+D7 Studio
+Copyright (c) 2026 iznoguuud
+
+D7 Studio is released under the MIT License below. It covers D7 Studio's own
+work: the IDE, its experts (the AI assistant and Git), migrate, the setup, and
+this project's changes to and additions of Delphi 7's RTL and VCL as the patch
+carries them. Parts made by others keep their own licenses (see "Third-party
+components"). Delphi 7 itself is not part of D7 Studio (see "Delphi 7").
+
+
+MIT License
+
+Copyright (c) 2026 iznoguuud
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+Third-party components
+----------------------
+
+These are not covered by the MIT License above; each keeps its own license.
+
+- The icons of D7 Studio and of its experts are made from JetBrains' IntelliJ
+  Platform icons (Copyright JetBrains s.r.o. and contributors), licensed under
+  the Apache License, Version 2.0. The license and JetBrains' notice are in
+  THIRD-PARTY-NOTICES.md, beside this file.
+- Scintilla and Lexilla, D7 Studio's editing component (Copyright Neil
+  Hodgson), under their own license: Scintilla-License.txt, beside
+  Scintilla.dll.
+- FastMM4, the memory manager of the modernized RTL (Copyright Pierre le Riche
+  / Professional Software Development), under the Mozilla Public License 1.1
+  or the GNU Lesser General Public License 2.1, as its sources, which the
+  patch carries, say.
+- Microsoft's Windows Help program (WinHlp32), which Setup installs from
+  Microsoft's update package KB917607 so that Delphi 7's help can be shown:
+  Microsoft's software, under Microsoft's terms.
+
+
+Delphi 7
+--------
+
+Delphi and Borland are trademarks of their owners (today Embarcadero
+Technologies, Inc.). D7 Studio is not affiliated with, endorsed or sponsored
+by them.
+
+D7 Studio contains none of Borland's files. It runs on a Delphi 7 that you
+have installed and licensed yourself - Delphi 7 with Update 1 - and its setup
+installs into that Delphi 7. The patch of the RTL and VCL carries only this
+project's changes, as differences from Delphi 7's own files: they become the
+modernized files only on your machine, from your own copy of Delphi 7.
+Applying them is your own act, under the terms of your Delphi 7 license.
+Uninstalling D7 Studio puts Delphi 7's own files back.
