@@ -203,6 +203,11 @@ modernized RTL/VCL in full is in [MODERNIZATION.md](MODERNIZATION.md).
 - **Zoom the form** from 5 % to 400 % in steps of 5 %, or to fit the whole form in view, and work
   on it as at 100 %: select, move, size and drop components. The form's sizes and positions stay as
   they are. Each form has its own zoom.
+- **The designer's commands above the form**: *Scale...*, *Tab Order...*, *Creation Order...*, *Flip
+  Children*, *Lock Controls*, *Bring to Front*, *Send to Back*, *Align...*, *Size...*, *Align to Grid* and
+  the ten alignments - edges, centers, center in window, space equally - on the bar at the top of the
+  design view, each enabled when it applies to the selection. Delphi 7 has the
+  alignments in a separate floating Alignment Palette and the others in its menus only.
 - **Snap lines** (*Tools ▸ Environment Options ▸ Designer ▸ Snap lines*, on): an edge you drag
   snaps to the edges of the other controls, to the usual spacing beside them and to the margin of
   their container, and a line shows it.

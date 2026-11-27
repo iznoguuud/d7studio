@@ -315,7 +315,7 @@ end;
 { the flat line between a declaration and its place (the menus' separator) }
 function RuleColor: TColor;
 begin
-  Result := UIBlend(clBtnShadow, clWindow, 60);
+  Result := UISeparatorColor(clWindow);
 end;
 
 procedure AddTipRun(var Runs: TTipRuns; const S: string; Color: TColor; Style: TFontStyles; Code: Boolean;

@@ -359,8 +359,12 @@ procedure UIEmptyPicture(Container: TWinControl; const PictureName: string; Heig
   program's RCDATA resources in any format GDI+ reads, over the whole container, without the border
   - as large as that needs, what overflows cut equally at two opposite sides }
 procedure UIEmptyPhoto(Container: TWinControl; const PictureName: string);
-{ the theme's tool bar separator, centred in R (as a TToolButton separator is drawn) }
-procedure UIDrawToolSeparator(DC: HDC; const R: TRect);
+{ a tool bar separator in R, a TToolButton separator's place: a 1 px line in the separators' grey on
+  Back (UISeparatorColor) where the theme's separator has its line - 2 px left of R's middle, 2 px
+  short of its ends -, across R when R is wider than high (between the rows of a wrapped bar) }
+procedure UIDrawToolSeparator(DC: HDC; const R: TRect; Back: TColor);
+{ the grey of the menus' and the tool bars' separators on Back }
+function UISeparatorColor(Back: TColor): TColor;
 
 { --- drawing primitives --------------------------------------------------------------------- }
 
@@ -3027,17 +3031,23 @@ begin
   LoadEmptyPicture(V, Container, PictureName);
 end;
 
-procedure UIDrawToolSeparator(DC: HDC; const R: TRect);
+procedure UIDrawToolSeparator(DC: HDC; const R: TRect; Back: TColor);
 const
-  SeparatorWidth = 8;               // a TToolButton separator's
+  Inset = 2;                        // the line's ends from R's, and its place left of R's middle:
+                                    // where the theme's separator has its line
 var
-  S: TRect;
+  C: TColor;
 begin
-  if not ThemeServices.ThemesEnabled then Exit;
-  S := R;
-  S.Left := R.Left + (R.Right - R.Left - SeparatorWidth) div 2;
-  S.Right := S.Left + SeparatorWidth;
-  ThemeServices.DrawElement(DC, ThemeServices.GetElementDetails(ttbSeparatorNormal), S);
+  C := UISeparatorColor(Back);
+  if R.Right - R.Left > R.Bottom - R.Top then
+    UIHLine(DC, R.Left + Inset, R.Right - Inset, R.Top + (R.Bottom - R.Top) div 2 - Inset, C)
+  else
+    UIVLine(DC, R.Left + (R.Right - R.Left) div 2 - Inset, R.Top + Inset, R.Bottom - Inset, C);
+end;
+
+function UISeparatorColor(Back: TColor): TColor;
+begin
+  Result := UIBlend(clBtnShadow, Back, 60);
 end;
 
 procedure UIFill(DC: HDC; const R: TRect; Color: TColor);
@@ -4364,7 +4374,7 @@ begin
       first item and below the last cannot be drawn on, a shade stopped short there) }
     if Item.IsLine then
     begin
-      UIHLine(DC, R.Left + MenuSeparatorX, R.Right, (R.Top + R.Bottom) div 2, UIBlend(clBtnShadow, Back, 60));
+      UIHLine(DC, R.Left + MenuSeparatorX, R.Right, (R.Top + R.Bottom) div 2, UISeparatorColor(Back));
       Exit;
     end;
     if Selected and not Disabled then DrawAccent(DC, R, Back, True);
@@ -4796,6 +4806,26 @@ begin
     end;
 end;
 
+{ the bar's separators in D7 Studio's grey (UIDrawToolSeparator) over the theme's: each one's place
+  on the bar's ground, its line again. Custom draw sends no item notice for a separator, so this
+  comes after the bar has painted (in its buffer: nothing of the theme's line reaches the screen) }
+procedure DrawSeparators(Bar: TToolBar; DC: HDC);
+var
+  I, N: Integer;
+  B: TTBButton;
+  R: TRect;
+begin
+  N := SendMessage(Bar.Handle, TB_BUTTONCOUNT, 0, 0);
+  for I := 0 to N - 1 do
+    if (SendMessage(Bar.Handle, TB_GETBUTTON, I, LPARAM(@B)) <> 0) and
+      (B.fsStyle and TBSTYLE_SEP <> 0) and (B.fsState and TBSTATE_HIDDEN = 0) and
+      (SendMessage(Bar.Handle, TB_GETITEMRECT, I, LPARAM(@R)) <> 0) then
+    begin
+      UIFill(DC, R, Bar.Color);
+      UIDrawToolSeparator(DC, R, Bar.Color);
+    end;
+end;
+
 { the bar's disabled image list as UIDisabledImages says, before it paints (the VCL sets none
   while the bar has no DisabledImages of its own, so the bar keeps it) }
 procedure SyncDisabledImages(Bar: TToolBar);
@@ -4843,7 +4873,12 @@ begin
         begin
           { a view's bar on its own ground, over the parent's that a flat bar has drawn first }
           if FOwnGround then UIFill(CD^.nmcd.hdc, CD^.nmcd.rc, TToolBar(FControl).Color);
-          Message.Result := CDRF_NOTIFYITEMDRAW;
+          Message.Result := CDRF_NOTIFYITEMDRAW or CDRF_NOTIFYPOSTPAINT;
+        end;
+      CDDS_POSTPAINT:
+        begin
+          DrawSeparators(TToolBar(FControl), CD^.nmcd.hdc);
+          Message.Result := CDRF_DODEFAULT;
         end;
       CDDS_ITEMPREPAINT:
         begin

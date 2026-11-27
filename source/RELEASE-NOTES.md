@@ -11,6 +11,31 @@ installing in [README.md](README.md).
 
 ## [Unreleased]
 
+## [1.0.3.3] - 2026-11-27
+
+### Changed
+
+- **Code editor**: code folding and the modified line indicators (the change bars) are on by default
+  (*Editor Options ▸ Display ▸ Margin and gutter*). Settings that already turn them off keep them off.
+- **Form designer**: a tool bar at the top of the design view holds the designer's commands: *Scale...*,
+  *Tab Order...*, *Creation Order...*, *Flip Children* (its arrow offers *All* and *Selected*), *Lock
+  Controls*, *Bring to Front*, *Send to Back*, *Align...*, *Size...*, *Align to Grid* and the ten
+  alignments, each enabled when it applies to the selection.
+- **Form designer**: *Align to Grid*, *Flip Children ▸ All* and *Selected* have icons, and *Align...*
+  and *Scale...* new ones, in the menus too.
+- **IDE**: tool bar separators are drawn in the lighter grey of the menus' separators.
+
+### Fixed
+
+- **Form designer**: *Align to Grid*, *Bring to Front*, *Send to Back* and *Flip Children ▸ Selected* are
+  disabled while no control is selected (they never act on the form itself), and *Flip Children ▸ All*
+  while the form has no control.
+
+### Removed
+
+- **IDE**: the floating Alignment Palette, with *View ▸ Alignment Palette* and its tool bar button; its
+  buttons are on the design view's bar. *Edit ▸ Align...* stays.
+
 ## [1.0.3.2] - 2026-11-27
 
 ### Added
@@ -187,7 +212,8 @@ The first release.
   its settings. It also installs Microsoft's WinHelp viewer, which shows Delphi 7's help on
   Windows 10 and 11.
 
-[Unreleased]: https://github.com/iznoguuud/d7studio/compare/v1.0.3.2...HEAD
+[Unreleased]: https://github.com/iznoguuud/d7studio/compare/v1.0.3.3...HEAD
+[1.0.3.3]: https://github.com/iznoguuud/d7studio/compare/v1.0.3.2...v1.0.3.3
 [1.0.3.2]: https://github.com/iznoguuud/d7studio/compare/v1.0.3.1...v1.0.3.2
 [1.0.3.1]: https://github.com/iznoguuud/d7studio/compare/v1.0.3.0...v1.0.3.1
 [1.0.3.0]: https://github.com/iznoguuud/d7studio/compare/v1.0.2.2...v1.0.3.0

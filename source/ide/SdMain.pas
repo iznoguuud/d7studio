@@ -101,6 +101,7 @@ type
     function NavigationBar: TWinControl; override;
     function ZoomBar: TWinControl; override;
     function HistoryBar: TWinControl; override;
+    function DesignerBar: TWinControl; override;
     procedure HistoryViewMade(View: TSdHistoryView); override;
     procedure PageBarChanged(Page: TEditorPage); override;
     procedure PageEdited(Page: TEditorPage; Position, LinesAdded: Integer); override;
@@ -141,8 +142,6 @@ type
     tbSep5: TToolButton;
     tbSep6: TToolButton;
     tbSep7: TToolButton;
-    tbSepAlign: TToolButton;
-    tbViewAlignPalette: TToolButton;
     tbBuild: TToolButton;
     tbCompile: TToolButton;
     tbReset: TToolButton;
@@ -358,7 +357,6 @@ type
     SearchFindErrCommand: TAction;
     SearchSymbolCommand: TAction;
     ViewToDoListCommand: TAction;
-    ViewAlignPaletteCommand: TAction;
     ViewBrowserCommand: TAction;
     ViewCodeExplorerCommand: TAction;
     ecViewExplorer: TAction;
@@ -521,7 +519,6 @@ type
     ViewObjInspItem: TMenuItem;
     ViewObjTreeViewItem: TMenuItem;
     ViewToDoListItem: TMenuItem;
-    ViewAlignItem: TMenuItem;
     ViewBrowserItem: TMenuItem;
     CodeExplorer: TMenuItem;
     ViewCompListItem: TMenuItem;
@@ -640,6 +637,9 @@ type
     ClosedFilesPopup: TPopupMenu;
     ProcessMenu: TPopupMenu;
     DesktopsMenu: TPopupMenu;
+    FlipChildrenPopup: TPopupMenu;
+    FlipChildrenAllItem: TMenuItem;
+    FlipChildrenSelectedItem: TMenuItem;
     miProcess: TMenuItem;
     ToolbarsPopup: TPopupMenu;
     miPopTbCustomize: TMenuItem;
@@ -672,19 +672,37 @@ type
     aAlignVWinCenter: TAction;
     aAlignVSpace: TAction;
     aAlignBottoms: TAction;
-    AlignBar: TToolBar;
+    DesignerBar: TToolBar;
     ThreadList: TListView;
     ModuleList: TListView;
+    tbAlGrid: TToolButton;
+    tbAlSep0: TToolButton;
     tbAl0: TToolButton;
     tbAl1: TToolButton;
     tbAl2: TToolButton;
     tbAl3: TToolButton;
     tbAl4: TToolButton;
+    tbAlSep1: TToolButton;
     tbAl5: TToolButton;
     tbAl6: TToolButton;
     tbAl7: TToolButton;
     tbAl8: TToolButton;
     tbAl9: TToolButton;
+    tbDsnSep0: TToolButton;
+    tbDsnFront: TToolButton;
+    tbDsnBack: TToolButton;
+    tbDsnSep1: TToolButton;
+    tbDsnAlign: TToolButton;
+    tbDsnSize: TToolButton;
+    tbDsnScale: TToolButton;
+    tbDsnSep2: TToolButton;
+    tbDsnTabOrder: TToolButton;
+    tbDsnCreationOrder: TToolButton;
+    tbDsnSep3: TToolButton;
+    tbDsnFlip: TToolButton;
+    tbDsnSep4: TToolButton;
+    tbDsnLock: TToolButton;
+    tbDsnSep5: TToolButton;
     aRecordMacro: TAction;
     aPlayMacro: TAction;
     aOpenFileAtCursor: TAction;
@@ -859,7 +877,7 @@ type
     pmMh3: TMenuItem;
     pmMh4: TMenuItem;
     { the dock's commands alone: the menu of the captions and tabs of the views without a menu of
-      their own (the experts' views, the debugger's Threads ... FPU, the Alignment Palette) }
+      their own (the experts' views, the debugger's Threads ... FPU) }
     DockPopup: TPopupMenu;
     pmMsgInfo: TMenuItem;
     LogPopup: TPopupMenu;
@@ -893,7 +911,7 @@ type
     procedure ActTwin(Sender: TObject);
     procedure ActEditorMenu(Sender: TObject);
     procedure ActBookmark(Sender: TObject);
-    procedure ActAlignPalette(Sender: TObject);
+    procedure ActAlign(Sender: TObject);
     procedure ActFormText(Sender: TObject);
     procedure StructTimerTick(Sender: TObject);
     { the actions }
@@ -1028,7 +1046,6 @@ type
     FInheritRenames: TStringList;    // renames the forms built from a form or frame follow: 'class|old|new' (WMInheritRename)
     FDock: TSdDock;                  // the docked tool views (SdDock)
     FCustomize: TCustomizeDlg;       // View | Toolbars | Customize while it is open
-    FAlignPanel: TSdDockPanel;       // View | Alignment Palette
     FCpuView: TSdCpuView;            // View | Debug Windows | CPU (SdCpuView)
     FCpuStepping: Boolean;           // the last run command came from the CPU view's disassembly
     FMachinePanels: array[0..4] of TSdDockPanel;   // Thread Status, Modules, CPU, FPU, Debug Inspector
@@ -1243,7 +1260,7 @@ type
     procedure DebugInspDescend(Sender: TObject);
     procedure BrowserFiles(Sender: TObject; Files: TStrings);
     procedure BrowserGoto(Sender: TObject; const FileName: string; Line, Col: Integer);
-    procedure AlignPaletteKind(A: TObject; out Kind: TAlignKind; out Need: Integer);
+    function AlignActionKind(A: TObject; out Kind: TAlignKind; out Need: Integer): Boolean;
     procedure OpenFileAtCursor;
     procedure AddTodoItem;
     function TodoDialog(Mode: TTodoDlgMode; var V: TTodoValues): Boolean;
@@ -2555,6 +2572,11 @@ begin
   Result := FMain.FileHistoryBar;
 end;
 
+function TMainServices.DesignerBar: TWinControl;
+begin
+  Result := FMain.DesignerBar;
+end;
+
 { the History tab's menu: the timeline's commands on its list, the diff's on its windows (HistoryMenuPopup) }
 procedure TMainServices.HistoryViewMade(View: TSdHistoryView);
 begin
@@ -2992,16 +3014,6 @@ begin
   ExpertFormHook := FExpertViews.Adopt;
   ExpertDropHook := FExpertViews.DropModule;
   PaletteToolHook := PaletteToolClick;
-  { Delphi's floating Alignment Palette: a view that only floats (it never docks), its window
-    fitted to the 5 x 2 buttons in the middle of the work area until it is moved (a saved
-    arrangement has its place), hidden until View | Alignment Palette }
-  { no flicker when its window is resized: opaque (a transparent bar erases through the dock
-    before its buttons paint) and painted in memory }
-  AlignBar.DoubleBuffered := True;
-  FAlignPanel := FDock.AddPanel(AlignBar, 'AlignmentPalette', 'Align', FLeftArea);
-  FDock.SetFloatOnly(FAlignPanel, FDock.FloatRectFor(5 * AlignBar.ButtonWidth + 2,
-    2 * AlignBar.ButtonHeight + 2));
-  FDock.HidePanel(FAlignPanel);
   { the Code Explorer above the Components view: left of the editor, where Delphi 7 docks it }
   FCodeExpPanel := FDock.AddPanel(FCodeExp, 'CodeExplorer', 'Code Explorer', FLeftArea);
   FCodeExpPanel.FocusControl := FCodeExp.Tree;
@@ -3284,7 +3296,7 @@ end;
   commands by Delphi's names): a tool bar kept with them
   ([ToolbarButtons]) is read with today's }
 const
-  RenamedActions: array[0..131] of array[0..1] of string = (
+  RenamedActions: array[0..130] of array[0..1] of string = (
     ('aNewApp', 'FileNewVclApplicationCommand'), ('aNewDataModule', 'FileNewVclDataModuleCommand'),
     ('aNewForm', 'FileNewVclFormCommand'), ('aNewFrame', 'FileNewVclFrameCommand'),
     ('aNewUnit', 'FileNewUnitCommand'), ('aNewOther', 'FileNewCommand'),
@@ -3308,7 +3320,7 @@ const
     ('aFindError', 'SearchFindErrCommand'), ('aBrowseSymbol', 'SearchSymbolCommand'),
     ('aViewProject', 'ViewPrjMgrCommand'), ('aViewInspector', 'ViewObjInspCommand'),
     ('aViewStructure', 'ViewObjTreeViewCommand'), ('aViewTodo', 'ViewToDoListCommand'),
-    ('aViewAlignPalette', 'ViewAlignPaletteCommand'), ('aViewBrowser', 'ViewBrowserCommand'),
+    ('aViewBrowser', 'ViewBrowserCommand'),
     ('aViewCodeExplorer', 'ViewCodeExplorerCommand'), ('aViewCompList', 'ViewCompListCommand'),
     ('aViewWindowList', 'ViewWindowListCommand'), ('aViewMsgInfo', 'ViewAddlMsgInfoCommand'),
     ('aViewBreaks', 'DebugBreakPointsCommand'), ('aViewStack', 'DebugCallStackCommand'),
@@ -3678,7 +3690,7 @@ end;
 { Delphi's Customize stays open beside the IDE. Every command with an icon can go on a bar: by
   the menu of
   the main menu that has it (its items and submenus), the others - the local menus' commands, the
-  Alignment Palette's - by their category }
+  designer's alignments - by their category }
 procedure TMainForm.ShowCustomize;
 
   function Listed(A: TBasicAction): Boolean;
@@ -3818,7 +3830,7 @@ begin
   aPaneBottomFull.Checked := (FMenuPanel <> nil) and FMenuPanel.Group.Area.Outer and
     (FMenuPanel.Group.Area.Edge = FBottomFullArea.Edge);
   aPaneFloat.Checked := (FMenuPanel <> nil) and FMenuPanel.Group.Floating;
-  { a float-only view (the Alignment Palette) stays where it is }
+  { a float-only view (TSdDock.SetFloatOnly) stays where it is }
   Dockable := (FMenuPanel = nil) or not FMenuPanel.Group.FloatOnly;
   aPaneLeft.Enabled := Dockable;
   aPaneRight.Enabled := Dockable;
@@ -5556,9 +5568,6 @@ begin
   aZoomFit.Enabled := (ZV <> nil) and ZV.CanZoomFit;
   if ShowZoomFit(ZV) then ArrangePageBar(ActiveDoc);
   aFormatSource.Enabled :=(Ed <> nil) and not Ed.ReadOnly and P.CanFormat;
-  EditAlignGridCommand.Enabled := D <> nil;
-  EditFrontCommand.Enabled := D <> nil;
-  EditBackCommand.Enabled := D <> nil;
   EditLockControlsCommand.Enabled := D <> nil;
   EditLockControlsCommand.Checked := (D <> nil) and D.Locked;
   SearchFindCommand.Enabled := Ed <> nil;
@@ -5715,7 +5724,6 @@ begin
   RunRegisterComCommand.Enabled := ProjectCompileCommand.Enabled and FProject.IsLibrary and (FProject.Platform = spWin32);
   RunUnregisterComCommand.Enabled := RunRegisterComCommand.Enabled;
   RunShowCSIPCommand.Enabled := Paused;
-  EditFlipChildrenAllCommand.Enabled := D <> nil;
   EditAlignCommand.Enabled := (D <> nil) and (D.SelectionCount > 0) and (D.Selections[0] <> D.Root);
   EditSizeCommand.Enabled := EditAlignCommand.Enabled;
   EditScaleCommand.Enabled := D <> nil;
@@ -5725,21 +5733,28 @@ begin
   SearchFindErrCommand.Enabled := HasProj and not FCompiler.Running;
   SearchSymbolCommand.Enabled := HasProj or Pas;
   ProjectInformationCommand.Enabled := HasProj;
-  EditFlipChildrenSelectedCommand.Enabled := (D <> nil) and (D.SelectionCount > 0);
+  { Align to Grid, Bring to Front, Send to Back and Flip Children | Selected act on the selected
+    controls, never on the form: enabled while one is selected; Flip Children | All mirrors the
+    form's controls: enabled while it has one }
+  if D <> nil then N := SelectedControlCount(D) else N := 0;
+  EditAlignGridCommand.Enabled := N > 0;
+  EditFrontCommand.Enabled := N > 0;
+  EditBackCommand.Enabled := N > 0;
+  EditFlipChildrenSelectedCommand.Enabled := N > 0;
+  EditFlipChildrenAllCommand.Enabled := (D <> nil) and (D.Root is TWinControl) and
+    (TWinControl(D.Root).ControlCount > 0);
   { the menus' own names of commands: their states }
   for I := 0 to High(FTwins) do
   begin
     FTwins[I, 0].Enabled := FTwins[I, 1].Enabled;
     FTwins[I, 0].Checked := FTwins[I, 1].Checked;
   end;
-  { the Alignment Palette }
-  if D <> nil then N := SelectedControlCount(D) else N := 0;
-  for I := 0 to AlignBar.ButtonCount - 1 do
-    if AlignBar.Buttons[I].Action is TAction then
-    begin
-      AlignPaletteKind(AlignBar.Buttons[I].Action, AK, Need);
-      TAction(AlignBar.Buttons[I].Action).Enabled := N >= Need;
-    end;
+  { the ten alignments of the designer's tool bar by the selected controls N (its other buttons'
+    commands have their states above) }
+  for I := 0 to DesignerBar.ButtonCount - 1 do
+    if (DesignerBar.Buttons[I].Action is TAction) and
+      AlignActionKind(DesignerBar.Buttons[I].Action, AK, Need) then
+      TAction(DesignerBar.Buttons[I].Action).Enabled := N >= Need;
   RunTraceToSourceCommand.Enabled := FDebug.ShownPaused or RunTraceIntoCommand.Enabled;
   aGotoAddress.Enabled := FDebug.ShownPaused;
   { View as Text / View as Form (Alt+F12) }
@@ -13320,20 +13335,29 @@ begin
   end;
 end;
 
-{ View | Alignment Palette: Delphi's ten alignments of the selected controls (TFormDesigner.
-  AlignSelected); the edges and centers need two controls, spacing three, centering one }
-procedure TMainForm.AlignPaletteKind(A: TObject; out Kind: TAlignKind; out Need: Integer);
+{ the designer's page bar: Delphi's ten alignments of the selected controls (TFormDesigner.
+  AlignSelected); the edges and centers need two controls, spacing three, centering one. False
+  for an action that is none of the ten }
+function TMainForm.AlignActionKind(A: TObject; out Kind: TAlignKind; out Need: Integer): Boolean;
 begin
-    if A = aAlignLeftEdges then Kind := akLeftEdges
-    else if A = aAlignHCenters then Kind := akHCenters
-    else if A = aAlignHWinCenter then Kind := akCenterInWindowH
-    else if A = aAlignHSpace then Kind := akSpaceEquallyH
-    else if A = aAlignRightEdges then Kind := akRightEdges
-    else if A = aAlignTops then Kind := akTopEdges
-    else if A = aAlignVCenters then Kind := akVCenters
-    else if A = aAlignVWinCenter then Kind := akCenterInWindowV
-    else if A = aAlignVSpace then Kind := akSpaceEquallyV
-    else Kind := akBottomEdges;
+  Result := True;
+  if A = aAlignLeftEdges then Kind := akLeftEdges
+  else if A = aAlignHCenters then Kind := akHCenters
+  else if A = aAlignHWinCenter then Kind := akCenterInWindowH
+  else if A = aAlignHSpace then Kind := akSpaceEquallyH
+  else if A = aAlignRightEdges then Kind := akRightEdges
+  else if A = aAlignTops then Kind := akTopEdges
+  else if A = aAlignVCenters then Kind := akVCenters
+  else if A = aAlignVWinCenter then Kind := akCenterInWindowV
+  else if A = aAlignVSpace then Kind := akSpaceEquallyV
+  else if A = aAlignBottoms then Kind := akBottomEdges
+  else
+  begin
+    Kind := akLeftEdges;
+    Need := 0;
+    Result := False;
+    Exit;
+  end;
   case Kind of
     akCenterInWindowH, akCenterInWindowV: Need := 1;
     akSpaceEquallyH, akSpaceEquallyV: Need := 3;
@@ -13342,13 +13366,13 @@ begin
   end;
 end;
 
-procedure TMainForm.ActAlignPalette(Sender: TObject);
+procedure TMainForm.ActAlign(Sender: TObject);
 var
   Kind: TAlignKind;
   Need: Integer;
 begin
-  AlignPaletteKind(Sender, Kind, Need);
-  if ActiveDesigner <> nil then ActiveDesigner.AlignSelected(Kind);
+  if AlignActionKind(Sender, Kind, Need) and (ActiveDesigner <> nil) then
+    ActiveDesigner.AlignSelected(Kind);
 end;
 
 { Edit | Align: Delphi's Alignment dialog on the designer's alignments }
@@ -14299,7 +14323,6 @@ begin
   end
   else if Sender = ViewCompListCommand then ShowComponentList
   else if Sender = ViewToDoListCommand then ViewDockPanel(FBottomPanels[BT_TODO])
-  else if Sender = ViewAlignPaletteCommand then ViewDockPanel(FAlignPanel)
   else if Sender = DebugThreadsCommand then ViewDockPanel(FMachinePanels[0])
   else if Sender = DebugModulesCommand then ViewDockPanel(FMachinePanels[1])
   else if Sender = DebugCPUCommand then ViewDockPanel(FMachinePanels[2])

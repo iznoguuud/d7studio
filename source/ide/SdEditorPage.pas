@@ -61,10 +61,11 @@ type
     { the Diagram tab's tool bar: one for every page, on the bar of the page whose diagram is shown }
     function DiagramBar: TWinControl; virtual; abstract;
     { the main form's other bars lent to the bar of the page shown (SdPageBar): the navigation boxes
-      over the code, the zoom bar, the History tab's tool bar - nil: none }
+      over the code, the zoom bar, the History tab's tool bar, the designer's tool bar - nil: none }
     function NavigationBar: TWinControl; virtual;
     function ZoomBar: TWinControl; virtual;
     function HistoryBar: TWinControl; virtual;
+    function DesignerBar: TWinControl; virtual;
     { a page's History tab is made: its menus (the main form's) }
     procedure HistoryViewMade(View: TSdHistoryView); virtual;
     { what Page's bar holds changed (Editor Options | Navigation bar, another kind of file): the
@@ -668,6 +669,11 @@ begin
 end;
 
 function TIDEServices.HistoryBar: TWinControl;
+begin
+  Result := nil;
+end;
+
+function TIDEServices.DesignerBar: TWinControl;
 begin
   Result := nil;
 end;
@@ -2580,7 +2586,7 @@ var
 begin
   if IDE = nil then Exit;
   if FDesignView then
-    FPageBar.Arrange([IDE.ZoomBar], nil)
+    FPageBar.Arrange([IDE.ZoomBar, IDE.DesignerBar], nil)
   else if FDiagramView then
     FPageBar.Arrange([IDE.ZoomBar, IDE.DiagramBar], nil)
   else if FHistoryView then

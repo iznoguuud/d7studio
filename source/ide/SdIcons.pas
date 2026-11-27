@@ -63,7 +63,7 @@ type
     iiNewComponent, iiInstallComponent, iiImportAX, iiInstallPackages, iiEnvOptions,
     iiEditorOptions, iiDebuggerOptions, iiRepository, iiConfigTools, iiWinSDK, iiDelphiTools,
     iiDirect, iiNextWindow, iiFindInFiles,
-    { View | Alignment Palette: the ten alignments }
+    { the ten alignments of the designer's page bar }
     iiAlignLeft, iiAlignHCenter, iiAlignHWinCenter, iiAlignHSpace, iiAlignRight, iiAlignTop,
     iiAlignVCenter, iiAlignVWinCenter, iiAlignVSpace, iiAlignBottom,
     { View | Diagram: the Diagram tab of a Pascal page, and its tool bar }
@@ -95,7 +95,11 @@ type
     iiFrameTool, iiConsole, iiLibrary, iiTextFile, iiThread, iiBatchFile,
     { File | New | Other's wizards of Delphi 7's own packages: Service, Service Application, Web Server
       Application, XML Data Binding, any other }
-    iiService, iiServiceApp, iiWebServerApp, iiXmlBinding, iiWizard);
+    iiService, iiServiceApp, iiWebServerApp, iiXmlBinding, iiWizard,
+    { Edit | Align to Grid, also on the designer's page bar }
+    iiAlignGrid,
+    { Edit | Flip Children | Selected (All is iiFlipHorz) }
+    iiFlipSelected);
 
 const
   { the icons that also come at 32 x 32 (ICONS32, in this order): File | New | Other's items.

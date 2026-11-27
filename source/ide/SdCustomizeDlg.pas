@@ -311,7 +311,7 @@ begin
         Message.Result := Message.Result or CDRF_NOTIFYPOSTPAINT;
     CDDS_ITEMPOSTPAINT:
       if ListView_GetItemRect(CommandList.Handle, I, R, LVIR_ICON) then
-        UIDrawToolSeparator(CD^.nmcd.hdc, R);
+        UIDrawToolSeparator(CD^.nmcd.hdc, R, CommandList.Color);
   end;
 end;
 

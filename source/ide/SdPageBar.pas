@@ -284,7 +284,7 @@ begin
   UIFill(Canvas.Handle, ClientRect, Color);
   Top := (FInner - FSepHeight) div 2;
   for I := 0 to High(FSeps) do
-    UIDrawToolSeparator(Canvas.Handle, Rect(FSeps[I], Top, FSeps[I] + SepWidth, Top + FSepHeight));
+    UIDrawToolSeparator(Canvas.Handle, Rect(FSeps[I], Top, FSeps[I] + SepWidth, Top + FSepHeight), Color);
 end;
 
 function TSdPageBar.TestText: string;

@@ -248,8 +248,8 @@ begin
   O.CodeDelay := 10;
   O.ErrorInsight := True;
   O.ShowLineNumbers := True;
-  O.ShowFolding := False;
-  O.ShowChangeBars := False;
+  O.ShowFolding := True;
+  O.ShowChangeBars := True;
   O.HighlightBraces := True;
   O.HighlightOccurrences := False;
   O.WordWrap := False;
