@@ -40,6 +40,16 @@ function ExplorerNew(U: TUnitInfo; const ClassName: string; Access: Integer; InU
 function ExplorerRename(U: TUnitInfo; Kind: TExpRenameKind; const ClassName, OldName, NewName: string;
   out NewSource, Error: string): Boolean;
 
+{ where New puts a class's member: Member (its lines, the first indented 4) in the section Access (as
+  ExplorerNew's) of the class ClassName, a field after the section's last field (AsField) - as one
+  insertion of Text at Start; False: Error says why not }
+function ExplorerMemberEdit(U: TUnitInfo; const ClassName: string; Access: Integer; AsField: Boolean;
+  const Member: string; out Start: Integer; out Text, Error: string): Boolean;
+
+{ where New puts the body of the method Name of the class ClassName ('': a plain routine at the
+  unit's end); -1: none }
+function ExplorerBodyPos(U: TUnitInfo; const ClassName, Name: string): Integer;
+
 implementation
 
 const
@@ -1134,6 +1144,38 @@ begin
   end;
   NewSource := ApplyEdits(U.Source, E);
   Result := True;
+end;
+
+function ExplorerMemberEdit(U: TUnitInfo; const ClassName: string; Access: Integer; AsField: Boolean;
+  const Member: string; out Start: Integer; out Text, Error: string): Boolean;
+const
+  AccessVis: array[0..3] of Integer = (4, 1, 2, 3);
+var
+  E: TExpEdits;
+  Cls: TSymbol;
+begin
+  Result := False;
+  Start := -1;
+  Text := '';
+  Error := '';
+  E := nil;
+  EOL := EolOf(U.Source);
+  Cls := FindClass(U, ClassName);
+  if (Cls = nil) or (Cls.TypeDesc = nil) or (Cls.TypeDesc.Kind = tyInterface) then
+  begin
+    Error := Format('Class %s not found', [ClassName]);
+    Exit;
+  end;
+  if (Access < 0) or (Access > 3) then Access := 3;
+  if not PlaceMember(U, Cls.TypeDesc, AccessVis[Access], AsField, Member, E, Error) or (Length(E) <> 1) then Exit;
+  Start := E[0].Start;
+  Text := E[0].Text;
+  Result := True;
+end;
+
+function ExplorerBodyPos(U: TUnitInfo; const ClassName, Name: string): Integer;
+begin
+  if ClassName = '' then Result := UnitEndPos(U) else Result := BodyPos(U, ClassName, Name);
 end;
 
 end.

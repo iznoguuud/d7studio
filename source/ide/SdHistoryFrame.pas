@@ -17,8 +17,8 @@ unit SdHistoryFrame;
     outside D7 Studio, a label ...), the lines it added and removed against the version before it
     and the Pascal routines and types it changed. A unit with a form has a tab for each of its two
     files above it.
-  * On the right the chosen version against the text now (HistoryComparePrevious: against the
-    version before it; two versions chosen with Ctrl or Shift: against each other), line by line
+  * On the right (SdDiffPane) the chosen version against the text now (HistoryComparePrevious:
+    against the version before it; two versions chosen with Ctrl or Shift: against each other), line by line
     with the changed words marked (SdTextDiff), in the code editor's font, colours and zoom: inline
     - a change's removed lines above its added ones, both line numbers in the margin - or side by
     side (HistorySideBySide), the two sides' lines in line and scrolled together. Unchanged
@@ -37,7 +37,7 @@ interface
 
 uses
   Windows, Messages, SysUtils, Classes, Graphics, Controls, Forms, StdCtrls, ExtCtrls,
-  SdUI, SdSplitViewFrame, SdTabStrip, SdSciEdit, SdEncoding, SdTextDiff, SdHistory;
+  SdUI, SdSplitViewFrame, SdTabStrip, SdSciEdit, SdEncoding, SdTextDiff, SdHistory, SdDiffPane;
 
 const
   CM_SD_HISTORYREFRESH = WM_APP + 130;   // the versions changed: read again once the change is over
@@ -66,18 +66,6 @@ type
     Day: Integer;              // hrDay: the local date
   end;
 
-  { a line of a diff window: unchanged, removed or added; on one side an empty line across from the
-    other side's lines; unchanged lines folded away. Its line in the old and the new text (-1: none),
-    its run of the diff }
-  TDiffLineKind = (dlEqual, dlRemoved, dlAdded, dlFiller, dlFold);
-  TDiffLine = record
-    Kind: TDiffLineKind;
-    OldLine, NewLine: Integer;
-    Run: Integer;
-    Folded: Integer;           // dlFold: the lines folded away
-  end;
-  TDiffLines = array of TDiffLine;
-
   TSdHistoryView = class(TSdSplitView)
     Timeline: TListBox;
     DiffHost: TPanel;
@@ -93,7 +81,6 @@ type
     procedure TimelineKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
     procedure TimelineMeasureItem(Control: TWinControl; Index: Integer; var Height: Integer);
     procedure TimelineMouseDown(Sender: TObject; Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
-    procedure DiffHostResize(Sender: TObject);
     procedure FilterPanelResize(Sender: TObject);
     procedure RoutineBoxChange(Sender: TObject);
     procedure FindBoxChange(Sender: TObject);
@@ -108,17 +95,12 @@ type
     FNowBase: Integer;                 // the version the Now row compares with (-1: none)
     FNowAdded, FNowRemoved: Integer;   // ... its lines added and removed (-1: no version)
     FFrom, FTo: Integer;               // compared: versions; -1 the text now (FTo), -2 nothing (FFrom)
-    FLeft, FRight: TSciWindow;
-    FDivider: TPanel;
-    FDiff: TLineDiff;
-    FLinesL, FLinesR: TDiffLines;
-    FExpanded: array of Boolean;       // per run of FDiff: its fold shown whole
+    FPane: TSdDiffPane;                // the comparison of the versions chosen
+
     FTextKeys: TStringList;            // the versions' texts read: <id>|<encoding>|<form> ...
     FTextValues: array of string;      // ... and the texts
     FRoutine: string;                  // the routine filter ('' none)
-    FShownChanges, FShownAdded, FShownRemoved: Integer;   // ... what the diff shows of the changes
     FFind: string;                     // the find box's text, as the timeline is filtered by it
-    FSyncing: Boolean;
     FStale: Boolean;                   // the versions changed while the view was not shown
     FStatus: string;
     FShownOnce: Boolean;
@@ -138,31 +120,9 @@ type
     procedure FileTabsChange(Sender: TObject);
     procedure ChooseCompared;
     procedure Compare(KeepPlace: Boolean);
-    procedure Render;
-    procedure LoadWindow(W: TSciWindow; Texts: TStringList; const Lines: TDiffLines; Count, Digits: Integer;
-      Side: Integer);
-    procedure ArrangeDiff;
     procedure ShowStatus;
-    function NewDiffWindow: TSciWindow;
-    function ActiveWindow: TSciWindow;
-    function LinesOf(Ed: TSciEdit): TDiffLines;
-    function CaretLine(out Lines: TDiffLines): Integer;
-    procedure FocusDiff;
-    procedure ChangeKey(var Key: Word; Shift: TShiftState);
-    function ChangeTarget(Next: Boolean): Integer;
-    procedure CaretTo(Line: Integer);
-    procedure SetTopLine(Line: Integer);
-    procedure DiffUpdateUI(Sender: TObject; Updated: Integer);
-    procedure DiffMouseUp(Sender: TObject; Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
-    procedure DiffDblClick(Sender: TObject);
-    procedure DiffKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
     procedure DiffZoomed(Sender: TObject);
-    procedure ExpandFold(Run: Integer);
-    function ExpandFoldAt(const Lines: TDiffLines; L: Integer): Boolean;
-    procedure MarkFind;
-    function TopNewLine: Integer;
-    procedure ScrollToNewLine(Line: Integer);
-    procedure ShowFirstChange;
+    procedure DiffOpenLine(Sender: TObject);
     procedure CMHistoryRefresh(var Message: TMessage); message CM_SD_HISTORYREFRESH;
   public
     constructor Create(AOwner: TComponent); override;
@@ -234,7 +194,6 @@ uses
   Math, CommCtrl, SdSciDefs, SdZoom;
 
 const
-  Context = 3;                         // unchanged lines shown around a change
   DayNames: array[1..7] of string = ('Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday');
   MonthNames: array[1..12] of string = ('January', 'February', 'March', 'April', 'May', 'June', 'July',
     'August', 'September', 'October', 'November', 'December');
@@ -253,13 +212,6 @@ begin
   finally
     L.Free;
   end;
-end;
-
-{ N and the noun, its plural but for one: "1 change", "3 changes" }
-function CountText(N: Integer; const Noun: string): string;
-begin
-  Result := IntToStr(N) + ' ' + Noun;
-  if N <> 1 then Result := Result + 's';
 end;
 
 { hh:mm of a local time }
@@ -293,14 +245,11 @@ begin
   UINoListPadding(Timeline);
   UIRepaintOnWidth(Timeline);           // its counts at the right, its days' lines across
   UIPageStatus(StatusPanel);
-  FLeft := NewDiffWindow;
-  FRight := NewDiffWindow;
-  FRight.Visible := False;
-  FDivider := TPanel.Create(Self);
-  FDivider.BevelOuter := bvNone;
-  FDivider.Color := clBtnShadow;
-  FDivider.Visible := False;
-  FDivider.Parent := DiffHost;
+  FPane := TSdDiffPane.Create(Self);
+  FPane.Parent := DiffHost;
+  FPane.Align := alClient;
+  FPane.OnZoom := DiffZoomed;
+  FPane.OnOpenLine := DiffOpenLine;
   AddSide(Timeline, True);
   AddSide(DiffHost, False);
   RoutineBox.Items.Add('All routines');
@@ -310,7 +259,6 @@ end;
 destructor TSdHistoryView.Destroy;
 begin
   DropHistory;
-  FreeAndNil(FDiff);
   FTextKeys.Free;
   inherited Destroy;
 end;
@@ -323,19 +271,6 @@ begin
   FreeAndNil(FHistory);
 end;
 
-function TSdHistoryView.NewDiffWindow: TSciWindow;
-begin
-  Result := TSciWindow.Create(Self);
-  Result.Borderless := True;
-  Result.Parent := DiffHost;
-  Result.Edit.DiffView := True;
-  Result.Edit.OnZoom := DiffZoomed;
-  Result.Edit.OnUpdateUI := DiffUpdateUI;
-  Result.Edit.OnMouseUp := DiffMouseUp;
-  Result.Edit.OnDblClick := DiffDblClick;
-  Result.Edit.OnKeyDown := DiffKeyDown;
-end;
-
 function TSdHistoryView.FilterBar: TWinControl;
 begin
   Result := FilterPanel;
@@ -343,18 +278,12 @@ end;
 
 function TSdHistoryView.DiffWindow: TSciWindow;
 begin
-  Result := FLeft;
+  Result := FPane.LeftWindow;
 end;
 
 function TSdHistoryView.SideWindow: TSciWindow;
 begin
-  Result := FRight;
-end;
-
-{ the window that has the keyboard, else the left one }
-function TSdHistoryView.ActiveWindow: TSciWindow;
-begin
-  if HistorySideBySide and FRight.Edit.Focused then Result := FRight else Result := FLeft;
+  Result := FPane.RightWindow;
 end;
 
 { the routine box, then the find box, which takes the rest }
@@ -372,44 +301,6 @@ begin
     Cue := 'Find in versions';
     SendMessage(FindBox.Handle, EM_SETCUEBANNER, 0, LPARAM(PWideChar(Cue)));
   end;
-end;
-
-{ inline: one window; side by side: two halves, a flat line between them; the status line below }
-procedure TSdHistoryView.ArrangeDiff;
-var
-  W, H, Half: Integer;
-begin
-  { not while the frame's .dfm is read: the windows are made after it }
-  if (FLeft = nil) or (FRight = nil) or (FDivider = nil) then Exit;
-  W := DiffHost.ClientWidth;
-  H := DiffHost.ClientHeight - StatusPanel.Height;
-  if H < 0 then H := 0;
-  if HistorySideBySide then
-  begin
-    Half := (W - 1) div 2;
-    FDivider.Visible := True;
-    FRight.Visible := True;
-    if FLeft.HandleAllocated and FRight.HandleAllocated and FDivider.HandleAllocated then
-      UIMoveControls([FLeft, FDivider, FRight], [Rect(0, 0, Half, H), Rect(Half, 0, Half + 1, H),
-        Rect(Half + 1, 0, W, H)])
-    else
-    begin
-      FLeft.SetBounds(0, 0, Half, H);
-      FDivider.SetBounds(Half, 0, 1, H);
-      FRight.SetBounds(Half + 1, 0, W - Half - 1, H);
-    end;
-  end
-  else
-  begin
-    FLeft.SetBounds(0, 0, W, H);
-    FRight.Visible := False;
-    FDivider.Visible := False;
-  end;
-end;
-
-procedure TSdHistoryView.DiffHostResize(Sender: TObject);
-begin
-  ArrangeDiff;
 end;
 
 { --- the versions --- }
@@ -717,13 +608,12 @@ end;
 
 procedure TSdHistoryView.OptionsChanged;
 begin
-  FLeft.Edit.ApplyOptions;
-  FRight.Edit.ApplyOptions;
+  FPane.ApplyOptions;
 end;
 
 procedure TSdHistoryView.SwitchesChanged;
 begin
-  ArrangeDiff;
+  FPane.SideBySide := HistorySideBySide;
   if FHistory <> nil then
   begin
     ChooseCompared;
@@ -763,7 +653,7 @@ begin
       begin
         Key := 0;
         FindTimerTimer(nil);
-        FocusDiff;
+        FPane.FocusDiff;
       end;
     VK_ESCAPE:
       if FindBox.Text <> '' then
@@ -788,7 +678,7 @@ begin
   FindTimer.Enabled := False;
   if (FHistory = nil) or (FindBox.Text = FFind) then
   begin
-    MarkFind;
+    FPane.Find := FFind;
     Exit;
   end;
   FFind := FindBox.Text;
@@ -845,50 +735,6 @@ begin
   end;
 end;
 
-{ the first new-text line in view (-1: none) }
-function TSdHistoryView.TopNewLine: Integer;
-var
-  I: Integer;
-begin
-  Result := -1;
-  I := FLeft.Edit.Sci(SCI_GETFIRSTVISIBLELINE);
-  while (I >= 0) and (I <= High(FLinesL)) do
-  begin
-    if FLinesL[I].NewLine >= 0 then
-    begin
-      Result := FLinesL[I].NewLine;
-      Exit;
-    end;
-    Inc(I);
-  end;
-end;
-
-procedure TSdHistoryView.ScrollToNewLine(Line: Integer);
-var
-  I: Integer;
-begin
-  for I := 0 to High(FLinesL) do
-    if FLinesL[I].NewLine >= Line then
-    begin
-      SetTopLine(I);
-      Exit;
-    end;
-end;
-
-{ line Line of the diff at the top of its windows (side by side: the two in line) }
-procedure TSdHistoryView.SetTopLine(Line: Integer);
-begin
-  FLeft.Edit.Sci(SCI_SETFIRSTVISIBLELINE, Line);
-  if HistorySideBySide then FRight.Edit.Sci(SCI_SETFIRSTVISIBLELINE, Line);
-end;
-
-{ the caret on line Line of the diff, in view (side by side: in both windows) }
-procedure TSdHistoryView.CaretTo(Line: Integer);
-begin
-  FLeft.Edit.GotoLineCol(Line, 0, True);
-  if HistorySideBySide then FRight.Edit.GotoLineCol(Line, 0, True);
-end;
-
 { the versions chosen compared and shown; KeepPlace: the same lines of the text stay in view, else
   the first change comes up }
 procedure TSdHistoryView.Compare(KeepPlace: Boolean);
@@ -897,37 +743,31 @@ var
 begin
   if FHistory = nil then Exit;
   Place := -1;
-  if KeepPlace and (FDiff <> nil) then Place := TopNewLine;
+  if KeepPlace and (FPane.Diff <> nil) then Place := FPane.TopNewLine;
   ChooseCompared;
-  FreeAndNil(FDiff);
-  FDiff := TLineDiff.Create(TextOf(FFrom), TextOf(FTo), HistoryIgnoreBlanks);
-  SetLength(FExpanded, 0);
-  SetLength(FExpanded, FDiff.RunCount);
-  Render;
-  if Place >= 0 then ScrollToNewLine(Place) else ShowFirstChange;
-  MarkFind;
+  FPane.SideBySide := HistorySideBySide;
+  FPane.Routine := FRoutine;
+  FPane.Find := FFind;
+  FPane.FileName := FHost.FileName(FForm);
+  FPane.Encoding := FHost.TextEncoding(FForm);
+  FPane.Compare(TextOf(FFrom), TextOf(FTo), HistoryIgnoreBlanks);
+  if Place >= 0 then FPane.ScrollToNewLine(Place) else FPane.ShowFirstChange;
   ShowStatus;
-end;
-
-{ the caret on the first change, else on the first line }
-procedure TSdHistoryView.ShowFirstChange;
-begin
-  CaretTo(Max(FLeft.Edit.MarkerNext(0, 1 shl MK_DIFF_CHANGE), 0));
 end;
 
 procedure TSdHistoryView.ShowStatus;
 var
   S: string;
 begin
-  if FDiff = nil then Exit;
+  if FPane.Diff = nil then Exit;
   if (FHistory.Count = 0) then
     S := 'No versions yet: D7 Studio keeps one at every save of the file.'
   else
   begin
     S := Described(FFrom) + ' -> ' + Described(FTo);
     if FRoutine <> '' then S := S + ' (' + FRoutine + ')';
-    if FShownChanges = 0 then S := S + ': no differences'
-    else S := S + Format(': %s, +%d -%d', [CountText(FShownChanges, 'change'), FShownAdded, FShownRemoved]);
+    if FPane.ShownChanges = 0 then S := S + ': no differences'
+    else S := S + Format(': %s, +%d -%d', [CountText(FPane.ShownChanges, 'change'), FPane.ShownAdded, FPane.ShownRemoved]);
     if HistoryIgnoreBlanks then S := S + ', blanks ignored';
   end;
   FStatus := S;
@@ -935,405 +775,18 @@ begin
   StatusLabel.Hint := S;
 end;
 
-{ the lines of the diff windows from FDiff: unchanged runs folded (but for a run shown whole, and
-  under a routine filter: the routine's lines alone), a change's removed lines above its added ones -
-  side by side across from each other, the shorter side filled }
-procedure TSdHistoryView.Render;
-type
-  TPendingWord = record
-    Right: Boolean;                    // in the right window, else the left
-    Line, Start, Len, Ind: Integer;
-  end;
-var
-  TL, TR: TStringList;
-  NL, NR, R, CurRun, K, N, Head, Tail, Digits, I: Integer;
-  D: TDiffRun;
-  Side: TDiffSide;
-  Has: array[TDiffSide] of Boolean;   // the routine of the filter is in the side's text ...
-  Span: array[TDiffSide] of TCodeSpan;   // ... on these lines
-  Filtered, Fold: Boolean;
-  Doc: array[TDiffSide] of TIntArray; // a change's lines: their line in a window (-1: not shown)
-  Words: array of TPendingWord;
-  NW: Integer;
-  SA, SB: TDiffSpans;
-  Ed: TSciEdit;
-
-  procedure Put(var Lines: TDiffLines; var Count: Integer; Texts: TStringList; Kind: TDiffLineKind;
-    OldLine, NewLine, Folded: Integer; const Text: string);
-  begin
-    if Count = Length(Lines) then SetLength(Lines, Count * 2 + 64);
-    Lines[Count].Kind := Kind;
-    Lines[Count].OldLine := OldLine;
-    Lines[Count].NewLine := NewLine;
-    Lines[Count].Run := CurRun;
-    Lines[Count].Folded := Folded;
-    Texts.Add(Text);
-    Inc(Count);
-  end;
-
-  procedure AddLine(Right: Boolean; Kind: TDiffLineKind; OldLine, NewLine: Integer; const Text: string;
-    Folded: Integer = 0);
-  begin
-    if Right then Put(FLinesR, NR, TR, Kind, OldLine, NewLine, Folded, Text)
-    else Put(FLinesL, NL, TL, Kind, OldLine, NewLine, Folded, Text);
-  end;
-
-  procedure AddEqual(K: Integer);
-  begin
-    if HistorySideBySide then
-    begin
-      AddLine(False, dlEqual, D.A + K, D.B + K, FDiff.OldLines.Line(D.A + K));
-      AddLine(True, dlEqual, D.A + K, D.B + K, FDiff.NewLines.Line(D.B + K));
-    end
-    else
-      AddLine(False, dlEqual, D.A + K, D.B + K, FDiff.NewLines.Line(D.B + K));
-  end;
-
-  procedure AddFold(Count: Integer);
-  begin
-    AddLine(False, dlFold, -1, -1, '', Count);
-    if HistorySideBySide then AddLine(True, dlFold, -1, -1, '', Count);
-  end;
-
-  procedure AddWord(Right: Boolean; Line, Start, Len, Ind: Integer);
-  begin
-    if NW = Length(Words) then SetLength(Words, NW * 2 + 32);
-    Words[NW].Right := Right;
-    Words[NW].Line := Line;
-    Words[NW].Start := Start;
-    Words[NW].Len := Len;
-    Words[NW].Ind := Ind;
-    Inc(NW);
-  end;
-
-  { the span of the filter's routine in Text }
-  function FindSpan(const Text: string; out S: TCodeSpan): Boolean;
-  var
-    Spans: TCodeSpans;
-    J: Integer;
-  begin
-    Result := False;
-    Spans := CodeSpans(Text);
-    for J := 0 to High(Spans) do
-      if Spans[J].Name = FRoutine then
-      begin
-        S := Spans[J];
-        Result := True;
-        Exit;
-      end;
-  end;
-
-  { line Line of Side's text lies in the filter's routine }
-  function InRoutine(Side: TDiffSide; Line: Integer): Boolean;
-  begin
-    Result := Has[Side] and SpanHolds(Span[Side], Line);
-  end;
-
-  { line K of the change's Side does }
-  function InChange(Side: TDiffSide; K: Integer): Boolean;
-  begin
-    Result := (K < RunLength(D, Side)) and InRoutine(Side, RunStart(D, Side) + K);
-  end;
-
-  function EqualWanted(K: Integer): Boolean;
-  begin
-    if Has[dsNew] then Result := InRoutine(dsNew, D.B + K)
-    else Result := InRoutine(dsOld, D.A + K);
-  end;
-
-  { line K of the change's Side - removed (the old text) or added (the new) - into the right window
-    or the left one, its line there kept for the changed words }
-  procedure AddChanged(Side: TDiffSide; K: Integer; Right: Boolean);
-  var
-    Line: Integer;
-  begin
-    Line := RunStart(D, Side) + K;
-    if Right then Doc[Side][K] := NR else Doc[Side][K] := NL;
-    if Side = dsOld then AddLine(Right, dlRemoved, Line, -1, FDiff.OldLines.Line(Line))
-    else AddLine(Right, dlAdded, -1, Line, FDiff.NewLines.Line(Line));
-  end;
-
-  { the lines of the change's Side shown }
-  function Shown(Side: TDiffSide): Integer;
-  var
-    J: Integer;
-  begin
-    Result := 0;
-    for J := 0 to High(Doc[Side]) do
-      if Doc[Side][J] >= 0 then Inc(Result);
-  end;
-
-begin
-  TL := TStringList.Create;
-  TR := TStringList.Create;
-  try
-    NL := 0;
-    NR := 0;
-    NW := 0;
-    SetLength(FLinesL, 0);
-    SetLength(FLinesR, 0);
-    for Side := dsOld to dsNew do
-      Has[Side] := (FRoutine <> '') and FindSpan(FDiff.Lines(Side).Text, Span[Side]);
-    Filtered := Has[dsOld] or Has[dsNew];
-    { folding only where there are changes to show around }
-    Fold := (FDiff.Changes > 0) and not Filtered;
-    FShownChanges := 0;
-    FShownAdded := 0;
-    FShownRemoved := 0;
-    for R := 0 to FDiff.RunCount - 1 do
-    begin
-      CurRun := R;
-      D := FDiff[R];
-      if D.Kind = dkEqual then
-      begin
-        N := D.LenA;
-        if Filtered then
-        begin
-          for K := 0 to N - 1 do
-            if EqualWanted(K) then AddEqual(K);
-          Continue;
-        end;
-        if R > 0 then Head := Context else Head := 0;
-        if R < FDiff.RunCount - 1 then Tail := Context else Tail := 0;
-        if Fold and not FExpanded[R] and (N > Head + Tail + 1) then
-        begin
-          for K := 0 to Head - 1 do AddEqual(K);
-          AddFold(N - Head - Tail);
-          for K := N - Tail to N - 1 do AddEqual(K);
-        end
-        else
-          for K := 0 to N - 1 do AddEqual(K);
-        Continue;
-      end;
-      { a change: its lines - side by side across from each other, the shorter side filled -, and the
-        pairs of a removed and an added line for the words }
-      for Side := dsOld to dsNew do
-      begin
-        SetLength(Doc[Side], RunLength(D, Side));
-        for K := 0 to High(Doc[Side]) do Doc[Side][K] := -1;
-      end;
-      if HistorySideBySide then
-        for K := 0 to Max(D.LenA, D.LenB) - 1 do
-        begin
-          if Filtered and not InChange(dsOld, K) and not InChange(dsNew, K) then Continue;
-          if K < D.LenA then AddChanged(dsOld, K, False) else AddLine(False, dlFiller, -1, -1, '');
-          if K < D.LenB then AddChanged(dsNew, K, True) else AddLine(True, dlFiller, -1, -1, '');
-        end
-      else
-        for Side := dsOld to dsNew do
-          for K := 0 to RunLength(D, Side) - 1 do
-            if not Filtered or InChange(Side, K) then AddChanged(Side, K, False);
-      { what is shown of the change counts }
-      Inc(FShownRemoved, Shown(dsOld));
-      Inc(FShownAdded, Shown(dsNew));
-      if Shown(dsOld) + Shown(dsNew) > 0 then Inc(FShownChanges);
-      for K := 0 to Min(D.LenA, D.LenB) - 1 do
-        if (Doc[dsOld][K] >= 0) and (Doc[dsNew][K] >= 0) and
-          WordDiff(FDiff.OldLines.Line(D.A + K), FDiff.NewLines.Line(D.B + K), SA, SB) then
-        begin
-          for I := 0 to High(SA) do AddWord(False, Doc[dsOld][K], SA[I].Start, SA[I].Len, IND_DIFF_REMOVED);
-          for I := 0 to High(SB) do AddWord(HistorySideBySide, Doc[dsNew][K], SB[I].Start, SB[I].Len, IND_DIFF_ADDED);
-        end;
-    end;
-    SetLength(FLinesL, NL);
-    SetLength(FLinesR, NR);
-    Digits := Max(Length(IntToStr(Max(FDiff.OldLines.Count, FDiff.NewLines.Count))), 3);
-    if HistorySideBySide then
-    begin
-      LoadWindow(FLeft, TL, FLinesL, NL, Digits, 1);
-      LoadWindow(FRight, TR, FLinesR, NR, Digits, 2);
-    end
-    else
-      LoadWindow(FLeft, TL, FLinesL, NL, Digits, 0);
-    for I := 0 to NW - 1 do
-    begin
-      if Words[I].Right then Ed := FRight.Edit else Ed := FLeft.Edit;
-      Ed.FillIndicator(Words[I].Ind, Ed.PosFromLine(Words[I].Line) + Words[I].Start, Words[I].Len);
-    end;
-  finally
-    TL.Free;
-    TR.Free;
-  end;
-end;
-
-{ a window's text, its lines' grounds, margins and notes; Side: 0 inline (both numbers), 1 the old
-  side, 2 the new side }
-procedure TSdHistoryView.LoadWindow(W: TSciWindow; Texts: TStringList; const Lines: TDiffLines;
-  Count, Digits, Side: Integer);
-var
-  Ed: TSciEdit;
-  S, M, St, OldNo, NewNo, Sign: string;
-  I, NumStyle, SignStyle, LastRun: Integer;
-
-  function Num(N: Integer): string;
-  begin
-    if N >= 0 then Result := IntToStr(N + 1) else Result := '';
-    Result := StringOfChar(' ', Digits - Length(Result)) + Result;
-  end;
-
-begin
-  Ed := W.Edit;
-  S := Texts.Text;
-  if S <> '' then SetLength(S, Length(S) - 2);
-  Ed.SetLanguageFromFile(FHost.FileName(FForm));
-  Ed.LoadFromStringAs(S, FHost.TextEncoding(FForm));
-  Ed.ReadOnly := True;
-  if Side = 0 then Ed.DiffMarginChars := 2 * Digits + 3 else Ed.DiffMarginChars := Digits + 2;
-  LastRun := -1;
-  for I := 0 to Count - 1 do
-  begin
-    OldNo := Num(Lines[I].OldLine);
-    NewNo := Num(Lines[I].NewLine);
-    Sign := ' ';
-    NumStyle := STYLE_DIFF_NUMBERS;
-    SignStyle := STYLE_DIFF_NUMBERS;
-    case Lines[I].Kind of
-      dlRemoved:
-        begin
-          Ed.MarkerAdd(I, MK_DIFF_REMOVED);
-          Sign := '-';
-          NumStyle := STYLE_DIFF_REMOVED;
-          SignStyle := STYLE_DIFF_REMOVED_SIGN;
-        end;
-      dlAdded:
-        begin
-          Ed.MarkerAdd(I, MK_DIFF_ADDED);
-          Sign := '+';
-          NumStyle := STYLE_DIFF_ADDED;
-          SignStyle := STYLE_DIFF_ADDED_SIGN;
-        end;
-      dlFiller:
-        Ed.MarkerAdd(I, MK_DIFF_FILLER);
-      dlFold:
-        begin
-          Ed.MarkerAdd(I, MK_DIFF_FOLD);
-          Ed.SetDiffNote(I, '  ... ' + CountText(Lines[I].Folded, 'unchanged line'));
-        end;
-    end;
-    if (Lines[I].Kind in [dlRemoved, dlAdded, dlFiller]) and (Lines[I].Run <> LastRun) then
-      Ed.MarkerAdd(I, MK_DIFF_CHANGE);
-    if Lines[I].Kind in [dlRemoved, dlAdded, dlFiller] then LastRun := Lines[I].Run else LastRun := -1;
-    case Side of
-      0: M := OldNo + ' ' + NewNo + ' ' + Sign;
-      1: M := OldNo + ' ' + Sign;
-    else
-      M := NewNo + ' ' + Sign;
-    end;
-    St := StringOfChar(Chr(NumStyle), Length(M) - 1) + Chr(SignStyle);
-    Ed.SetDiffMargin(I, M, St);
-  end;
-end;
-
 { --- the diff windows --- }
 
-{ side by side, the other side scrolls with the one that scrolled }
-procedure TSdHistoryView.DiffUpdateUI(Sender: TObject; Updated: Integer);
-var
-  A, B: TSciEdit;
-begin
-  if FSyncing or not HistorySideBySide or (Updated and (SC_UPDATE_V_SCROLL or SC_UPDATE_H_SCROLL) = 0) then Exit;
-  A := TSciEdit(Sender);
-  if A = FLeft.Edit then B := FRight.Edit else B := FLeft.Edit;
-  FSyncing := True;
-  try
-    if B.Sci(SCI_GETFIRSTVISIBLELINE) <> A.Sci(SCI_GETFIRSTVISIBLELINE) then
-      B.Sci(SCI_SETFIRSTVISIBLELINE, A.Sci(SCI_GETFIRSTVISIBLELINE));
-    if B.Sci(SCI_GETXOFFSET) <> A.Sci(SCI_GETXOFFSET) then B.Sci(SCI_SETXOFFSET, A.Sci(SCI_GETXOFFSET));
-  finally
-    FSyncing := False;
-  end;
-end;
-
-{ the lines of a diff window }
-function TSdHistoryView.LinesOf(Ed: TSciEdit): TDiffLines;
-begin
-  if Ed = FRight.Edit then Result := FLinesR else Result := FLinesL;
-end;
-
-{ the lines of the window with the keyboard, and its caret's line }
-function TSdHistoryView.CaretLine(out Lines: TDiffLines): Integer;
-var
-  Ed: TSciEdit;
-begin
-  Ed := ActiveWindow.Edit;
-  Lines := LinesOf(Ed);
-  Result := Ed.CaretLine;
-end;
-
-procedure TSdHistoryView.FocusDiff;
-begin
-  if FLeft.Edit.CanFocus then FLeft.Edit.SetFocus;
-end;
-
-{ Alt+Up / Alt+Down in the timeline or the diff: the previous / next change }
-procedure TSdHistoryView.ChangeKey(var Key: Word; Shift: TShiftState);
-begin
-  if not (Key in [VK_UP, VK_DOWN]) or (Shift <> [ssAlt]) then Exit;
-  GotoChange(Key = VK_DOWN);
-  Key := 0;
-end;
-
-procedure TSdHistoryView.ExpandFold(Run: Integer);
-var
-  Place: Integer;
-begin
-  if (Run < 0) or (Run > High(FExpanded)) then Exit;
-  Place := FLeft.Edit.Sci(SCI_GETFIRSTVISIBLELINE);
-  FExpanded[Run] := True;
-  Render;
-  SetTopLine(Place);
-  MarkFind;
-end;
-
-{ line L of Lines is a fold: its lines shown (False: no fold there) }
-function TSdHistoryView.ExpandFoldAt(const Lines: TDiffLines; L: Integer): Boolean;
-begin
-  Result := (L >= 0) and (L <= High(Lines)) and (Lines[L].Kind = dlFold);
-  if Result then ExpandFold(Lines[L].Run);
-end;
-
-{ a click on a fold shows its lines }
-procedure TSdHistoryView.DiffMouseUp(Sender: TObject; Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
-var
-  Ed: TSciEdit;
-begin
-  if Button <> mbLeft then Exit;
-  Ed := TSciEdit(Sender);
-  ExpandFoldAt(LinesOf(Ed), Ed.Sci(SCI_LINEFROMPOSITION, Ed.Sci(SCI_POSITIONFROMPOINT, X, Y)));
-end;
-
-procedure TSdHistoryView.DiffDblClick(Sender: TObject);
+{ a double click, or Enter, on a line of the diff: its line in the editor }
+procedure TSdHistoryView.DiffOpenLine(Sender: TObject);
 begin
   if CanGotoCode then GotoCode;
-end;
-
-{ Enter: a fold shown, else the line in the editor }
-procedure TSdHistoryView.DiffKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
-var
-  L: Integer;
-  Lines: TDiffLines;
-begin
-  if (Key = VK_RETURN) and (Shift = []) then
-  begin
-    L := CaretLine(Lines);
-    if not ExpandFoldAt(Lines, L) and CanGotoCode then GotoCode;
-    Key := 0;
-  end
-  else
-    ChangeKey(Key, Shift);
 end;
 
 { Ctrl+wheel in a diff window: every editor takes the zoom }
 procedure TSdHistoryView.DiffZoomed(Sender: TObject);
 begin
   if Assigned(OnEditorZoom) then OnEditorZoom(Self);
-end;
-
-{ the find box's text marked in the diff }
-procedure TSdHistoryView.MarkFind;
-begin
-  FLeft.Edit.MarkMatches(FFind, False, False, False);
-  if HistorySideBySide then FRight.Edit.MarkMatches(FFind, False, False, False);
 end;
 
 { --- the timeline --- }
@@ -1504,7 +957,7 @@ end;
 
 procedure TSdHistoryView.TimelineDblClick(Sender: TObject);
 begin
-  FocusDiff;
+  FPane.FocusDiff;
 end;
 
 { Enter: into the diff }
@@ -1513,10 +966,10 @@ begin
   if (Key = VK_RETURN) and (Shift = []) then
   begin
     Key := 0;
-    FocusDiff;
+    FPane.FocusDiff;
   end
   else
-    ChangeKey(Key, Shift);
+    FPane.ChangeKey(Key, Shift);
 end;
 
 procedure TSdHistoryView.SelectRows(A, B: Integer);
@@ -1530,30 +983,14 @@ end;
 
 { --- the commands --- }
 
-{ the line of the change after (before) the caret's line (-1: none) }
-function TSdHistoryView.ChangeTarget(Next: Boolean): Integer;
-var
-  L: Integer;
-  Lines: TDiffLines;
-begin
-  Result := -1;
-  if FDiff = nil then Exit;
-  L := CaretLine(Lines);
-  if Next then Result := ActiveWindow.Edit.MarkerNext(L + 1, 1 shl MK_DIFF_CHANGE)
-  else if L > 0 then Result := ActiveWindow.Edit.Sci(SCI_MARKERPREVIOUS, L - 1, 1 shl MK_DIFF_CHANGE);
-end;
-
 function TSdHistoryView.CanGotoChange(Next: Boolean): Boolean;
 begin
-  Result := ChangeTarget(Next) >= 0;
+  Result := FPane.CanGotoChange(Next);
 end;
 
 procedure TSdHistoryView.GotoChange(Next: Boolean);
-var
-  T: Integer;
 begin
-  T := ChangeTarget(Next);
-  if T >= 0 then CaretTo(T);
+  FPane.GotoChange(Next);
 end;
 
 { a version chosen alone, not the text now }
@@ -1608,10 +1045,10 @@ var
   Lines: TDiffLines;
 begin
   Result := False;
-  if (FDiff = nil) or (FTo <> -1) or (FFrom < 0) or not FHost.CanEdit(FForm) then Exit;
-  L := CaretLine(Lines);
+  if (FPane.Diff = nil) or (FTo <> -1) or (FFrom < 0) or not FHost.CanEdit(FForm) then Exit;
+  L := FPane.CaretLine(Lines);
   Result := (L >= 0) and (L <= High(Lines)) and (Lines[L].Kind in [dlRemoved, dlAdded, dlFiller]) and
-    (Lines[L].Run >= 0) and (FDiff[Lines[L].Run].Kind = dkChange);
+    (Lines[L].Run >= 0) and (FPane.Diff[Lines[L].Run].Kind = dkChange);
 end;
 
 { the text now with the change's new lines replaced by its old ones: the lines before it, the old
@@ -1635,49 +1072,44 @@ var
 
 begin
   if not CanRestoreChange then Exit;
-  L := CaretLine(Lines);
-  D := FDiff[Lines[L].Run];
-  NowL := FDiff.NewLines;
+  L := FPane.CaretLine(Lines);
+  D := FPane.Diff[Lines[L].Run];
+  NowL := FPane.Diff.NewLines;
   Txt := '';
   Joined := False;
   After := D.B + D.LenB;
   Part(NowL, 0, D.B);
-  Part(FDiff.OldLines, D.A, D.LenA);
+  Part(FPane.Diff.OldLines, D.A, D.LenA);
   Part(NowL, After, NowL.Count - After);
-  Place := TopNewLine;
+  Place := FPane.TopNewLine;
   FHost.Restore(FForm, Txt);
   Compare(False);
-  if Place >= 0 then ScrollToNewLine(Place);
+  if Place >= 0 then FPane.ScrollToNewLine(Place);
 end;
 
 function TSdHistoryView.CanGotoCode: Boolean;
 begin
-  Result := (FDiff <> nil) and (FTo = -1) and not FForm and (Length(FLinesL) > 0);
+  Result := (FPane.Diff <> nil) and (FTo = -1) and not FForm and (Length(FPane.LeftLines) > 0);
 end;
 
 { the caret's line in the text now - a removed line's place there }
 procedure TSdHistoryView.GotoCode;
 var
-  L, N: Integer;
-  Lines: TDiffLines;
+  N: Integer;
 begin
   if not CanGotoCode then Exit;
-  L := CaretLine(Lines);
-  if (L < 0) or (L > High(Lines)) then Exit;
-  N := Lines[L].NewLine;
-  if (N < 0) and (Lines[L].Run >= 0) then N := FDiff[Lines[L].Run].B;
-  if N < 0 then N := 0;
-  FHost.GotoLine(N);
+  N := FPane.CaretTextLine(dsNew);
+  if N >= 0 then FHost.GotoLine(N);
 end;
 
 function TSdHistoryView.CanCopy: Boolean;
 begin
-  Result := ActiveWindow.Edit.SelEnd > ActiveWindow.Edit.SelStart;
+  Result := FPane.ActiveWindow.Edit.SelEnd > FPane.ActiveWindow.Edit.SelStart;
 end;
 
 procedure TSdHistoryView.CopySelection;
 begin
-  ActiveWindow.Edit.Copy;
+  FPane.ActiveWindow.Edit.Copy;
 end;
 
 function TSdHistoryView.CanLabel: Boolean;
@@ -1732,7 +1164,7 @@ begin
   Result := Format('%d|%s|%d|%s|%d|%d|%d%d%d|%s|%s|', [Ord(Showing), ExtractFileName(FHost.FileName(FForm)),
     Length(FRows), Sel, FFrom, FTo, Ord(HistorySideBySide), Ord(HistoryIgnoreBlanks), Ord(HistoryComparePrevious),
     FRoutine, FFind]);
-  if FDiff <> nil then Result := Result + Format('%d+%d-%d|', [FShownChanges, FShownAdded, FShownRemoved])
+  if FPane.Diff <> nil then Result := Result + Format('%d+%d-%d|', [FPane.ShownChanges, FPane.ShownAdded, FPane.ShownRemoved])
   else Result := Result + '-|';
   Result := Result + FStatus;
 end;
@@ -1756,24 +1188,8 @@ end;
 
 { a line each of the left (inline) window: kind|old|new|text, then the right window's under [right] }
 procedure TSdHistoryView.DiffText(L: TStrings);
-const
-  Kinds: array[TDiffLineKind] of string = ('=', '-', '+', '~', '...');
-
-  procedure Lines(const A: TDiffLines; W: TSciWindow);
-  var
-    K: Integer;
-  begin
-    for K := 0 to High(A) do
-      L.Add(Format('%s|%d|%d|%s', [Kinds[A[K].Kind], A[K].OldLine + 1, A[K].NewLine + 1, W.Edit.GetLineText(K)]));
-  end;
-
 begin
-  Lines(FLinesL, FLeft);
-  if HistorySideBySide then
-  begin
-    L.Add('[right]');
-    Lines(FLinesR, FRight);
-  end;
+  FPane.DiffText(L);
 end;
 
 end.

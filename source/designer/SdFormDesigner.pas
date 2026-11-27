@@ -626,7 +626,7 @@ function ShiftTemplateText(const Text: string; DX, DY: Integer): string;
 implementation
 
 uses
-  StdCtrls, ComCtrls, Themes, UxTheme, Math, SdOsFrame, SdCrashLog, SdSettings, SdEncoding, SdFileNames;
+  StdCtrls, ComCtrls, Themes, UxTheme, Math, DesignWindows, SdOsFrame, SdCrashLog, SdSettings, SdEncoding, SdFileNames;
 
 const
   RawClassName = 'SdDesignHelper';
@@ -2898,6 +2898,22 @@ begin
   FHintTimer.Tag := 1;
   FHintTimer.Enabled := True;
 end;
+{ The design windows of the packages (action list, collection, menu editors ...) whose designer D
+  is let go of it. One that DesignerClosed closes frees itself later (Release: CM_RELEASE), and
+  its Designer field is cleared then - a call into the designer, which a TFormDesigner, not
+  reference counted, no longer is: freed memory, an access violation once it is reused. }
+procedure ForgetDesigner(const D: IDesigner);
+var
+  I: Integer;
+  F: TCustomForm;
+begin
+  for I := Screen.CustomFormCount - 1 downto 0 do
+  begin
+    F := Screen.CustomForms[I];
+    if (F is TDesignWindow) and (TDesignWindow(F).Designer = D) then TDesignWindow(F).Designer := nil;
+  end;
+end;
+
 destructor TFormDesigner.Destroy;
 begin
   FDestroying := True;
@@ -2914,6 +2930,7 @@ begin
       DesignHost.NotifyDesignerClosed(Self);
     except
     end;
+  ForgetDesigner(Self);
   ClearHelpers;
   FSelection.Clear;
   try

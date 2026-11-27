@@ -277,8 +277,35 @@ function RoutineParamsText(S: TSymbol): string;
   implementation's declaration): the one with S's parameters (overloads, whatever their order),
   else the first; S itself is skipped; nil when there is no other }
 function PairRoutine(S: TSymbol; Routines: TList): TSymbol;
+{ the routine a nested routine R is declared in (nil: R is no nested routine - a method's
+  implementation, a routine of the unit) }
+function OuterOf(R: TRoutineSym): TRoutineSym;
+{ the routines of Tab named Name that have all of the flags Need and none of Skip, added to List
+  (each once; Tab nil: none) }
+procedure AddRoutines(Tab: TSymTable; const Name: string; Need, Skip: TSymFlags; List: TList);
 
 implementation
+
+procedure AddRoutines(Tab: TSymTable; const Name: string; Need, Skip: TSymFlags; List: TList);
+var
+  M: TSymbol;
+begin
+  if Tab = nil then Exit;
+  M := Tab.Find(Name);
+  while M <> nil do
+  begin
+    if (M.Kind = skRoutine) and (M is TRoutineSym) and (M.Flags * Need = Need) and (M.Flags * Skip = []) and
+      (List.IndexOf(M) < 0) then
+      List.Add(M);
+    M := Tab.FindNext(M);
+  end;
+end;
+
+function OuterOf(R: TRoutineSym): TRoutineSym;
+begin
+  if (R.ClassQual = '') and (R.Owner is TRoutineSym) then Result := TRoutineSym(R.Owner)
+  else Result := nil;
+end;
 
 const
   SyncKeywords = [kwBegin, kwConst, kwType, kwVar, kwProcedure, kwFunction,

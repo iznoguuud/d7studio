@@ -87,17 +87,20 @@ type
   private
     FLines: TTipLines;
     FWrap: Integer;              // the width its lines wrap in
-    function TakeLines(const ALines: TTipLines; ASource: TObject; const At: TPoint): TSize;
+    function TakeLines(const ALines: TTipLines; ASource: TObject; Ground: TColor; const At: TPoint): TSize;
   protected
     procedure PaintContent(DC: HDC; const R: TRect); override;
   public
     { ALines for the text at Line (screen: Line.Left where the text starts, Top and Bottom its
       line's): below the line, else above it, else on the side with more room on the work area of
-      Line's monitor; at most 120 characters of the code wide (TipMaxChars) - a longer line wraps }
-    procedure ShowLines(const ALines: TTipLines; const Line: TRect; ASource: TObject);
+      Line's monitor; at most 120 characters of the code wide (TipMaxChars) - a longer line wraps.
+      Ground: the tip's ground (an editor's text in its own colours: the editor's) }
+    procedure ShowLines(const ALines: TTipLines; const Line: TRect; ASource: TObject;
+      Ground: TColor = clWindow);
     { ALines beside Anchor (screen): left of it, its middle level with Anchor's, else right of it
       when the work area of Anchor's monitor has no room on the left; as wide as ShowLines' }
-    procedure ShowLinesBeside(const ALines: TTipLines; const Anchor: TRect; ASource: TObject);
+    procedure ShowLinesBeside(const ALines: TTipLines; const Anchor: TRect; ASource: TObject;
+      Ground: TColor = clWindow);
     function DebugText: string;  // the lines' texts, '|' after each, '--|' for a rule (tests)
   end;
 
@@ -868,13 +871,16 @@ end;
 
 { --- TSdCodeTip --- }
 
-{ ALines and ASource taken, wrapped in the width the work area at At allows: the window's size }
-function TSdCodeTip.TakeLines(const ALines: TTipLines; ASource: TObject; const At: TPoint): TSize;
+{ ALines, ASource and Ground taken, wrapped in the width the work area at At allows: the window's
+  size }
+function TSdCodeTip.TakeLines(const ALines: TTipLines; ASource: TObject; Ground: TColor;
+  const At: TPoint): TSize;
 var
   WA: TRect;
 begin
   FLines := ALines;
   Source := ASource;
+  Color := Ground;
   WA := UIWorkAreaAt(At);
   FWrap := Max(Min(CodeWidth(TipMaxChars), WA.Right - WA.Left - 2 * TipPadX - 2), 1);
   Result := LayoutTipLines(TipDC, FLines, 0, 0, FWrap, tpMeasure, 0, 0);
@@ -882,24 +888,26 @@ begin
   Inc(Result.cy, 2 * TipPadY + 2);
 end;
 
-procedure TSdCodeTip.ShowLines(const ALines: TTipLines; const Line: TRect; ASource: TObject);
+procedure TSdCodeTip.ShowLines(const ALines: TTipLines; const Line: TRect; ASource: TObject;
+  Ground: TColor);
 var
   R: TRect;
   S: TSize;
 begin
-  S := TakeLines(ALines, ASource, Line.TopLeft);
+  S := TakeLines(ALines, ASource, Ground, Line.TopLeft);
   R := Bounds(Line.Left - TipPadX - 1, Line.Bottom, S.cx, S.cy);
   UIFitWorkAreaAt(R, Line.TopLeft);
   UITipOffLine(R, Line);
   ShowAt(R);
 end;
 
-procedure TSdCodeTip.ShowLinesBeside(const ALines: TTipLines; const Anchor: TRect; ASource: TObject);
+procedure TSdCodeTip.ShowLinesBeside(const ALines: TTipLines; const Anchor: TRect; ASource: TObject;
+  Ground: TColor);
 var
   WA, R: TRect;
   S: TSize;
 begin
-  S := TakeLines(ALines, ASource, Anchor.TopLeft);
+  S := TakeLines(ALines, ASource, Ground, Anchor.TopLeft);
   WA := UIWorkAreaAt(Anchor.TopLeft);
   R := Bounds(Anchor.Left - TipPadY - S.cx, (Anchor.Top + Anchor.Bottom - S.cy) div 2, S.cx, S.cy);
   if R.Left < WA.Left then OffsetRect(R, Anchor.Right + TipPadY - R.Left, 0);

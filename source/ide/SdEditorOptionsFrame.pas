@@ -104,6 +104,9 @@ type
     chkScrollMarkers: TCheckBox;
     lbMinimap: TLabel;
     cbMinimap: TComboBox;
+    lbMinimapLayout: TLabel;
+    cbMinimapLayout: TComboBox;
+    chkMinimapLarge: TCheckBox;
     FontName: TComboBox;
     FontSize: TComboBox;
     FontSample: TPanel;
@@ -207,6 +210,7 @@ type
     procedure CompletionSampleClick(Sender: TObject);
     procedure chkKeepHistoryClick(Sender: TObject);
     procedure chkFoldingClick(Sender: TObject);
+    procedure cbMinimapChange(Sender: TObject);
   private
     FOpts: TEditorOptions;            // the values being edited
     FFileType: Integer;               // the file type shown on Source Options
@@ -253,7 +257,7 @@ implementation
 {$R *.dfm}
 
 uses
-  Messages, Math, ToolsAPI, SdUI, SdSciDefs, SdSciLexDefs, SdSciScroll, SdDialogs, SdKeymaps, SdCompletion;
+  Messages, Math, Menus, ToolsAPI, SdUI, SdSciDefs, SdSciLexDefs, SdSciScroll, SdDialogs, SdKeymaps, SdCompletion;
 
 const
   { the syntax highlighters of the Source Options page: Delphi's IDs and names (experts'
@@ -467,6 +471,23 @@ begin
   else C.Text := Value;
 end;
 
+{ a drop-down list whose items stand for Values, in their order: the item of Value, else the item
+  Default (a value of no item); ComboValue: the chosen item's value, Value while none is chosen }
+procedure SetComboValue(C: TComboBox; const Values: array of Integer; Value, Default: Integer);
+var
+  I: Integer;
+begin
+  C.ItemIndex := Default;
+  for I := 0 to High(Values) do
+    if Values[I] = Value then C.ItemIndex := I;
+end;
+
+function ComboValue(C: TComboBox; const Values: array of Integer; Value: Integer): Integer;
+begin
+  if (C.ItemIndex >= 0) and (C.ItemIndex <= High(Values)) then Result := Values[C.ItemIndex]
+  else Result := Value;
+end;
+
 procedure TEditorOptionsFrame.LoadControls;
 var
   I: Integer;
@@ -514,9 +535,16 @@ begin
     chkFoldingClick(nil);
     chkChangeBars.Checked := FOpts.ShowChangeBars;
     chkScrollMarkers.Checked := FOpts.ScrollBarMarkers;
-    cbMinimap.ItemIndex := 1;                 // a value of no item: Enabled + preview, the default
-    for I := 0 to High(MinimapItems) do
-      if MinimapItems[I] = FOpts.Minimap then cbMinimap.ItemIndex := I;
+    SetComboValue(cbMinimap, MinimapItems, FOpts.Minimap, 1);                    // else Enabled + preview
+    { the minimap's menu's two ways, without their access keys }
+    if cbMinimapLayout.Items.Count = 0 then
+    begin
+      cbMinimapLayout.Items.Add(StripHotkey(MinimapModeCaptions[False]));
+      cbMinimapLayout.Items.Add(StripHotkey(MinimapModeCaptions[True]));
+    end;
+    cbMinimapLayout.ItemIndex := Ord(FOpts.MinimapEntire);
+    chkMinimapLarge.Checked := FOpts.MinimapLarge;
+    cbMinimapChange(nil);
     SetCombo(FontName, FOpts.FontName);
     SetCombo(FontSize, IntToStr(FOpts.FontSize));
     { Key Mappings }
@@ -588,7 +616,9 @@ begin
   FOpts.FoldPreview := chkFoldPreview.Checked;
   FOpts.ShowChangeBars := chkChangeBars.Checked;
   FOpts.ScrollBarMarkers := chkScrollMarkers.Checked;
-  if cbMinimap.ItemIndex >= 0 then FOpts.Minimap := MinimapItems[cbMinimap.ItemIndex];
+  FOpts.Minimap := ComboValue(cbMinimap, MinimapItems, FOpts.Minimap);
+  FOpts.MinimapEntire := cbMinimapLayout.ItemIndex = 1;
+  FOpts.MinimapLarge := chkMinimapLarge.Checked;
   if FontName.Text <> '' then FOpts.FontName := FontName.Text;
   FOpts.FontSize := StrToIntDef(FontSize.Text, FOpts.FontSize);
   if (FOpts.FontSize < 6) or (FOpts.FontSize > 72) then FOpts.FontSize := 10;
@@ -1359,6 +1389,17 @@ procedure TEditorOptionsFrame.chkKeepHistoryClick(Sender: TObject);
 begin
   lbHistoryLimit.Enabled := chkKeepHistory.Checked;
   cbHistoryLimit.Enabled := chkKeepHistory.Checked;
+end;
+
+{ the layout and the size count only while there is a minimap }
+procedure TEditorOptionsFrame.cbMinimapChange(Sender: TObject);
+var
+  Shown: Boolean;
+begin
+  Shown := ComboValue(cbMinimap, MinimapItems, MinimapPreview) <> MinimapNone;
+  lbMinimapLayout.Enabled := Shown;
+  cbMinimapLayout.Enabled := Shown;
+  chkMinimapLarge.Enabled := Shown;
 end;
 
 { Fold preview: only with Code folding }

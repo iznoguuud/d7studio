@@ -209,6 +209,73 @@ type
   end;
   TCIErrors = array of TCIError;
 
+  { a place of a symbol's name (TCodeInsight.SymbolPlaces): the file, the name's 0-based offset
+    and length, its line and column (1-based, the column in bytes + 1), the line's text; Decl - the
+    place declares the symbol (its declaration, a routine's implementation heading, a parameter in
+    a heading) }
+  TCIPlace = class
+  public
+    FileName: string;
+    Start, Len, Line, Col: Integer;
+    Decl: Boolean;
+    LineText: string;
+  end;
+
+  { the symbol whose places TCodeInsight.SymbolPlaces gives }
+  TCISymbolInfo = record
+    Name: string;
+    Kind: TCIKind;
+    FileName: string;          // where it is declared ('': the compiler's own)
+    Line: Integer;
+    Owner: string;             // a member's class, record or interface; a local's or a parameter's routine
+    OwnerIsClass: Boolean;     // Owner is a class (not a record, an object or an interface)
+    Visibility: TCIVisibility;
+    Local: Boolean;            // a local variable, parameter, label or nested routine of one routine
+    Overloaded: Boolean;       // a routine with overloads: they are all among the places
+    Hierarchy: Boolean;        // a virtual method: the methods that override it, and those it overrides, too
+    Outside: string;           // the declaration of the hierarchy outside the files ('Unit.TClass.Name'; '': none)
+  end;
+
+  { a name of a range of a file's text (TCodeInsight.NameUses): what it names and how it is used
+    there }
+  TCINameUse = class
+  public
+    Start, Len: Integer;
+    Name: string;              // as written
+    Kind: TCIKind;             // ckUnknown: code insight does not know it
+    Key: string;               // the symbol's identity: its file and place ('' unknown; 'RESULT', 'SELF')
+    Qualified: Boolean;        // after a dot: a member reached through something else
+    Local: Boolean;            // a local variable or parameter of the routine around the range (or of one it is nested in)
+    NestedRoutine: Boolean;    // a routine nested in the routine around the range
+    LocalType: Boolean;        // a type, constant or label declared in the routine around the range
+    TypeText: string;          // a variable's, field's or parameter's type as declared ('' none or unknown)
+    Modifier: string;          // a parameter's: 'var', 'const', 'out' or ''
+    Read, Written: Boolean;    // its value read; assigned (:=, a var or out argument, Inc ..., a member of a record or an index of an array or string assigned)
+    WithStart: Integer;        // a member of a with statement's expression: where that expression begins (-1: none)
+  end;
+
+  { a method a class can be given (TCodeInsight.ClassMethods): one of an interface the class
+    implements, or a virtual, dynamic or abstract method of an ancestor to override }
+  TCIMethodItem = class
+  public
+    Name: string;
+    Owner: string;             // the interface or the ancestor that declares it
+    OwnerUnit: string;         // the unit that declares it
+    FromInterface: Boolean;
+    Abstract: Boolean;         // an ancestor's abstract method
+    Implemented: Boolean;      // an interface's method the class or an ancestor has already (listed when asked for)
+    Keyword: string;           // 'procedure', 'function', 'constructor', 'destructor', 'class function' ...
+    Params: string;            // the parameter list as declared, without its brackets ('': none)
+    ResultType: string;        // a function's result type
+    CallConv: string;          // 'stdcall', 'safecall', 'cdecl' or 'pascal' ('': register)
+    Overload: Boolean;
+    Visibility: TCIVisibility; // an ancestor's method: its visibility there
+  end;
+
+  { what a type is, for what passing a value of it costs (TCodeInsight.TypeCategory) }
+  TCITypeCategory = (tcUnknown, tcOrdinal, tcReal, tcString, tcShortString, tcVariant, tcInterface,
+    tcClass, tcRecord, tcObject, tcArray, tcSet, tcPointer, tcProc, tcFile);
+
   TCodeInsight = class
   private
     FLock: TRTLCriticalSection;
@@ -285,6 +352,48 @@ type
       found with their sources, the classes and records it could be a member of complete with
       their ancestors, the with statements around it resolved. False: it could not be checked }
     function Diagnose(const FileName, Source: string; out Errors: TCIErrors; out Count: Integer): Boolean;
+    { Refactorings. The places in Files that name the symbol of the identifier at Pos of a file's
+      text, resolved as Find Declaration resolves them (Places: TCIPlace, the caller frees them), in
+      the order of Files and of their texts; with a routine's overloads and implementations, a
+      parameter's counterpart in its routine's other heading, a virtual method's hierarchy within
+      Files. The file of Pos counts as one of Files. False: no identifier there, or code insight does
+      not know it }
+    function SymbolPlaces(const FileName, Source: string; Pos: Integer; Files: TStrings;
+      out Info: TCISymbolInfo; Places: TList): Boolean;
+    { the names of the text's range A .. B (0-based offsets, B excluded) - TCINameUse, the caller
+      frees them -, in the text's order }
+    function NameUses(const FileName, Source: string; A, B: Integer; List: TList): Boolean;
+    { the type of the expression in A .. B as a type name to declare a variable with ('Integer',
+      'string', 'TForm1' ...); '' unknown }
+    function ExprTypeName(const FileName, Source: string; A, B: Integer): string;
+    { the units on the search path (and beside FromFile) whose interface declares Name: 'Unit=kind'
+      (kind: 'type', 'routine', 'variable', 'constant'), sorted }
+    procedure UnitsDeclaring(const Name, FromFile: string; Units: TStrings);
+    { the class declared around Pos, or whose method is implemented around it (ClassName), and the
+      methods it can be given (TCIMethodItem, the caller frees them): those of the interfaces it
+      implements that neither it nor an ancestor has - with the others too, Implemented, when All -,
+      and its ancestors' virtual, dynamic and abstract methods it does not override (each once, as
+      the nearest ancestor declares it; not the private ones of another unit). False: no class there }
+    function ClassMethods(const FileName, Source: string; Pos: Integer; All: Boolean; out ClassName: string;
+      List: TList): Boolean;
+    { the values of the enumerated type of the expression in A .. B, in their order, and the type's
+      name. False: the expression's type is not known to be an enumeration }
+    function EnumValues(const FileName, Source: string; A, B: Integer; out TypeName: string;
+      Values: TStrings): Boolean;
+    { what the type TypeText (as a declaration writes it) is, in the scope of Pos }
+    function TypeCategory(const FileName, Source: string; Pos: Integer; const TypeText: string): TCITypeCategory;
+    { the interface of the unit UnitName (as FromFile finds it) declares Name: 1; 0 it does not; -1
+      not known (no source of the unit) }
+    function UnitDeclares(const UnitName, FromFile, Name: string): Integer;
+    { UnitDeclares for many units and names at once: each unit found and read once. Hits gets one
+      TBits per unit of Units (the caller frees them), bit I set when its interface declares Names[I];
+      nil - not known (no source of the unit) }
+    procedure UnitsDeclare(const FromFile: string; Units, Names: TStrings; Hits: TList);
+    { a file's text as code insight reads it: the editor's, else the file's }
+    function ReadText(const FileName: string; out Text: string): Boolean;
+    { every member of the type of the expression in A .. B is known - what a with statement on it
+      brings into scope: a structured type (a class reference's class) whose ancestors are found }
+    function ExprMembersKnown(const FileName, Source: string; A, B: Integer): Boolean;
     property SearchPath: TStrings read GetSearchPath;
     property Defines: TStrings read GetDefines;
     property UnitFiles: TStrings read GetUnitFiles;
@@ -299,12 +408,20 @@ type
     property FileAgeFunc: TCIFileAgeFunc read GetFileAgeFunc write SetFileAgeFunc;
   end;
 
+{ the argument ArgIdx (0-based) of the routine Name, one of the compiler's and the RTL's whose
+  arguments code insight may not know the kinds of (Inc, SetLength, Val, FreeAndNil ...): 1 it is
+  assigned, 0 it is not, -1 Name is no such routine }
+function KnownAssigns(const Name: string; ArgIdx: Integer): Integer;
+
 var
   { diagnostics: exceptions swallowed by the public API (should stay 0) }
   CISwallowedExceptions: Integer = 0;
   CILastException: string = '';
 
 implementation
+
+uses
+  SdFormSrc;
 
 procedure NoteExc;
 begin
@@ -656,6 +773,8 @@ type
     { ComputeWiths' state before token FWNext, of the scan from token FWithIdx (-1: none) - a
       caret further on in the same tokens goes on from there }
     FWithIdx, FWNext, FWDepth, FWPD, FWCount: Integer;
+    { the with (index into Withs) whose members the last name LookupIdent found is one of; -1: none }
+    FWithHit: Integer;
     FSeen: TNameSet;
     FEvalDepth: Integer;
     procedure Place(APos: Integer; Shared: Boolean);
@@ -764,11 +883,6 @@ end;
 { Enclosing routine whose locals are in scope. A method ('procedure TFoo.Bar')
   can never really be nested: when it appears so, the outer routine is an
   unfinished heading typed above it and contributes nothing. }
-function OuterOf(R: TRoutineSym): TRoutineSym;
-begin
-  if (R.ClassQual = '') and (R.Owner is TRoutineSym) then Result := TRoutineSym(R.Owner)
-  else Result := nil;
-end;
 
 { TCIContext }
 
@@ -779,6 +893,7 @@ begin
   U := Eng.LoadCurrent(AFileName, ASource);
   FTokStart := -1;
   FWithIdx := -1;
+  FWithHit := -1;
   Place(APos, False);
 end;
 
@@ -789,6 +904,7 @@ begin
   U := Eng.LoadCurrent(AFileName, ASource);
   FTokStart := -1;
   FWithIdx := -1;
+  FWithHit := -1;
 end;
 
 function TCIContext.ResolveAt(APos: Integer; out R: TResolved): Boolean;
@@ -1773,6 +1889,7 @@ var
   Ps: TList;
 begin
   Result := NoRes;
+  FWithHit := -1;
   if (ClassDesc <> nil) and SameTextP(P, Len, 'SELF') then
   begin
     Result.Kind := rkValue;
@@ -1806,13 +1923,20 @@ begin
         if Result.Kind <> rkType then Result := NoRes;
         Result.Kind := rkValue;
         Result.Sym := nil;
+        FWithHit := -1;
         Exit;
       end;
       Continue;
     end;
     D := ValueDesc(EvalWith(I));
-    if (D <> nil) and (D.Kind in StructKinds) and MemberRes(D, D, P, Len, Result) then Exit;
+    if (D <> nil) and (D.Kind in StructKinds) and MemberRes(D, D, P, Len, Result) then
+    begin
+      { set after the with's own expression was looked up: the last lookup's with }
+      FWithHit := I;
+      Exit;
+    end;
   end;
+  FWithHit := -1;
   // locals and parameters of the enclosing routines
   R := Routine;
   while R <> nil do
@@ -4511,6 +4635,13 @@ begin
   Result := Trim(Copy(S, A + 1, LineEndOf(S, Ofs) - A));
 end;
 
+{ the class, record or interface name a member's implementations are qualified with ('': none) }
+function MemberQual(S: TSymbol): string;
+begin
+  Result := '';
+  if (S.Owner is TTypeDesc) and (TTypeDesc(S.Owner).Sym <> nil) then Result := TTypeDesc(S.Owner).Sym.Name
+  else if S is TRoutineSym then Result := TRoutineSym(S).ClassQual;
+end;
 { Ofs is where one of Targets (symbols of the parser's data) is declared in UU }
 function IsDeclOf(Targets: TList; UU: TUnitInfo; Ofs: Integer): Boolean;
 var
@@ -4559,8 +4690,14 @@ begin
             else if (Depth > 0) and (T.Symbol in [syRParen, syRBracket]) then Dec(Depth)
             else if (Depth = 0) and (T.Symbol = sySemicolon) then Heading := False;
           tkIdent:
-            if SameTextP(T.Ptr, T.PLen, UName) and not (Heading and (Depth > 0) and
-              (Result.IsSy(K + 1, syColon) or Result.IsSy(K + 1, syComma))) then
+            if not SameTextP(T.Ptr, T.PLen, UName) then
+              { not the name }
+            else if Heading and (Depth > 0) and (Result.IsSy(K + 1, syColon) or Result.IsSy(K + 1, syComma)) then
+            begin
+              { a parameter's declaration: one of the targets only by its place }
+              if (TargetUnit = nil) and IsDeclOf(Targets, UF, T.Start) then Hits.Add(Pointer(K));
+            end
+            else
             begin
               Hit := (TargetUnit = nil) and IsDeclOf(Targets, UF, T.Start);
               if not Hit then
@@ -4593,17 +4730,11 @@ var
   S: TSymbol;
   RT: TRawToks;
   K, A, E: Integer;
-  Qual: string;
 begin
   Result := False;
   Places.Clear;
   Decls.Clear;
-  { the identifier at Pos (in it, or at its end) }
-  E := IdentEndAt(Source, Pos);
-  A := Pos;
-  if A > E then A := E;
-  while (A > 0) and IdentTab[Source[A]] do Dec(A);
-  if (A >= E) or (Source[A + 1] in ['0'..'9']) then Exit;
+  if not IdentRangeAt(Source, Pos, A, E) then Exit;
   EnterCriticalSection(FLock);
   try
     try
@@ -4625,12 +4756,7 @@ begin
           S := R.Sym;
           Targets.Add(S);
           { a routine: its implementations name it as well }
-          if (S.Kind = skRoutine) and (S.UnitInfo <> nil) then
-          begin
-            Qual := '';
-            if (S.Owner is TTypeDesc) and (TTypeDesc(S.Owner).Sym <> nil) then Qual := TTypeDesc(S.Owner).Sym.Name;
-            S.UnitInfo.GetImpls(Targets, Qual, S.Name);
-          end;
+          if (S.Kind = skRoutine) and (S.UnitInfo <> nil) then S.UnitInfo.GetImpls(Targets, MemberQual(S), S.Name);
         end;
         if (TargetUnit = nil) and (Targets.Count = 0) then Exit;
         U := FEng.LoadCurrent(FileName, Source);
@@ -4805,19 +4931,6 @@ begin
   end;
 end;
 
-{ the routines of Tab named Name that have all of the flags Need and none of Skip, added to List }
-procedure AddRoutines(Tab: TSymTable; const Name: string; Need, Skip: TSymFlags; List: TList);
-var
-  M: TSymbol;
-begin
-  M := Tab.Find(Name);
-  while M <> nil do
-  begin
-    if (M.Kind = skRoutine) and (M is TRoutineSym) and (M.Flags * Need = Need) and (M.Flags * Skip = []) then
-      List.Add(M);
-    M := Tab.FindNext(M);
-  end;
-end;
 
 { Declarations vs. implementations in a text without syntax errors (Delphi 7's compiler's errors):
   the methods of the unit's classes, its interface's routines and its routines declared forward
@@ -5156,6 +5269,1275 @@ begin
       finally
         Hits.Free;
         Targets.Free;
+      end;
+    except
+      NoteExc;
+      Result := False;
+    end;
+  finally
+    LeaveCriticalSection(FLock);
+  end;
+end;
+
+{ ---------------------------------------------------------------------------- }
+{ Refactorings }
+
+{ the routines named as S in the table S is declared in (its class's members, its routine's
+  locals, its unit's interface and implementation): S's overloads, S among them, into List once }
+procedure AddOverloads(S: TSymbol; List: TList);
+var
+  Tab: TSymTable;
+  Pass: Integer;
+begin
+  for Pass := 0 to 1 do
+  begin
+    Tab := nil;
+    if S.Owner is TTypeDesc then
+    begin
+      if Pass = 0 then Tab := TTypeDesc(S.Owner).Members;
+    end
+    else if S.Owner is TRoutineSym then
+    begin
+      if Pass = 0 then Tab := TRoutineSym(S.Owner).Locals;
+    end
+    else if S.UnitInfo <> nil then
+    begin
+      if Pass = 0 then Tab := S.UnitInfo.IntfSyms else Tab := S.UnitInfo.ImplSyms;
+    end;
+    AddRoutines(Tab, S.Name, [], [], List);
+  end;
+end;
+
+
+function IsVirtualMethod(S: TSymbol): Boolean;
+begin
+  Result := (S.Kind = skRoutine) and (S.Owner is TTypeDesc) and
+    (S.Flags * [sfVirtual, sfDynamic, sfOverride, sfAbstract] <> []);
+end;
+
+function TCodeInsight.SymbolPlaces(const FileName, Source: string; Pos: Integer; Files: TStrings;
+  out Info: TCISymbolInfo; Places: TList): Boolean;
+var
+  AllFiles, Srcs: TStringList;
+  Ctx: TCIContext;
+  R: TResolved;
+  S, Root, M, Other: TSymbol;
+  RS: TRoutineSym;
+  D, RootD, DD, CD: TTypeDesc;
+  TargetUnit, U: TUnitInfo;
+  Targets, Hits, Impls, Base: TList;
+  RT: TRawToks;
+  I, K, Pass, Idx, A, E: Integer;
+  F, Src, UName: string;
+  Tab: TSymTable;
+  OneUnit: Boolean;
+  Place: TCIPlace;
+
+  function InFiles(UU: TUnitInfo): Boolean;
+  var
+    J: Integer;
+  begin
+    Result := False;
+    if (UU = nil) or (UU.FileName = '') then Exit;
+    for J := 0 to AllFiles.Count - 1 do
+      if SameText(AllFiles[J], FEng.NormFileName(UU.FileName)) then
+      begin
+        Result := True;
+        Exit;
+      end;
+  end;
+
+  { the implementations of every routine of Targets that is a declaration }
+  procedure AddImpls;
+  var
+    J, Q: Integer;
+    T: TSymbol;
+  begin
+    Q := Targets.Count;
+    for J := 0 to Q - 1 do
+    begin
+      T := TSymbol(Targets[J]);
+      if (T.Kind = skRoutine) and (T.UnitInfo <> nil) and not (sfImplBody in T.Flags) and
+        not (T.Owner is TRoutineSym) then
+      begin
+        Impls.Clear;
+        T.UnitInfo.GetImpls(Impls, MemberQual(T), T.Name);
+        for Q := 0 to Impls.Count - 1 do
+          if Targets.IndexOf(Impls[Q]) < 0 then Targets.Add(Impls[Q]);
+      end;
+    end;
+  end;
+
+  { the parameter of the routine's other heading (a declaration's implementation, an
+    implementation's declaration) at the place of S in its own }
+  function Counterpart(P: TSymbol): TSymbol;
+  var
+    L: TList;
+    C: TSymbol;
+  begin
+    Result := nil;
+    if not (P.Owner is TRoutineSym) then Exit;
+    RS := TRoutineSym(P.Owner);
+    if RS.UnitInfo = nil then Exit;
+    EnsureParams(RS);
+    if RS.Params = nil then Exit;
+    Idx := RS.Params.IndexOf(P);
+    if Idx < 0 then Exit;
+    L := TList.Create;
+    try
+      if sfImplBody in RS.Flags then
+      begin
+        { an implementation: its declaration in its class, else in the unit }
+        if RS.ClassQual <> '' then
+        begin
+          C := FEng.FindQualified(RS.ClassQual, RS.UnitInfo, True, nil);
+          if (C <> nil) and (C.Kind = skType) and (C.TypeDesc <> nil) then
+          begin
+            CD := FEng.ResolveDesc(C.TypeDesc);
+            if CD <> nil then AddRoutines(CD.Members, RS.Name, [], [], L);
+          end;
+        end
+        else if not (RS.Owner is TRoutineSym) then
+        begin
+          AddRoutines(RS.UnitInfo.IntfSyms, RS.Name, [], [sfImplBody], L);
+          AddRoutines(RS.UnitInfo.ImplSyms, RS.Name, [], [sfImplBody], L);
+        end;
+      end
+      else if not (RS.Owner is TRoutineSym) then
+        RS.UnitInfo.GetImpls(L, MemberQual(RS), RS.Name);
+      C := PairRoutine(RS, L);
+      if not (C is TRoutineSym) then Exit;
+      EnsureParams(TRoutineSym(C));
+      if (TRoutineSym(C).Params <> nil) and (Idx < TRoutineSym(C).Params.Count) and
+        SameText(TSymbol(TRoutineSym(C).Params[Idx]).Name, P.Name) then
+        Result := TSymbol(TRoutineSym(C).Params[Idx]);
+    finally
+      L.Free;
+    end;
+  end;
+
+begin
+  Result := False;
+  Finalize(Info);
+  FillChar(Info, SizeOf(Info), 0);
+  if not IdentRangeAt(Source, Pos, A, E) then Exit;
+  AllFiles := TStringList.Create;
+  Srcs := TStringList.Create;
+  Targets := TList.Create;
+  Hits := TList.Create;
+  Impls := TList.Create;
+  Base := TList.Create;
+  EnterCriticalSection(FLock);
+  try
+    try
+      FEng.BeginCall;
+      { every file whole - the one of Pos with its text -, then the symbol at Pos }
+      for I := 0 to Files.Count - 1 do
+      begin
+        F := FEng.NormFileName(Files[I]);
+        if (AllFiles.IndexOf(F) >= 0) or SameText(F, FEng.NormFileName(FileName)) then Continue;
+        if not SourceFor(Files[I], Src) then Continue;
+        AllFiles.Add(F);
+        Srcs.Add(Src);
+        FEng.LoadCurrent(F, Src);
+      end;
+      AllFiles.Insert(0, FEng.NormFileName(FileName));
+      Srcs.Insert(0, Source);
+      Ctx := TCIContext.Create(FEng, FileName, Source, E);
+      try
+        if Ctx.InComment or Ctx.InString or not Ctx.ResolveHere(R) then Exit;
+      finally
+        Ctx.Free;
+      end;
+      TargetUnit := nil;
+      S := nil;
+      if R.Kind = rkUnit then
+      begin
+        TargetUnit := R.UnitInfo;
+        if TargetUnit = nil then Exit;
+        Info.Name := TargetUnit.Name;
+        Info.Kind := ckUnit;
+        Info.FileName := TargetUnit.FileName;
+        Info.Line := 1;
+      end
+      else
+      begin
+        S := R.Sym;
+        if S = nil then Exit;
+        Info.Name := S.Name;
+        Info.Kind := SymKind(S);
+        if (S.UnitInfo <> nil) and (S.UnitInfo <> FEng.Builtin) then
+        begin
+          Info.FileName := S.UnitInfo.FileName;
+          if (Info.FileName <> '') and (Info.FileName[1] = '<') then Info.FileName := '';
+          Info.Line := S.Line;
+        end;
+        if S.Owner is TTypeDesc then
+        begin
+          if TTypeDesc(S.Owner).Sym <> nil then Info.Owner := TTypeDesc(S.Owner).Sym.Name;
+          Info.OwnerIsClass := TTypeDesc(S.Owner).Kind = tyClass;
+        end
+        else if S.Owner is TRoutineSym then
+          Info.Owner := TRoutineSym(S.Owner).Name;
+        Info.Visibility := TCIVisibility(Ord(S.Visibility));
+        Info.Local := (S.Kind in [skLocal, skParam, skLabel]) or (S.Owner is TRoutineSym);
+        { a virtual method: the one that introduces it, then every override of it in the files }
+        Base.Add(S);
+        if IsVirtualMethod(S) then
+        begin
+          Info.Hierarchy := True;
+          Root := S;
+          RootD := TTypeDesc(S.Owner);
+          while sfOverride in Root.Flags do
+          begin
+            D := FEng.AncestorOf(RootD);
+            if D = nil then Break;
+            M := FEng.FindMember(D, PChar(Root.Name), Length(Root.Name), DD);
+            if (M = nil) or (M.Kind <> skRoutine) or (DD = nil) then Break;
+            Root := M;
+            RootD := DD;
+          end;
+          if sfOverride in Root.Flags then
+            Info.Outside := Root.Name
+          else if not InFiles(Root.UnitInfo) then
+          begin
+            Info.Outside := Root.Name;
+            if RootD.Sym <> nil then Info.Outside := RootD.Sym.Name + '.' + Info.Outside;
+            if Root.UnitInfo <> nil then Info.Outside := Root.UnitInfo.Name + '.' + Info.Outside;
+          end;
+          if Base.IndexOf(Root) < 0 then Base.Add(Root);
+          for I := 0 to AllFiles.Count - 1 do
+          begin
+            U := FEng.LoadCurrent(AllFiles[I], Srcs[I]);
+            for Pass := 0 to 1 do
+            begin
+              if Pass = 0 then Tab := U.IntfSyms else Tab := U.ImplSyms;
+              for K := 0 to Tab.Count - 1 do
+              begin
+                M := Tab[K];
+                if (M.Kind <> skType) or (M.TypeDesc = nil) then Continue;
+                D := FEng.ResolveDesc(M.TypeDesc);
+                if (D = nil) or (D = RootD) or (D.Kind <> tyClass) or (D.Members = nil) or
+                  not FEng.InheritsFrom(D, RootD) then Continue;
+                AddRoutines(D.Members, Root.Name, [sfOverride], [], Base);
+              end;
+            end;
+          end;
+          FEng.LoadCurrent(FileName, Source);
+        end;
+        { routines: every overload, every implementation }
+        for I := 0 to Base.Count - 1 do
+        begin
+          M := TSymbol(Base[I]);
+          if M.Kind = skRoutine then
+          begin
+            K := Targets.Count;
+            AddOverloads(M, Targets);
+            if Targets.Count - K > 1 then Info.Overloaded := True;
+            if Targets.IndexOf(M) < 0 then Targets.Add(M);
+          end
+          else if Targets.IndexOf(M) < 0 then
+            Targets.Add(M);
+        end;
+        AddImpls;
+        { a parameter: its name in the routine's other heading too }
+        if S.Kind = skParam then
+        begin
+          Other := Counterpart(S);
+          if Other <> nil then Targets.Add(Other);
+        end;
+      end;
+      { what can name it: a local only its own unit, a private member, a declaration of the
+        implementation part only their unit (Delphi 7's private is the unit's) }
+      OneUnit := (S <> nil) and (Info.Local or (S.Visibility = viPrivate) and not Info.Hierarchy or
+        (sfInImpl in S.Flags) and not Info.Hierarchy);
+      UName := UpperCase(Info.Name);
+      for I := 0 to AllFiles.Count - 1 do
+      begin
+        if OneUnit and ((S.UnitInfo = nil) or not SameText(AllFiles[I], FEng.NormFileName(S.UnitInfo.FileName))) then
+          Continue;
+        U := FEng.LoadCurrent(AllFiles[I], Srcs[I]);
+        Hits.Clear;
+        RT := NamePlaces(FEng, AllFiles[I], Srcs[I], U, TargetUnit, Targets, UName, Hits);
+        try
+          for K := 0 to Hits.Count - 1 do
+          begin
+            Place := TCIPlace.Create;
+            Places.Add(Place);
+            with RT.T[Integer(Hits[K])] do
+            begin
+              Place.FileName := AllFiles[I];
+              Place.Start := Start;
+              Place.Len := Len;
+              Place.Line := Line;
+              Place.Col := Col;
+              Place.LineText := LineAround(Srcs[I], Start);
+              Place.Decl := (TargetUnit = nil) and IsDeclOf(Targets, U, Start);
+            end;
+          end;
+        finally
+          RT.Free;
+        end;
+      end;
+      Result := Places.Count > 0;
+    except
+      NoteExc;
+      Result := False;
+    end;
+  finally
+    LeaveCriticalSection(FLock);
+    Base.Free;
+    Impls.Free;
+    Hits.Free;
+    Targets.Free;
+    Srcs.Free;
+    AllFiles.Free;
+  end;
+end;
+
+{ the routines whose arguments they assign (Delphi 7's System and the like, whose parameters code
+  insight may not know): 'Name=indexes' of the var arguments, 0-based ('*': every one) }
+const
+  AssigningRoutines: array[0..16] of string = ('INC=0', 'DEC=0', 'SETLENGTH=0', 'INCLUDE=0',
+    'EXCLUDE=0', 'STR=1', 'VAL=1,2', 'READ=*', 'READLN=*', 'FILLCHAR=0', 'MOVE=1', 'INSERT=1',
+    'DELETE=0', 'INITIALIZE=0', 'FINALIZE=0', 'SETSTRING=0', 'FREEANDNIL=0');
+
+function KnownAssigns(const Name: string; ArgIdx: Integer): Integer;
+var
+  I, P: Integer;
+  L: string;
+begin
+  Result := -1;
+  for I := Low(AssigningRoutines) to High(AssigningRoutines) do
+  begin
+    P := System.Pos('=', AssigningRoutines[I]);
+    if SameText(Copy(AssigningRoutines[I], 1, P - 1), Name) then
+    begin
+      L := ',' + Copy(AssigningRoutines[I], P + 1, MaxInt) + ',';
+      if (L = ',*,') or (System.Pos(',' + IntToStr(ArgIdx) + ',', L) > 0) then Result := 1 else Result := 0;
+      Exit;
+    end;
+  end;
+end;
+
+function TCodeInsight.NameUses(const FileName, Source: string; A, B: Integer; List: TList): Boolean;
+var
+  Ctx, Ctx2: TCIContext;
+  RT: TRawToks;
+  R, R2: TResolved;
+  K, J, ArgIdx, E, Known: Integer;
+  T: PToken;
+  NU: TCINameUse;
+  Routine: TRoutineSym;
+  S: TSymbol;
+  D: TTypeDesc;
+  CallName: string;
+
+  { the chain that begins at token K: Name(...)[...]^.Member ... - its last token }
+  function ChainEnd(K: Integer): Integer;
+  var
+    I: Integer;
+  begin
+    I := K + 1;
+    while I < RT.N do
+    begin
+      if RT.IsSy(I, syDot) and (I + 1 < RT.N) and (RT.T[I + 1].Kind = tkIdent) then
+        Inc(I, 2)
+      else if RT.IsSy(I, syCaret) then
+        Inc(I)
+      else if RT.IsSy(I, syLBracket) or RT.IsSy(I, syLParen) then
+      begin
+        I := RT.MatchClose(I);
+        if I < 0 then I := RT.N else Inc(I);
+      end
+      else
+        Break;
+    end;
+    Result := I - 1;
+  end;
+
+  { R's symbol is declared in Routine or in a routine Routine is nested in }
+  function InRoutines(Owner: TObject): Boolean;
+  var
+    X: TRoutineSym;
+  begin
+    Result := False;
+    X := Routine;
+    while X <> nil do
+    begin
+      if Owner = X then
+      begin
+        Result := True;
+        Exit;
+      end;
+      X := OuterOf(X);
+    end;
+  end;
+
+begin
+  EnterCriticalSection(FLock);
+  try
+    try
+      FEng.BeginCall;
+      RT := TRawToks.Create(Source, False);
+      Ctx := TCIContext.CreateShared(FEng, FileName, Source);
+      try
+        Ctx.Place(A, True);
+        Routine := Ctx.Routine;
+        for K := 0 to RT.N - 1 do
+        begin
+          T := @RT.T[K];
+          if T.Start < A then Continue;
+          if T.Start >= B then Break;
+          if T.Kind <> tkIdent then Continue;
+          NU := TCINameUse.Create;
+          List.Add(NU);
+          NU.Start := T.Start;
+          NU.Len := T.Len;
+          SetString(NU.Name, T.Ptr, T.PLen);
+          NU.Qualified := RT.IsSy(K - 1, syDot);
+          NU.Read := True;
+          NU.WithStart := -1;
+          Ctx.FWithHit := -1;
+          if not Ctx.ResolveAt(T.Start + T.Len, R) then R := NoRes;
+          if not NU.Qualified and (Ctx.FWithHit >= 0) and (Ctx.FWithHit < Ctx.WithCount) then
+            NU.WithStart := Ctx.Toks[Ctx.Withs[Ctx.FWithHit].A].Start;
+          S := R.Sym;
+          if (S = nil) and (R.Kind = rkValue) then
+          begin
+            { Self, Result, an exception handler's variable }
+            if SameText(NU.Name, 'RESULT') then NU.Key := 'RESULT'
+            else if SameText(NU.Name, 'SELF') then NU.Key := 'SELF';
+            NU.Kind := ckLocalVar;
+          end
+          else if R.Kind = rkUnit then
+            NU.Kind := ckUnit
+          else if S <> nil then
+          begin
+            NU.Kind := SymKind(S);
+            if S.UnitInfo <> nil then NU.Key := S.UnitInfo.FileName + '#' + IntToStr(S.DeclStart);
+            if S.Kind in [skLocal, skParam] then NU.Local := not NU.Qualified;
+            if (S.Kind = skParam) and not (S.Owner is TRoutineSym) then NU.Local := False;
+            if (S.Kind = skRoutine) and (S.Owner is TRoutineSym) and InRoutines(S.Owner) then NU.NestedRoutine := True;
+            if (S.Kind in [skType, skConst, skLabel, skEnumValue]) and (S.Owner is TRoutineSym) then
+              NU.LocalType := True;
+            if (S.Kind = skType) and (S.TypeDesc <> nil) and (S.TypeDesc.OwnerRoutine <> nil) then NU.LocalType := True;
+            if (S.Kind = skEnumValue) and (S.TypeDesc <> nil) and (S.TypeDesc.OwnerRoutine <> nil) then
+              NU.LocalType := True;
+            if S.Kind in [skVar, skLocal, skParam, skField, skConst, skProperty] then NU.TypeText := FEng.TypeText(S);
+            if S.Kind = skParam then NU.Modifier := ParamModifier(S);
+          end;
+          if NU.Qualified then Continue;
+          { how it is used: assigned, a var argument, a member or element of it assigned }
+          E := ChainEnd(K);
+          if RT.IsSy(E + 1, syAssign) then
+          begin
+            if E = K then
+            begin
+              NU.Written := True;
+              NU.Read := False;
+            end
+            else
+            begin
+              { a member, an element: the variable itself changes unless it refers to what changes }
+              D := nil;
+              if (S <> nil) and (S.TypeDesc <> nil) then D := FEng.ResolveDesc(S.TypeDesc);
+              if (D = nil) or not (D.Kind in [tyClass, tyInterface, tyPointer, tyClassRef]) then NU.Written := True;
+            end;
+          end
+          else if RT.IsSy(K - 1, syAt) then
+            NU.Written := True
+          else if (RT.IsSy(K - 1, syLParen) or RT.IsSy(K - 1, syComma)) and
+            (RT.IsSy(E + 1, syComma) or RT.IsSy(E + 1, syRParen)) then
+          begin
+            { an argument: the call's routine and the argument's place }
+            if RT.ArgumentOf(K, J, ArgIdx) then
+            begin
+              SetString(CallName, RT.T[J].Ptr, RT.T[J].PLen);
+              Known := KnownAssigns(CallName, ArgIdx);
+              if Known >= 0 then
+                NU.Written := Known = 1
+              else
+              begin
+                Ctx2 := TCIContext.Create(FEng, FileName, Source, RT.EndOf(J));
+                try
+                  if not Ctx2.ResolveHere(R2) then R2 := NoRes;
+                finally
+                  Ctx2.Free;
+                end;
+                if (R2.Sym is TRoutineSym) and (R2.Kind = rkRoutine) then
+                begin
+                  EnsureParams(TRoutineSym(R2.Sym));
+                  with TRoutineSym(R2.Sym) do
+                    if (Params <> nil) and (ArgIdx < Params.Count) then
+                    begin
+                      NU.Written := TSymbol(Params[ArgIdx]).Flags * [sfVarParam, sfOutParam] <> [];
+                      if sfOutParam in TSymbol(Params[ArgIdx]).Flags then NU.Read := False;
+                    end;
+                end
+                else if R2.Kind = rkType then
+                  NU.Written := False             // a typecast
+                else
+                  NU.Written := R2.Kind = rkNone; // unknown: it may assign it
+              end;
+            end;
+          end
+          else if RT.IsKw(K - 1, kwFor) and RT.IsSy(K + 1, syAssign) then
+            NU.Written := True;
+        end;
+      finally
+        Ctx.Free;
+        RT.Free;
+      end;
+      Result := True;
+    except
+      NoteExc;
+      Result := False;
+    end;
+  finally
+    LeaveCriticalSection(FLock);
+  end;
+end;
+
+function TCodeInsight.ExprTypeName(const FileName, Source: string; A, B: Integer): string;
+var
+  Ctx: TCIContext;
+
+  function TypeOf(I0, I1: Integer): string; forward;
+
+  { the name of a resolved value's type }
+  function ResName(const R: TResolved; Single: Boolean): string;
+  var
+    D: TTypeDesc;
+  begin
+    Result := '';
+    if R.Kind <> rkValue then Exit;
+    if Single and (R.Sym <> nil) and (R.Sym.Kind in [skVar, skLocal, skParam, skField, skConst]) then
+    begin
+      Result := Ctx.Eng.TypeText(R.Sym);
+      if SameText(Result, 'record') or SameText(Result, 'class') or SameText(Result, 'object') or
+        SameText(Result, 'interface') then Result := '';
+      if Result <> '' then Exit;
+    end;
+    if (R.Sym <> nil) and (R.Sym.Kind = skEnumValue) and (R.Sym.TypeDesc <> nil) and (R.Sym.TypeDesc.Sym <> nil) then
+    begin
+      Result := R.Sym.TypeDesc.Sym.Name;
+      Exit;
+    end;
+    D := R.TD;
+    if D = nil then Exit;
+    if D.Sym <> nil then Result := D.Sym.Name
+    else if (D.Kind in [tyAlias, tyClassRef]) and (D.RefName <> '') then
+    begin
+      Result := D.RefName;
+      if D.Kind = tyClassRef then Result := '';
+    end;
+    if (Result = '') and (R.Sym <> nil) and (R.Sym.Kind = skProperty) then Result := Ctx.Eng.TypeText(R.Sym);
+  end;
+
+  function IsReal(const T: string): Boolean;
+  begin
+    Result := SameText(T, 'Double') or SameText(T, 'Extended') or SameText(T, 'Single') or
+      SameText(T, 'Real') or SameText(T, 'Currency') or SameText(T, 'TDateTime') or SameText(T, 'Comp');
+  end;
+
+  function IsText(const T: string): Boolean;
+  begin
+    Result := SameText(T, 'string') or SameText(T, 'Char') or SameText(T, 'AnsiString') or
+      SameText(T, 'WideString') or SameText(T, 'ShortString') or SameText(T, 'WideChar') or SameText(T, 'AnsiChar');
+  end;
+
+  function Operand(I0, I1: Integer): string;
+  var
+    E: Integer;
+    R: TResolved;
+    Txt: string;
+  begin
+    Result := '';
+    if I0 > I1 then Exit;
+    with Ctx do
+    begin
+      if IsSymAt(I0, syLParen) and (MatchClose(I0, I1) = I1) then
+      begin
+        Result := TypeOf(I0 + 1, I1 - 1);
+        Exit;
+      end;
+      if IsKwAt(I0, kwNot) or IsSymAt(I0, syMinus) or IsSymAt(I0, syPlus) then
+      begin
+        Result := Operand(I0 + 1, I1);
+        Exit;
+      end;
+      if IsSymAt(I0, syAt) or IsKwAt(I0, kwNil) then
+      begin
+        Result := 'Pointer';
+        Exit;
+      end;
+      if I0 = I1 then
+        case Toks[I0].Kind of
+          tkNumber:
+            begin
+              SetString(Txt, Toks[I0].Ptr, Toks[I0].PLen);
+              if (Txt <> '') and (Txt[1] <> '$') and ((System.Pos('.', Txt) > 0) or (System.Pos('E', UpperCase(Txt)) > 0)) then
+                Result := 'Double'
+              else
+                Result := 'Integer';
+              Exit;
+            end;
+          tkString:
+            begin
+              Result := 'string';
+              Exit;
+            end;
+        end;
+      if Toks[I0].Kind = tkString then
+      begin
+        { 'a' + #13 ... }
+        Result := 'string';
+        Exit;
+      end;
+      E := ChainEndForward(I0, I1);
+      if E <> I1 then Exit;
+      R := EvalChain(I0, E, WithCount);
+      Result := ResName(ApplyCall(R), (I0 = E) and (R.Kind = rkValue));
+      if (Result = '') and (R.Kind = rkValue) then Result := ResName(R, I0 = E);
+    end;
+  end;
+
+  function TypeOf(I0, I1: Integer): string;
+  const
+    Compare = [syEqual, syNotEqual, syLess, syLessEq, syGreater, syGreaterEq];
+  var
+    I, Depth, Start: Integer;
+    Ops: array of Integer;
+    T, X: string;
+    Bool, Divi, IntOp, Logic: Boolean;
+  begin
+    Result := '';
+    if I0 > I1 then Exit;
+    Depth := 0;
+    Bool := False;
+    Divi := False;
+    IntOp := False;
+    Logic := False;
+    SetLength(Ops, 0);
+    for I := I0 to I1 do
+      with Ctx.Toks[I] do
+        if Kind = tkSymbol then
+        begin
+          if Symbol in [syLParen, syLBracket] then Inc(Depth)
+          else if Symbol in [syRParen, syRBracket] then Dec(Depth)
+          else if Depth = 0 then
+          begin
+            if Symbol in Compare then Bool := True
+            else if Symbol = sySlash then Divi := True;
+            if Symbol in [syPlus, syMinus, syStar, sySlash] + Compare then
+              if (I > I0) and not ((Ctx.Toks[I - 1].Kind = tkSymbol) and not (Ctx.Toks[I - 1].Symbol in [syRParen, syRBracket, syCaret])) and
+                not ((Ctx.Toks[I - 1].Kind = tkKeyword) and not (Ctx.Toks[I - 1].Keyword in [kwNil, kwString])) then
+              begin
+                SetLength(Ops, Length(Ops) + 1);
+                Ops[High(Ops)] := I;
+              end;
+          end;
+        end
+        else if (Kind = tkKeyword) and (Depth = 0) then
+          case Keyword of
+            kwIn, kwIs: Bool := True;
+            kwDiv, kwMod, kwShl, kwShr:
+              begin
+                IntOp := True;
+                SetLength(Ops, Length(Ops) + 1);
+                Ops[High(Ops)] := I;
+              end;
+            kwAnd, kwOr, kwXor:
+              begin
+                Logic := True;
+                SetLength(Ops, Length(Ops) + 1);
+                Ops[High(Ops)] := I;
+              end;
+            kwAs:
+              begin
+                Result := Operand(I + 1, I1);
+                Exit;
+              end;
+          end;
+    if Bool then
+    begin
+      Result := 'Boolean';
+      Exit;
+    end;
+    if Length(Ops) = 0 then
+    begin
+      Result := Operand(I0, I1);
+      Exit;
+    end;
+    if Divi then
+    begin
+      Result := 'Double';
+      Exit;
+    end;
+    { the operands: text over numbers, a real over an integer, else the first's }
+    Start := I0;
+    for I := 0 to Length(Ops) do
+    begin
+      if I < Length(Ops) then X := Operand(Start, Ops[I] - 1) else X := Operand(Start, I1);
+      if I < Length(Ops) then Start := Ops[I] + 1;
+      if X = '' then Continue;
+      if T = '' then T := X
+      else if IsText(X) and not IsText(T) then T := 'string'
+      else if IsReal(X) and not IsReal(T) and not IsText(T) then T := X;
+    end;
+    if IntOp and (T = '') then T := 'Integer';
+    if Logic and (T = '') then T := 'Boolean';
+    if SameText(T, 'Char') and not Logic then T := 'string';
+    Result := T;
+  end;
+
+var
+  I0: Integer;
+begin
+  Result := '';
+  EnterCriticalSection(FLock);
+  try
+    try
+      Ctx := NewContext(FEng, FileName, Source, B);
+      if Ctx <> nil then
+      try
+        I0 := Ctx.TokCount;
+        while (I0 > 0) and (Ctx.Toks[I0 - 1].Start >= A) do Dec(I0);
+        Result := TypeOf(I0, Ctx.TokCount - 1);
+      finally
+        Ctx.Free;
+      end;
+    except
+      NoteExc;
+      Result := '';
+    end;
+  finally
+    LeaveCriticalSection(FLock);
+  end;
+end;
+
+procedure TCodeInsight.UnitsDeclaring(const Name, FromFile: string; Units: TStrings);
+var
+  Names, Found: TStringList;
+  I: Integer;
+  F, K: string;
+  U: TUnitInfo;
+  S: TSymbol;
+begin
+  Units.Clear;
+  if Name = '' then Exit;
+  Names := TStringList.Create;
+  Found := TStringList.Create;
+  EnterCriticalSection(FLock);
+  try
+    try
+      FEng.BeginCall;
+      Found.Sorted := True;
+      Found.Duplicates := dupIgnore;
+      FEng.GetUnitNames(Names, FromFile);
+      for I := 0 to Names.Count - 1 do
+      begin
+        F := FEng.FindUnitFile(Names[I], FromFile);
+        if (F = '') or SameText(FEng.NormFileName(F), FEng.NormFileName(FromFile)) then Continue;
+        if not SameText(ExtractFileExt(F), '.pas') then Continue;
+        U := FEng.LoadFile(F);
+        if (U = nil) or U.IsProgram then Continue;
+        S := U.IntfSyms.Find(Name);
+        if S = nil then Continue;
+        case S.Kind of
+          skType: K := 'type';
+          skRoutine: K := 'routine';
+          skVar: K := 'variable';
+        else
+          K := 'constant';
+        end;
+        Found.Add(U.Name + '=' + K);
+      end;
+      Units.Assign(Found);
+    except
+      NoteExc;
+    end;
+  finally
+    LeaveCriticalSection(FLock);
+    Found.Free;
+    Names.Free;
+  end;
+end;
+
+{ ---------------------------------------------------------------------------- }
+{ refactorings: what a class can be given, enumerations, types, units }
+
+{ the calling convention a routine's directives name ('': register) }
+function CallConvOf(R: TRoutineSym): string;
+var
+  L: TPasLexer;
+begin
+  Result := '';
+  if (R.UnitInfo = nil) or (R.FullEnd <= R.DeclEnd) or (R.FullEnd > Length(R.UnitInfo.Source)) then Exit;
+  L := TPasLexer.Create(R.UnitInfo.Source, R.DeclEnd, R.FullEnd);
+  try
+    L.Next;
+    while L.Tok.Kind <> tkEOF do
+    begin
+      if (L.Tok.Kind = tkIdent) and (L.Tok.Directive in [dvStdcall, dvSafecall, dvCdecl, dvPascal]) then
+      begin
+        Result := LowerCase(L.TokenText);
+        Exit;
+      end;
+      L.Next;
+    end;
+  finally
+    L.Free;
+  end;
+end;
+
+{ the declaration of the class D gives the method Name of the interface Intf another one to
+  implement it: procedure Intf.Name = Other; }
+function ResolvesMethod(D: TTypeDesc; const Intf, Name: string): Boolean;
+var
+  L: TPasLexer;
+  A, B, C: string;
+begin
+  Result := False;
+  if (D.UnitInfo = nil) or (D.EndOfs <= D.HeaderEnd) or (D.EndOfs > Length(D.UnitInfo.Source)) then Exit;
+  L := TPasLexer.Create(D.UnitInfo.Source, D.HeaderEnd, D.EndOfs);
+  try
+    A := '';
+    B := '';
+    C := '';
+    L.Next;
+    while L.Tok.Kind <> tkEOF do
+    begin
+      if (L.Tok.Kind = tkSymbol) and (L.Tok.Symbol = syEqual) and SameText(A, Intf) and (B = '.') and SameText(C, Name) then
+      begin
+        Result := True;
+        Exit;
+      end;
+      A := B;
+      B := C;
+      C := L.TokenText;
+      L.Next;
+    end;
+  finally
+    L.Free;
+  end;
+end;
+
+{ a routine's name with its parameters' kinds and types: the same for an override whatever its
+  parameters are named }
+function SigKey(R: TSymbol): string;
+var
+  I: Integer;
+  P: TSymbol;
+begin
+  Result := UpperCase(R.Name) + '(';
+  if R is TRoutineSym then
+  begin
+    EnsureParams(TRoutineSym(R));
+    if TRoutineSym(R).Params <> nil then
+      for I := 0 to TRoutineSym(R).Params.Count - 1 do
+      begin
+        P := TSymbol(TRoutineSym(R).Params[I]);
+        Result := Result + ParamModifier(P) + ':';
+        if (P.UnitInfo <> nil) and (P.TypeEnd > P.TypeStart) and (P.TypeEnd <= Length(P.UnitInfo.Source)) then
+          Result := Result + UpperCase(NormalizeText(PChar(P.UnitInfo.Source) + P.TypeStart, P.TypeEnd - P.TypeStart, 0));
+        Result := Result + ';';
+      end;
+  end;
+  Result := Result + ')';
+end;
+
+function TCodeInsight.ClassMethods(const FileName, Source: string; Pos: Integer; All: Boolean;
+  out ClassName: string; List: TList): Boolean;
+var
+  U: TUnitInfo;
+  C, M, S: TSymbol;
+  D, A, ID, Found: TTypeDesc;
+  I, Depth: Integer;
+  Keys: TStringList;
+  Intfs: TList;
+
+  function Item(R: TRoutineSym; Owner: TTypeDesc; FromIntf: Boolean): TCIMethodItem;
+  begin
+    Result := TCIMethodItem.Create;
+    List.Add(Result);
+    Result.Name := R.Name;
+    if Owner.Sym <> nil then Result.Owner := Owner.Sym.Name;
+    if R.UnitInfo <> nil then Result.OwnerUnit := R.UnitInfo.Name;
+    Result.FromInterface := FromIntf;
+    Result.Abstract := sfAbstract in R.Flags;
+    Result.Keyword := RoutineKeyword(R);
+    Result.Params := RoutineParamsText(R);
+    if sfFunction in R.Flags then Result.ResultType := FEng.TypeText(R);
+    Result.CallConv := CallConvOf(R);
+    Result.Overload := sfOverload in R.Flags;
+    Result.Visibility := TCIVisibility(Ord(R.Visibility));
+  end;
+
+  { the methods of the interface ID and of those it derives from, each interface once }
+  procedure AddInterface(ID: TTypeDesc);
+  var
+    J, N: Integer;
+    R: TSymbol;
+    Impl: Boolean;
+  begin
+    N := 0;
+    while (ID <> nil) and (ID.Kind = tyInterface) and (N < 32) and (Intfs.IndexOf(ID) < 0) do
+    begin
+      Intfs.Add(ID);
+      if ID.Members <> nil then
+        for J := 0 to ID.Members.Count - 1 do
+        begin
+          R := ID.Members[J];
+          if (R.Kind <> skRoutine) or not (R is TRoutineSym) then Continue;
+          M := FEng.FindMember(D, PChar(R.Name), Length(R.Name), Found);
+          Impl := ((M <> nil) and (M.Kind = skRoutine)) or ((ID.Sym <> nil) and ResolvesMethod(D, ID.Sym.Name, R.Name));
+          if Impl and not All then Continue;
+          Item(TRoutineSym(R), ID, True).Implemented := Impl;
+        end;
+      ID := FEng.AncestorOf(ID);
+      Inc(N);
+    end;
+  end;
+
+begin
+  Result := False;
+  ClassName := '';
+  EnterCriticalSection(FLock);
+  try
+    try
+      FEng.BeginCall;
+      U := FEng.LoadCurrent(FileName, Source);
+      C := ClassAtOffset(U, Pos);
+      if (C = nil) or (C.TypeDesc = nil) then Exit;
+      D := FEng.ResolveDesc(C.TypeDesc);
+      if (D = nil) or (D.Kind <> tyClass) then Exit;
+      ClassName := C.Name;
+      Keys := TStringList.Create;
+      Intfs := TList.Create;
+      try
+        Keys.Sorted := True;
+        { the interfaces it names, after its ancestor }
+        if D.Ancestors <> nil then
+          for I := 0 to D.Ancestors.Count - 1 do
+          begin
+            S := FEng.FindQualified(D.Ancestors[I], D.UnitInfo, D.InImpl, D.OwnerRoutine);
+            if (S = nil) or (S.Kind <> skType) or (S.TypeDesc = nil) then Continue;
+            ID := FEng.ResolveDesc(S.TypeDesc);
+            if (ID <> nil) and (ID.Kind = tyInterface) then AddInterface(ID);
+          end;
+        { what the class declares itself is not offered; nor what a nearer ancestor declares again
+          (an override, or a method that hides the virtual one) }
+        if D.Members <> nil then
+          for I := 0 to D.Members.Count - 1 do
+            if D.Members[I].Kind = skRoutine then Keys.Add(SigKey(D.Members[I]));
+        A := FEng.AncestorOf(D);
+        Depth := 0;
+        while (A <> nil) and (A.Kind = tyClass) and (Depth < 64) do
+        begin
+          if A.Members <> nil then
+            for I := 0 to A.Members.Count - 1 do
+            begin
+              M := A.Members[I];
+              if (M.Kind <> skRoutine) or not (M is TRoutineSym) or (Keys.IndexOf(SigKey(M)) >= 0) then Continue;
+              Keys.Add(SigKey(M));
+              if (M.Flags * [sfVirtual, sfDynamic, sfAbstract, sfOverride] = []) or
+                ((M.Visibility = viPrivate) and (M.UnitInfo <> U)) then Continue;
+              Item(TRoutineSym(M), A, False);
+            end;
+          A := FEng.AncestorOf(A);
+          Inc(Depth);
+        end;
+      finally
+        Intfs.Free;
+        Keys.Free;
+      end;
+      Result := True;
+    except
+      NoteExc;
+      Result := False;
+    end;
+  finally
+    LeaveCriticalSection(FLock);
+  end;
+end;
+
+{ the values of the enumerated type D as its declaration names them, in their order }
+function EnumNames(D: TTypeDesc; Values: TStrings): Boolean;
+var
+  S: TSymbol;
+  L: TPasLexer;
+  Depth: Integer;
+  Expect: Boolean;
+begin
+  Result := False;
+  S := D.Sym;
+  if (S = nil) or (S.UnitInfo = nil) or (S.TypeEnd <= S.TypeStart) or (S.TypeEnd > Length(S.UnitInfo.Source)) then Exit;
+  L := TPasLexer.Create(S.UnitInfo.Source, S.TypeStart, S.TypeEnd);
+  try
+    Depth := 0;
+    Expect := False;
+    L.Next;
+    while L.Tok.Kind <> tkEOF do
+    begin
+      if L.Tok.Kind = tkSymbol then
+        case L.Tok.Symbol of
+          syLParen:
+            begin
+              Inc(Depth);
+              Expect := Depth = 1;
+            end;
+          syRParen:
+            begin
+              Dec(Depth);
+              Expect := False;
+            end;
+          syComma:
+            Expect := Depth = 1;
+        else
+          Expect := False;
+        end
+      else
+      begin
+        if Expect and (L.Tok.Kind = tkIdent) then Values.Add(L.TokenText);
+        Expect := False;
+      end;
+      L.Next;
+    end;
+  finally
+    L.Free;
+  end;
+  Result := Values.Count > 0;
+end;
+
+function TCodeInsight.EnumValues(const FileName, Source: string; A, B: Integer; out TypeName: string;
+  Values: TStrings): Boolean;
+var
+  Ctx: TCIContext;
+  I0: Integer;
+  D: TTypeDesc;
+begin
+  Result := False;
+  TypeName := '';
+  Values.Clear;
+  EnterCriticalSection(FLock);
+  try
+    try
+      Ctx := NewContext(FEng, FileName, Source, B);
+      if Ctx <> nil then
+      try
+        I0 := Ctx.TokCount;
+        while (I0 > 0) and (Ctx.Toks[I0 - 1].Start >= A) do Dec(I0);
+        D := Ctx.ValueDesc(Ctx.EvalExprRange(I0, Ctx.TokCount - 1, Ctx.WithCount));
+        if (D <> nil) and (D.Kind = tyEnum) and EnumNames(D, Values) then
+        begin
+          TypeName := D.Sym.Name;
+          Result := True;
+        end;
+      finally
+        Ctx.Free;
+      end;
+    except
+      NoteExc;
+      Result := False;
+    end;
+  finally
+    LeaveCriticalSection(FLock);
+  end;
+end;
+
+{ what the type D is: its aliases followed down to a type of its own, the compiler's types by
+  their built-in names (__int32, __double ...) }
+function CategoryOf(Eng: TCIEngine; D: TTypeDesc): TCITypeCategory;
+var
+  Depth: Integer;
+  RN: string;
+  S: TSymbol;
+begin
+  Result := tcUnknown;
+  Depth := 0;
+  while (D <> nil) and (Depth < 40) do
+  begin
+    Inc(Depth);
+    case D.Kind of
+      tyAlias:
+        begin
+          RN := LowerCase(D.RefName);
+          if RN = 'string' then
+          begin
+            Result := tcString;
+            Exit;
+          end;
+          if Copy(RN, 1, 2) = '__' then
+          begin
+            if RN = '__widestring' then Result := tcString
+            else if RN = '__shortstring' then Result := tcShortString
+            else if (RN = '__variant') or (RN = '__olevariant') then Result := tcVariant
+            else if (RN = '__single') or (RN = '__double') or (RN = '__extended') or (RN = '__real48') or
+              (RN = '__comp') or (RN = '__currency') then Result := tcReal
+            else if RN = '__pointer' then Result := tcPointer
+            else if RN = '__textfile' then Result := tcFile
+            else Result := tcOrdinal;
+            Exit;
+          end;
+          S := Eng.FindQualified(D.RefName, D.UnitInfo, D.InImpl, D.OwnerRoutine);
+          if (S = nil) or (S.Kind <> skType) or (S.TypeDesc = nil) or (S.TypeDesc = D) then Exit;
+          D := S.TypeDesc;
+        end;
+      tyClass, tyClassRef: Result := tcClass;
+      tyInterface: Result := tcInterface;
+      tyRecord: Result := tcRecord;
+      tyObject: Result := tcObject;
+      tyEnum, tySubrange: Result := tcOrdinal;
+      tySet: Result := tcSet;
+      tyArray: Result := tcArray;
+      tyPointer: Result := tcPointer;
+      tyProc: Result := tcProc;
+      tyFile: Result := tcFile;
+    end;
+    if D.Kind <> tyAlias then Exit;
+  end;
+end;
+
+function TCodeInsight.TypeCategory(const FileName, Source: string; Pos: Integer;
+  const TypeText: string): TCITypeCategory;
+var
+  T: string;
+  Ctx: TCIContext;
+  S: TSymbol;
+begin
+  Result := tcUnknown;
+  T := LowerCase(Trim(TypeText));
+  if T = '' then Exit;
+  if Copy(T, 1, 5) = 'array' then Result := tcArray
+  else if T = 'string' then Result := tcString
+  else if Copy(T, 1, 6) = 'string' then Result := tcShortString
+  else if Copy(T, 1, 4) = 'file' then Result := tcFile
+  else if T[1] = '^' then Result := tcPointer
+  else if Copy(T, 1, 3) = 'set' then Result := tcSet
+  else if (Copy(T, 1, 9) = 'procedure') or (Copy(T, 1, 8) = 'function') then Result := tcProc
+  else if T[1] = '(' then Result := tcOrdinal;
+  if Result <> tcUnknown then Exit;
+  EnterCriticalSection(FLock);
+  try
+    try
+      Ctx := NewContext(FEng, FileName, Source, Pos);
+      if Ctx <> nil then
+      try
+        S := FEng.FindQualified(Trim(TypeText), Ctx.U, Ctx.InImpl, Ctx.Routine);
+        if (S <> nil) and (S.Kind = skType) and (S.TypeDesc <> nil) then Result := CategoryOf(FEng, S.TypeDesc);
+      finally
+        Ctx.Free;
+      end;
+    except
+      NoteExc;
+      Result := tcUnknown;
+    end;
+  finally
+    LeaveCriticalSection(FLock);
+  end;
+end;
+
+function TCodeInsight.UnitDeclares(const UnitName, FromFile, Name: string): Integer;
+var
+  F: string;
+  U: TUnitInfo;
+begin
+  Result := -1;
+  EnterCriticalSection(FLock);
+  try
+    try
+      FEng.BeginCall;
+      F := FEng.FindUnitFile(UnitName, FEng.NormFileName(FromFile));
+      if (F = '') or not SameText(ExtractFileExt(F), '.pas') then Exit;
+      U := FEng.LoadFile(F);
+      if U = nil then Exit;
+      if UnitSyms(U).Find(Name) <> nil then Result := 1 else Result := 0;
+    except
+      NoteExc;
+      Result := -1;
+    end;
+  finally
+    LeaveCriticalSection(FLock);
+  end;
+end;
+
+procedure TCodeInsight.UnitsDeclare(const FromFile: string; Units, Names: TStrings; Hits: TList);
+var
+  F, From: string;
+  U: TUnitInfo;
+  Tab: TSymTable;
+  B: TBits;
+  I, J: Integer;
+begin
+  EnterCriticalSection(FLock);
+  try
+    FEng.BeginCall;
+    From := FEng.NormFileName(FromFile);
+    for I := 0 to Units.Count - 1 do
+    begin
+      B := nil;
+      try
+        F := FEng.FindUnitFile(Units[I], From);
+        if (F <> '') and SameText(ExtractFileExt(F), '.pas') then
+        begin
+          U := FEng.LoadFile(F);
+          if U <> nil then
+          begin
+            Tab := UnitSyms(U);
+            B := TBits.Create;
+            B.Size := Names.Count;
+            for J := 0 to Names.Count - 1 do
+              if Tab.Find(Names[J]) <> nil then B.Bits[J] := True;
+          end;
+        end;
+      except
+        NoteExc;
+        FreeAndNil(B);
+      end;
+      Hits.Add(B);
+    end;
+  finally
+    LeaveCriticalSection(FLock);
+  end;
+end;
+
+function TCodeInsight.ReadText(const FileName: string; out Text: string): Boolean;
+begin
+  EnterCriticalSection(FLock);
+  try
+    try
+      Result := SourceFor(FileName, Text);
+    except
+      NoteExc;
+      Result := False;
+    end;
+  finally
+    LeaveCriticalSection(FLock);
+  end;
+end;
+
+function TCodeInsight.ExprMembersKnown(const FileName, Source: string; A, B: Integer): Boolean;
+var
+  Ctx: TCIContext;
+  I0: Integer;
+  D: TTypeDesc;
+  ClassLevel: Boolean;
+begin
+  Result := False;
+  EnterCriticalSection(FLock);
+  try
+    try
+      Ctx := NewContext(FEng, FileName, Source, B);
+      if Ctx <> nil then
+      try
+        I0 := Ctx.TokCount;
+        while (I0 > 0) and (Ctx.Toks[I0 - 1].Start >= A) do Dec(I0);
+        D := Ctx.MemberScope(Ctx.ValueDesc(Ctx.EvalExprRange(I0, Ctx.TokCount - 1, Ctx.WithCount)), ClassLevel);
+        Result := (D <> nil) and Ctx.StructKnown(D);
+      finally
+        Ctx.Free;
       end;
     except
       NoteExc;

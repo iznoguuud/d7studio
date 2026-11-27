@@ -179,6 +179,11 @@ type
     function EndOf(I: Integer): Integer;
     function FirstAt(Ofs: Integer): Integer;
     function IndexAt(Ofs: Integer): Integer;
+    { the token that closes the bracket ( or [ at I (-1: none) }
+    function MatchClose(I: Integer): Integer;
+    { the argument whose first token is I: the token of the called routine's name and the
+      argument's index; False - I begins no argument of a call }
+    function ArgumentOf(I: Integer; out NameTok, ArgIdx: Integer): Boolean;
   end;
 
 const
@@ -207,6 +212,22 @@ function DetectEOL(const S: string): string;
 function LineStartOf(const S: string; Ofs: Integer): Integer;
 function LineEndOf(const S: string; Ofs: Integer): Integer;
 function NextLineStart(const S: string; Ofs: Integer): Integer;
+{ the start of the line before the one that begins at LS (0 on the first line) }
+function PrevLineStart(const S: string; LS: Integer): Integer;
+{ the identifier at Pos of S (0-based; in it or at its end): its offsets A .. E (E excluded); False:
+  none there }
+function IdentRangeAt(const S: string; Pos: Integer; out A, E: Integer): Boolean;
+{ the white space that begins the line of Ofs }
+function IndentAt(const S: string; Ofs: Integer): string;
+{ nothing but white space (line breaks too) in A .. B (B excluded) }
+function IsBlank(const S: string; A, B: Integer): Boolean;
+{ only white space between the start of Ofs's line and Ofs }
+function FirstOnLine(const S: string; Ofs: Integer): Boolean;
+{ only white space - and a // comment - between Ofs and the end of its line }
+function LastOnLine(const S: string; Ofs: Integer): Boolean;
+{ A .. B widened to whole lines - from the start of A's line to the start of the line after B's -
+  when nothing else stands on them (a // comment after B goes with them); False: left as it is }
+function WholeLines(const S: string; var A, B: Integer): Boolean;
 
 implementation
 
@@ -284,6 +305,17 @@ begin
   while (Result < Length(S)) and not (S[Result + 1] in [#10, #13]) do Inc(Result);
 end;
 
+function IdentRangeAt(const S: string; Pos: Integer; out A, E: Integer): Boolean;
+begin
+  if Pos < 0 then Pos := 0;
+  if Pos > Length(S) then Pos := Length(S);
+  E := Pos;
+  while (E < Length(S)) and IdentTab[S[E + 1]] do Inc(E);
+  A := Pos;
+  while (A > 0) and IdentTab[S[A]] do Dec(A);
+  Result := (A < E) and not (S[A + 1] in ['0'..'9']);
+end;
+
 function NextLineStart(const S: string; Ofs: Integer): Integer;
 begin
   Result := LineEndOf(S, Ofs);
@@ -291,6 +323,62 @@ begin
   begin
     if (S[Result + 1] = #13) and (Result + 1 < Length(S)) and (S[Result + 2] = #10) then Inc(Result, 2)
     else Inc(Result);
+  end;
+end;
+
+function PrevLineStart(const S: string; LS: Integer): Integer;
+var
+  P: Integer;
+begin
+  { from the line break before LS - from its CR when it is a CR LF - back to its line's start }
+  P := LS - 1;
+  if (P > 0) and (P < Length(S)) and (S[P + 1] = #10) and (S[P] = #13) then Dec(P);
+  if P < 0 then P := 0;
+  Result := LineStartOf(S, P);
+end;
+
+function IndentAt(const S: string; Ofs: Integer): string;
+var
+  P, Q: Integer;
+begin
+  P := LineStartOf(S, Ofs);
+  Q := P;
+  while (Q < Length(S)) and (S[Q + 1] in [' ', #9]) do Inc(Q);
+  Result := Copy(S, P + 1, Q - P);
+end;
+
+function IsBlank(const S: string; A, B: Integer): Boolean;
+var
+  I: Integer;
+begin
+  Result := False;
+  if B > Length(S) then B := Length(S);
+  for I := A + 1 to B do
+    if S[I] > ' ' then Exit;
+  Result := True;
+end;
+
+function FirstOnLine(const S: string; Ofs: Integer): Boolean;
+begin
+  Result := IsBlank(S, LineStartOf(S, Ofs), Ofs);
+end;
+
+function LastOnLine(const S: string; Ofs: Integer): Boolean;
+var
+  E: Integer;
+begin
+  E := LineEndOf(S, Ofs);
+  while (Ofs < E) and (S[Ofs + 1] <= ' ') do Inc(Ofs);
+  Result := (Ofs >= E) or ((Ofs + 1 < E) and (S[Ofs + 1] = '/') and (S[Ofs + 2] = '/'));
+end;
+
+function WholeLines(const S: string; var A, B: Integer): Boolean;
+begin
+  Result := FirstOnLine(S, A) and LastOnLine(S, B);
+  if Result then
+  begin
+    A := LineStartOf(S, A);
+    B := NextLineStart(S, B);
   end;
 end;
 
@@ -1377,6 +1465,52 @@ begin
 end;
 
 { the token that starts at Ofs; -1 if none }
+function TRawToks.MatchClose(I: Integer): Integer;
+var
+  D: Integer;
+begin
+  D := 0;
+  Result := I;
+  while Result < N do
+  begin
+    if IsSy(Result, syLParen) or IsSy(Result, syLBracket) then Inc(D)
+    else if IsSy(Result, syRParen) or IsSy(Result, syRBracket) then
+    begin
+      Dec(D);
+      if D = 0 then Exit;
+    end;
+    Inc(Result);
+  end;
+  Result := -1;
+end;
+
+function TRawToks.ArgumentOf(I: Integer; out NameTok, ArgIdx: Integer): Boolean;
+var
+  J, Depth: Integer;
+begin
+  Result := False;
+  NameTok := -1;
+  ArgIdx := 0;
+  J := I - 1;
+  Depth := 0;
+  while J >= 0 do
+  begin
+    if IsSy(J, syRParen) or IsSy(J, syRBracket) then Inc(Depth)
+    else if IsSy(J, syLParen) or IsSy(J, syLBracket) then
+    begin
+      if Depth = 0 then Break;
+      Dec(Depth);
+    end
+    else if (Depth = 0) and IsSy(J, syComma) then Inc(ArgIdx)
+    else if (Depth = 0) and (IsSy(J, sySemicolon) or (T[J].Kind = tkKeyword) and
+      (T[J].Keyword in [kwBegin, kwEnd, kwThen, kwDo, kwElse, kwTry, kwRepeat])) then Exit;
+    Dec(J);
+  end;
+  if (J <= 0) or not IsSy(J, syLParen) or (T[J - 1].Kind <> tkIdent) then Exit;
+  NameTok := J - 1;
+  Result := True;
+end;
+
 function TRawToks.IndexAt(Ofs: Integer): Integer;
 begin
   Result := FirstAt(Ofs);

@@ -9,7 +9,7 @@ MAKE = $(ROOT)\bin\make.exe -$(MAKEFLAGS) -f$**
 DCC = $(ROOT)\bin\dcc32.exe $**
 BRCC = $(ROOT)\bin\brcc32.exe $**
 #------------------------------------------------------------------------------
-PROJECTS = D7Studio.exe migrate.exe
+PROJECTS = D7Studio.exe migrate.exe bugreport.exe
 #------------------------------------------------------------------------------
 default: $(PROJECTS)
 #------------------------------------------------------------------------------
@@ -18,6 +18,9 @@ D7Studio.exe: D7Studio.dpr
   $(DCC)
 
 migrate.exe: migrate.dpr
+  $(DCC)
+
+bugreport.exe: bugreport.dpr
   $(DCC)
 
 

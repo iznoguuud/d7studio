@@ -1419,8 +1419,7 @@ begin
   end;
   Ed.BeginUndo;
   try
-    Ed.Sci(SCI_SETTARGETRANGE, A, B);
-    Ed.SciS(SCI_REPLACETARGET, Length(S), S);
+    Ed.ReplaceRange(A, B - A, S);
   finally
     Ed.EndUndo;
   end;

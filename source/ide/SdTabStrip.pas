@@ -175,11 +175,17 @@ type
     procedure FitRowHeight(MinHeight: Integer);
     function TabTextW(Index: Integer): WideString;
     procedure SetTabTextW(Index: Integer; const W: WideString);
+    { a modified file's tab: a green dot where its close box is (others a grey one), the box in its
+      place under the pointer (kept as the tab's object: it moves with the tab) }
+    function TabModified(Index: Integer): Boolean;
+    procedure SetTabModified(Index: Integer; Value: Boolean);
     { tab FromIndex to ToIndex with its title and object, the chosen tab still chosen (no OnChange,
       no OnMove: the caller moves what belongs to the tabs) }
     procedure MoveTab(FromIndex, ToIndex: Integer);
-    { test mode: 'title@left-right/box left,top,right,bottom;...' (client coordinates) }
+    { test mode: 'title@left-right/box left,top,right,bottom;...' (client coordinates; the titles
+      as DebugTitle gives them) }
     function DebugTabs: string;
+    function DebugTitle(Index: Integer): string;      // test mode: the title, '*' after it when modified
     property OnClose: TSdTabCloseEvent read FOnClose write FOnClose;
     { a dragged tab changed places (MoveTab done): what belongs to the tabs follows }
     property OnMove: TSdTabMoveEvent read FOnMove write FOnMove;
@@ -690,6 +696,24 @@ begin
   Invalidate;
 end;
 
+function TSdFileTabs.TabModified(Index: Integer): Boolean;
+begin
+  Result := (Index >= 0) and (Index < Tabs.Count) and (Tabs.Objects[Index] <> nil);
+end;
+
+procedure TSdFileTabs.SetTabModified(Index: Integer; Value: Boolean);
+var
+  R: TRect;
+begin
+  if (Index < 0) or (Index >= Tabs.Count) or (TabModified(Index) = Value) then Exit;
+  Tabs.Objects[Index] := TObject(Ord(Value));
+  if HandleAllocated then
+  begin
+    R := UITabCloseRect(TabBand(Index));
+    InvalidateRect(Handle, @R, False);
+  end;
+end;
+
 { Windows' tab control has no move: the tab goes and comes again (TStrings.Move, one repaint) with
   its title as the control had it - a name outside the code page too }
 procedure TSdFileTabs.MoveTab(FromIndex, ToIndex: Integer);
@@ -720,9 +744,14 @@ begin
   begin
     R := TabRect(I);
     if not BoxOf(I, B) then B := Rect(0, 0, 0, 0);
-    Result := Result + Format('%s@%d-%d/%d,%d,%d,%d;', [Tabs[I], R.Left, R.Right, B.Left, B.Top,
+    Result := Result + Format('%s@%d-%d/%d,%d,%d,%d;', [DebugTitle(I), R.Left, R.Right, B.Left, B.Top,
       B.Right, B.Bottom]);
   end;
+end;
+
+function TSdFileTabs.DebugTitle(Index: Integer): string;
+begin
+  Result := Tabs[Index] + Copy('*', 1, Ord(TabModified(Index)));
 end;
 
 function TSdFileTabs.BoxOf(Index: Integer; out R: TRect): Boolean;
@@ -761,7 +790,7 @@ procedure TSdFileTabs.PaintWindow(DC: HDC);
 var
   I, Arrows: Integer;
   R: TRect;
-  S: TUIButtonState;
+  S, Box: TUIButtonState;
   Saved: Integer;
 begin
   UIFill(DC, Rect(0, 0, ClientWidth, ClientHeight), clBtnFace);
@@ -777,7 +806,12 @@ begin
       if I = TabIndex then S := bsChecked
       else if I = FHotTab then S := bsHot
       else S := bsNormal;
-      UIDrawTab(DC, R, TabTextW(I), S, tsTop, True, FCloser.State(I));
+      { the close box shows on the tab under the pointer (and while a press on it lasts); a dot
+        in its place otherwise, green for a modified file }
+      Box := FCloser.State(I);
+      if (Box = bsNormal) and (I <> FHotTab) then Box := bsDisabled;
+      UIDrawTab(DC, R, TabTextW(I), S, tsTop, True, Box);
+      if Box = bsDisabled then UIDrawTabDot(DC, UITabCloseRect(R), TabModified(I));
     end;
   finally
     RestoreDC(DC, Saved);

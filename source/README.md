@@ -53,7 +53,7 @@ Setup changes Delphi 7's own folder:
   `ModernManUtf8.res` and `FastMM_FullDebugMode.dll`. The patched packages keep every export of
   Borland's, so Delphi 7's other packages load with them.
 - **D7 Studio** goes into `Bin`: `D7Studio.exe` with its map, Scintilla (`Scintilla.dll`,
-  `Lexilla.dll`), `migrate.exe`, this file,
+  `Lexilla.dll`), `migrate.exe`, `bugreport.exe` (*Help | Create Bug Report*), this file,
   [FEATURES.md](FEATURES.md), [RELEASE-NOTES.md](../RELEASE-NOTES.md) (what changed in each version),
   [MODERNIZATION.md](MODERNIZATION.md), [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) (the
   licence of the IntelliJ Platform icons that D7 Studio's icons are made of) and `LICENSE.txt`,
@@ -91,7 +91,7 @@ Uninstalling D7 Studio puts Delphi 7's `Bin`, `Lib` and `Source` back as they we
 - Windows' stub of the WinHelp viewer comes back, with its owner and permissions; the viewer's
   other files go.
 - The files D7 Studio and `migrate` wrote go: in `Bin` its settings (`D7Studio.ini`,
-  `D7Studio.dof`, templates ...), `error.log`, `migrate.log`, `Debug\` and `Imports\` (type
+  `D7Studio.dof`, templates ...), `error.log`, `migrate.log`, `bugreport.txt`, `Debug\` and `Imports\` (type
   libraries imported without a project). Such files that were there before the installation
   stay, and so do files of other programs. A `Help2` folder that an earlier version of D7 Studio
   installed Delphi 7's help into is cleaned up the same way.

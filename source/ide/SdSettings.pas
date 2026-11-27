@@ -109,11 +109,20 @@ function ColorFromText(const S: string; Default: TColor): TColor;
 function FileEncoding(const FileName, Bytes: string): TSdEncoding;
 function RememberedEncoding(const FileName: string; var E: TSdEncoding): Boolean;
 procedure RememberFileEncoding(const FileName: string; const E: TSdEncoding);
+{ the design packages of Ini's [Design Packages], in its order: "file=description", the file's
+  $(DELPHI) expanded, a leading '-' when it is disabled; False when Ini has no such list (D7 Studio
+  then starts with Borland's standard packages) }
+function SettingsPackages(Ini: TCustomIniFile; Names: TStrings): Boolean;
+{ the experts' DLLs, as Delphi 7 reads them - Wizards, then Experts (any value name, the file as
+  its value; each DLL may have either entry point): the registry key RegKey in Delphi's layout
+  (SettingsRegKey), and the sections [Wizards] and [Experts] of Ini (name=file; nil: none);
+  $(DELPHI) expanded, each file once }
+procedure ExpertFiles(Ini: TCustomIniFile; const RegKey: string; Files: TStrings);
 
 implementation
 
 uses
-  Windows, SdFileNames, SdCrashLog;
+  Windows, Registry, SdFileNames, SdCrashLog, SdDelphiDir;
 
 const
   EncodingSection = 'Encodings';   // <file name, lower case>=<encoding> chosen by the user (EncodingKey)
@@ -526,6 +535,80 @@ end;
 function FileEncoding(const FileName, Bytes: string): TSdEncoding;
 begin
   if not RememberedEncoding(FileName, Result) then Result := DetectEncoding(Bytes);
+end;
+
+function SettingsPackages(Ini: TCustomIniFile; Names: TStrings): Boolean;
+const
+  Section = 'Design Packages';
+var
+  I, N, P1, P2: Integer;
+  S, FileName: string;
+begin
+  Names.Clear;
+  Result := (Ini <> nil) and (Ini.ReadInteger(Section, 'Count', -1) >= 0);
+  if not Result then Exit;
+  N := Ini.ReadInteger(Section, 'Count', 0);
+  for I := 0 to N - 1 do
+  begin
+    { "P<n>=<1 or 0>|<file>|<description>"; $(DELPHI)\...: a package of D7 Studio's folder
+      (SdDesignHost.SavePackageList) }
+    S := Ini.ReadString(Section, 'P' + IntToStr(I), '');
+    P1 := Pos('|', S);
+    if P1 = 0 then Continue;
+    FileName := Copy(S, P1 + 1, MaxInt);
+    P2 := Pos('|', FileName);
+    if P2 = 0 then P2 := Length(FileName) + 1;
+    FileName := ExpandDelphiMacros(Copy(FileName, 1, P2 - 1)) + '=' + Copy(FileName, P2 + 1, MaxInt);
+    if Copy(S, 1, P1 - 1) = '0' then FileName := '-' + FileName;
+    Names.Add(FileName);
+  end;
+end;
+
+procedure ExpertFiles(Ini: TCustomIniFile; const RegKey: string; Files: TStrings);
+const
+  Sections: array[0..1] of string = ('Wizards', 'Experts');
+var
+  Reg: TRegistry;
+  Names: TStringList;
+  I, K: Integer;
+  F: string;
+begin
+  Files.Clear;
+  Names := TStringList.Create;
+  Reg := TRegistry.Create(KEY_READ);
+  try
+    Reg.RootKey := HKEY_CURRENT_USER;
+    for K := Low(Sections) to High(Sections) do
+    begin
+      try
+        Names.Clear;
+        if Reg.OpenKeyReadOnly(RegKey + '\' + Sections[K]) then
+        begin
+          Reg.GetValueNames(Names);
+          for I := 0 to Names.Count - 1 do
+          begin
+            F := ExpandDelphiMacros(Reg.ReadString(Names[I]));
+            if (F <> '') and (Files.IndexOf(F) < 0) then Files.Add(F);
+          end;
+          Reg.CloseKey;
+        end;
+      except
+      end;
+      if Ini <> nil then
+      begin
+        Names.Clear;
+        Ini.ReadSectionValues(Sections[K], Names);
+        for I := 0 to Names.Count - 1 do
+        begin
+          F := ExpandDelphiMacros(Names.ValueFromIndex[I]);
+          if (F <> '') and (Files.IndexOf(F) < 0) then Files.Add(F);
+        end;
+      end;
+    end;
+  finally
+    Reg.Free;
+    Names.Free;
+  end;
 end;
 
 initialization

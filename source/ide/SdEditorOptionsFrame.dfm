@@ -395,7 +395,7 @@ object EditorOptionsFrame: TEditorOptionsFrame
       TabVisible = False
       object dpLabel4: TLabel
         Left = 81
-        Top = 258
+        Top = 285
         Width = 59
         Height = 15
         Caption = 'Editor &font:'
@@ -404,7 +404,7 @@ object EditorOptionsFrame: TEditorOptionsFrame
       end
       object dpLabel7: TLabel
         Left = 314
-        Top = 258
+        Top = 285
         Width = 23
         Height = 15
         Caption = '&Size:'
@@ -412,7 +412,7 @@ object EditorOptionsFrame: TEditorOptionsFrame
       end
       object dpLabel16: TLabel
         Left = 9
-        Top = 302
+        Top = 329
         Width = 42
         Height = 15
         Caption = 'Sample:'
@@ -605,7 +605,7 @@ object EditorOptionsFrame: TEditorOptionsFrame
         Left = 9
         Top = 202
         Width = 620
-        Height = 49
+        Height = 76
         Caption = ' Scroll bars '
         TabOrder = 2
         object lbMinimap: TLabel
@@ -615,6 +615,15 @@ object EditorOptionsFrame: TEditorOptionsFrame
           Height = 15
           Caption = 'Minim&ap:'
           FocusControl = cbMinimap
+          Transparent = True
+        end
+        object lbMinimapLayout: TLabel
+          Left = 383
+          Top = 46
+          Width = 41
+          Height = 15
+          Caption = 'Layo&ut:'
+          FocusControl = cbMinimapLayout
           Transparent = True
         end
         object chkScrollMarkers: TCheckBox
@@ -633,15 +642,33 @@ object EditorOptionsFrame: TEditorOptionsFrame
           Style = csDropDownList
           ItemHeight = 15
           TabOrder = 1
+          OnChange = cbMinimapChange
           Items.Strings = (
             'Enabled'
             'Enabled + preview'
             'Disabled')
         end
+        object cbMinimapLayout: TComboBox
+          Left = 455
+          Top = 43
+          Width = 155
+          Height = 23
+          Style = csDropDownList
+          ItemHeight = 15
+          TabOrder = 3
+        end
+        object chkMinimapLarge: TCheckBox
+          Left = 9
+          Top = 45
+          Width = 365
+          Height = 19
+          Caption = 'Large minimap (double si&ze)'
+          TabOrder = 2
+        end
       end
       object FontName: TComboBox
         Left = 81
-        Top = 278
+        Top = 305
         Width = 217
         Height = 24
         Style = csDropDownList
@@ -651,7 +678,7 @@ object EditorOptionsFrame: TEditorOptionsFrame
       end
       object FontSize: TComboBox
         Left = 314
-        Top = 278
+        Top = 305
         Width = 74
         Height = 24
         ItemHeight = 0
@@ -674,9 +701,9 @@ object EditorOptionsFrame: TEditorOptionsFrame
       end
       object FontSample: TPanel
         Left = 9
-        Top = 325
+        Top = 352
         Width = 620
-        Height = 79
+        Height = 52
         BevelOuter = bvNone
         Caption = 'AaBbYyZz'
         ParentColor = True
@@ -685,7 +712,7 @@ object EditorOptionsFrame: TEditorOptionsFrame
           Left = 0
           Top = 0
           Width = 620
-          Height = 79
+          Height = 52
           Align = alClient
           Brush.Style = bsClear
           Pen.Color = clBtnShadow

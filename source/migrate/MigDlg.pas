@@ -214,39 +214,11 @@ begin
   end;
 end;
 
-{ Node's box checked, or not when it is checked: the nodes below it the same, the boxes above it
-  checked when all their nodes are, mixed when some are }
+{ Node's box checked, or not when it is checked (SdCheckImages.ToggleCheck) }
 procedure TMigrateDlg.Toggle(Node: TTreeNode);
-var
-  State, I: Integer;
-  Next: TTreeNode;
-  All, None: Boolean;
 begin
   if Node = nil then Exit;
-  if Node.StateIndex = ciChecked then State := ciUnchecked else State := ciChecked;
-  { Node and the nodes below it: the ones that follow it with a deeper level }
-  Node.StateIndex := State;
-  Next := Node.GetNext;
-  while (Next <> nil) and (Next.Level > Node.Level) do
-  begin
-    Next.StateIndex := State;
-    Next := Next.GetNext;
-  end;
-  Node := Node.Parent;
-  while Node <> nil do
-  begin
-    All := True;
-    None := True;
-    for I := 0 to Node.Count - 1 do
-    begin
-      if Node[I].StateIndex <> ciChecked then All := False;
-      if Node[I].StateIndex <> ciUnchecked then None := False;
-    end;
-    if All then Node.StateIndex := ciChecked
-    else if None then Node.StateIndex := ciUnchecked
-    else Node.StateIndex := ciMixed;
-    Node := Node.Parent;
-  end;
+  ToggleCheck(Node);
   Changed;
 end;
 

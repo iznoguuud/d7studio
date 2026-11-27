@@ -56,12 +56,11 @@ function ProgramVersion: string;
 implementation
 
 uses
-  WindowsEx, SdUI, SdDelphiDir, SdEncoding;
+  SdUI, SdDelphiDir, SdEncoding, SdSysInfo;
 
 {$R *.dfm}
 
 const
-  RepositoryURL = 'https://github.com/iznoguuud/d7studio';
   PhotoName = 'ABOUT';                    // the picture, RCDATA ABOUT (about.jpg)
   { the rows of the column beside the picture, from the name down; from FootRow on (the line) they
     end with the picture }
@@ -70,86 +69,8 @@ const
 
 { the file version of the program's version resource, "1.0.0.0"; '' when it has none }
 function ProgramVersion: string;
-var
-  Res: HRSRC;
-  P: PChar;
-  Fixed: PVSFixedFileInfo;
 begin
-  Result := '';
-  Res := FindResource(HInstance, MakeIntResource(1), RT_VERSION);
-  if Res = 0 then Exit;
-  { VS_VERSIONINFO: length, value length and type (three words), the key 'VS_VERSION_INFO' with its
-    #0 (32 bytes), then the VS_FIXEDFILEINFO, DWORD-aligned at 40 }
-  if SizeofResource(HInstance, Res) < 40 + SizeOf(TVSFixedFileInfo) then Exit;
-  P := LockResource(LoadResource(HInstance, Res));
-  if P = nil then Exit;
-  Fixed := PVSFixedFileInfo(P + 40);
-  if Fixed^.dwSignature <> $FEEF04BD then Exit;
-  Result := Format('%d.%d.%d.%d', [HiWord(Fixed^.dwFileVersionMS), LoWord(Fixed^.dwFileVersionMS),
-    HiWord(Fixed^.dwFileVersionLS), LoWord(Fixed^.dwFileVersionLS)]);
-end;
-
-{ Windows' version key, read in the 64-bit view on 64-bit Windows: its DisplayVersion ("25H2") and
-  UBR (the update build revision); '' / -1 when a value is missing (Windows before 10) }
-procedure ReadWindowsRelease(out DisplayVersion: string; out Revision: Integer);
-var
-  Key: HKEY;
-  Kind, Size, Value: DWORD;
-  Buf: array[0..63] of Char;
-begin
-  DisplayVersion := '';
-  Revision := -1;
-  if RegOpenKeyEx(HKEY_LOCAL_MACHINE, 'SOFTWARE\Microsoft\Windows NT\CurrentVersion', 0,
-    KEY_READ or KEY_WOW64_64KEY, Key) <> ERROR_SUCCESS then Exit;
-  try
-    Size := SizeOf(Buf) - 1;
-    if (RegQueryValueEx(Key, 'DisplayVersion', nil, @Kind, @Buf, @Size) = ERROR_SUCCESS) and
-      (Kind = REG_SZ) then
-    begin
-      Buf[Size] := #0;
-      DisplayVersion := Trim(Buf);
-    end;
-    Size := SizeOf(Value);
-    if (RegQueryValueEx(Key, 'UBR', nil, @Kind, @Value, @Size) = ERROR_SUCCESS) and
-      (Kind = REG_DWORD) then Revision := Value;
-  finally
-    RegCloseKey(Key);
-  end;
-end;
-
-{ "Windows 11 25H2 (build 26200.7171), x64": the real version (no manifest's compatibility
-  answer), Windows 11 being 10.0 from build 22000 on, and the machine Windows runs on }
-function WindowsDescription: string;
-var
-  Major, Minor, Build: Cardinal;
-  Release, Name: string;
-  Revision: Integer;
-  ProcessMachine, NativeMachine: Word;
-begin
-  if not GetRealWindowsVersion(Major, Minor, Build) then
-  begin
-    Result := 'Windows';
-    Exit;
-  end;
-  if (Major = 10) and (Build >= 22000) then Name := 'Windows 11'
-  else if Major = 10 then Name := 'Windows 10'
-  else if (Major = 6) and (Minor = 3) then Name := 'Windows 8.1'
-  else if (Major = 6) and (Minor = 2) then Name := 'Windows 8'
-  else if (Major = 6) and (Minor = 1) then Name := 'Windows 7'
-  else if (Major = 6) and (Minor = 0) then Name := 'Windows Vista'
-  else Name := Format('Windows %d.%d', [Major, Minor]);
-  ReadWindowsRelease(Release, Revision);
-  if Release <> '' then Name := Name + ' ' + Release;
-  if Revision >= 0 then
-    Result := Format('%s (build %d.%d)', [Name, Build, Revision])
-  else
-    Result := Format('%s (build %d)', [Name, Build]);
-  if IsWow64Process2(GetCurrentProcess, ProcessMachine, @NativeMachine) then
-    case NativeMachine of
-      IMAGE_FILE_MACHINE_AMD64: Result := Result + ', x64';
-      IMAGE_FILE_MACHINE_ARM64: Result := Result + ', ARM64';
-      IMAGE_FILE_MACHINE_I386: Result := Result + ', x86';
-    end;
+  Result := FileVersionOf(GetModuleName(HInstance));
 end;
 
 { the IDE's own code page and, when it differs, Windows' code page of programs - that of files

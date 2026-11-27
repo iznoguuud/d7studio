@@ -70,6 +70,7 @@ const
   IND_AUTOCLOSE = 28;        // hidden: a closing character put in by Auto-close pairs
   IND_FINDTEXT = 29;         // the text colour of the find matches (Search match: IND_FIND is its ground)
   IND_OCCURRENCE = 30;       // the selected word's other places (Word occurrences)
+  IND_SYNC = 31;             // Sync Edit: the places of the names it links, the value a name's number + 1
   { a comparison of two texts (DiffView, the History tab): the grounds of its lines, the first line
     of a change (no mark: where Previous / Next Change go), the changed words - numbers a comparison
     shows no bookmark, breakpoint or name by kind with }
@@ -234,6 +235,9 @@ type
     FReadOnlyCache: Boolean;     // cannot change then)
     FText: string;               // the text as GetText read it last ...
     FTextValid: Boolean;         // ... and the document has not changed since
+    FSavedText: string;          // the text at the save point (loaded or saved) ...
+    FAtSaved: Boolean;           // ... and the document holds it again, though Scintilla's save
+                                 // point is behind (typed back): Modified is False
     FDirectFn: TSciDirectFunc;   // the window's
     FDirectPtr: Pointer;
     FLanguage: TSciLanguage;
@@ -291,6 +295,9 @@ type
     FExpanded: TPoint;           // ... the selection it made last
     FCaretColumn: Integer;       // Add Caret Above / Below: the column of the first caret
     FAddedCaret: Integer;        // ... where it put the last one (-1 none)
+    FSyncOn: Boolean;            // Sync Edit is on (IND_SYNC) ...
+    FSyncGroup: Integer;         // ... the name whose places are selected (0-based)
+    FSyncCount: Integer;         // ... the names it links
     FPendingOpen, FPendingClose: Char;   // Auto-close pairs: the partner of the character being typed
     FAutoCloseLine: Integer;     // ... the line of the partners put in (-1 none): forgotten when the caret leaves it
     FSwallowBack: Boolean;       // a Backspace took a pair: its WM_CHAR goes
@@ -411,6 +418,7 @@ type
     procedure RefreshCursor;
     procedure DoAutoIndent;
     function GetModified: Boolean;
+    function IsSavedText: Boolean;
     function GetReadOnly: Boolean;
     procedure SetReadOnly(Value: Boolean);
     procedure SetupLexer;
@@ -477,6 +485,9 @@ type
     procedure ReplaceSel(const S: string);
     procedure InsertText(Pos: Integer; const S: string);
     procedure DeleteRange(Pos, Len: Integer);
+    { Len bytes at Pos replaced with S as one change of the text; Minimal: only the part of it that
+      differs (the lines that only change inside keep their markers) }
+    procedure ReplaceRange(Pos, Len: Integer; const S: string; Minimal: Boolean = False);
     function PosFromLine(Line: Integer): Integer;
     function LineFromPos(Pos: Integer): Integer;
     function LineEndPos(Line: Integer): Integer;
@@ -534,7 +545,7 @@ type
     procedure LoadFromStringAs(const S: string; const AEncoding: TSdEncoding);
     function SaveToFile(const FileName: string): string;                    // the bytes written
     function FileBytes: string;     // the text as SaveToFile writes it (in the file's encoding)
-    { the text as it is now counts as saved (Modified False until the next change) }
+    { the text as it is now counts as saved (Modified False until the text differs from it) }
     procedure SetSavePoint;
     { markers }
     procedure MarkerAdd(Line, Marker: Integer);
@@ -582,6 +593,14 @@ type
     procedure SelectAllOccurrences;
     procedure AddCaret(Below: Boolean);
     function CaretCount: Integer;           // the selections (carets) there are
+    { Sync Edit: the names that occur more than once in the selection (in a Pascal text its names
+      outside comments and strings, in any case: NoCase) are boxed, the places of the first selected
+      together - typing changes them all -; Tab / Shift+Tab select the next / previous name's,
+      a click on another name its; Esc ends it, as does the caret leaving them. False: no name
+      occurs twice there }
+    function SyncEditStart(Pascal: Boolean): Boolean;
+    procedure SyncEditEnd;
+    function SyncEditing: Boolean;
     { the selection grown to the next larger part of the text (a Pascal text's syntax; else the
       word, the line, everything) and back }
     procedure ExpandSelection;
@@ -594,9 +613,10 @@ type
     { Editor Options | Fold preview: the box at the end of a folded line under X, Y (client): the
       lines it hides as a tip's (without the blank ones at their start and end, their common
       indentation left out; the first FoldPreviewLines of them) and where the tip shows them - the
-      folded line on the screen, from the column the lines start at (TSdCodeTip.ShowLines). False:
-      no box there, or the option is off }
-    function FoldPreview(X, Y: Integer; out Lines: TTipLines; out At: TRect): Boolean;
+      folded line on the screen, from the column the lines start at (TSdCodeTip.ShowLines) - and the
+      tip's ground, the plain text's: the lines have the editor's colours. False: no box there, or
+      the option is off }
+    function FoldPreview(X, Y: Integer; out Lines: TTipLines; out At: TRect; out Ground: TColor): Boolean;
     { Editor Options | Zoom: every editor's, Ctrl+wheel or the zoom commands }
     procedure ApplyZoom;
     property OnZoom: TNotifyEvent read FOnZoom write FOnZoom;
@@ -936,6 +956,10 @@ implementation
 
 uses
   Math, SdUI, SdIcons, SdPasLex, SdZoom;
+
+{ Sync Edit's (after CaretCount) }
+procedure SyncEditUpdate(E: TSciEdit); forward;
+procedure SyncSelect(E: TSciEdit; Group: Integer); forward;
 
 type
   TCreateLexer = function(Name: PAnsiChar): Pointer; stdcall;
@@ -1605,7 +1629,7 @@ procedure TSciEdit.Detached(KeepView: Boolean);
 begin
   ClearLink;
   if KeepView then SaveView;
-  FModifiedCache := Sci(SCI_GETMODIFY) <> 0;
+  FModifiedCache := GetModified;
   FReadOnlyCache := Sci(SCI_GETREADONLY) <> 0;
   FWindow := nil;
   FDirectFn := nil;
@@ -2286,6 +2310,7 @@ procedure TSciEdit.Notify(N: PSCNotification);
 var
   Shift: TShiftState;
   L: Integer;
+  Was: Boolean;
 begin
   case N^.code of
     { no lexer (Scintilla's container lexing): an expert's highlighter styles the lines }
@@ -2324,6 +2349,7 @@ begin
       end;
     SCN_UPDATEUI:
       begin
+        if FSyncOn then SyncEditUpdate(Self);
         if FLineForeDirty then RefreshLineColours;
         if FBlockShown and (Sci(SCI_GETSELECTIONEMPTY) = 0) then
         begin
@@ -2373,6 +2399,14 @@ begin
       begin
         FTextValid := False;
         FText := '';
+        { the text typed back to the saved one is not modified, nor one that leaves it again; the
+          save point itself (undo, redo) is SCN_SAVEPOINTREACHED's }
+        if Sci(SCI_GETMODIFY) <> 0 then
+        begin
+          Was := FAtSaved;
+          FAtSaved := IsSavedText;
+          if (FAtSaved <> Was) and Assigned(FOnSavePointChange) then FOnSavePointChange(Self);
+        end;
         if Map <> nil then Map.Changed;
         if N^.linesAdded <> 0 then SetupLineNumbers(False);    // the other margins stay as they are
         if N^.modificationType and SC_MOD_INSERTTEXT <> 0 then AdjustBlock(N^.position, N^.length, True)
@@ -2403,7 +2437,10 @@ begin
         begin
           FTextValid := False;
           FText := '';
-        end;
+          FAtSaved := IsSavedText;
+        end
+        else
+          FAtSaved := False;           // Scintilla's own save point: not modified by itself
         if Assigned(FOnSavePointChange) then FOnSavePointChange(Self);
       end;
     { Editor Options | Double click line: the line, not the word }
@@ -2578,6 +2615,20 @@ var
 begin
   Result := False;
   if (Key in [VK_SHIFT, VK_CONTROL, VK_MENU, VK_LWIN, VK_RWIN, VK_CAPITAL]) or not Ready then Exit;
+  { Sync Edit: Tab / Shift+Tab go from name to name, Esc ends it }
+  if FSyncOn and ((Shift = []) or (Shift = [ssShift])) and ((Key = VK_TAB) or (Key = VK_ESCAPE) and (Shift = [])) then
+  begin
+    if Key = VK_ESCAPE then
+      SyncEditEnd
+    else
+    begin
+      if Shift = [] then FSyncGroup := (FSyncGroup + 1) mod FSyncCount
+      else FSyncGroup := (FSyncGroup + FSyncCount - 1) mod FSyncCount;
+      SyncSelect(Self, FSyncGroup);
+    end;
+    Result := True;
+    Exit;
+  end;
   { the hook first - inside a chord too: an expert's sequence may begin with the chord's first key;
     a key it took ends the chord }
   Hook := khNone;
@@ -3458,8 +3509,7 @@ begin
     N := FromWide(W, CP, Lost);
   end;
   if N = T then Exit;
-  Sci(SCI_SETTARGETRANGE, S, E);
-  SciS(SCI_REPLACETARGET, Length(N), N);
+  ReplaceRange(S, E - S, N);
 end;
 
 { Delphi's case commands of the block: only the column block's rectangle, the stream block's span.
@@ -4048,7 +4098,7 @@ begin
   if Runs <> nil then Runs[0].Text := ' ';
 end;
 
-function TSciEdit.FoldPreview(X, Y: Integer; out Lines: TTipLines; out At: TRect): Boolean;
+function TSciEdit.FoldPreview(X, Y: Integer; out Lines: TTipLines; out At: TRect; out Ground: TColor): Boolean;
 var
   Line, First, Last, Shown, E, Left, Top, Blank, Indent, D: Integer;
   Runs: TTipRuns;
@@ -4097,6 +4147,7 @@ begin
   end;
   At := ScreenTextRect(PosFromLine(Line), PosFromLine(Line));
   Inc(At.Left, Indent * Blank);
+  Ground := ThemeBack(eePlainText);
   Result := Lines <> nil;
 end;
 
@@ -5038,8 +5089,7 @@ begin
   A := PosFromLine(L1);
   BeginUndo;
   try
-    Sci(SCI_SETTARGETRANGE, A, LineEndPos(L2));
-    SciS(SCI_REPLACETARGET, Length(New), New);
+    ReplaceRange(A, LineEndPos(L2) - A, New);
   finally
     EndUndo;
   end;
@@ -5137,6 +5187,215 @@ end;
 function TSciEdit.CaretCount: Integer;
 begin
   Result := Sci(SCI_GETSELECTIONS);
+end;
+
+function TSciEdit.SyncEditing: Boolean;
+begin
+  Result := FSyncOn;
+end;
+
+type
+  TSyncInts = array of Integer;
+
+{ the runs of IND_SYNC: their starts, ends and values in the arrays (Count runs) }
+procedure SyncRuns(E: TSciEdit; var Starts, Ends, Values: TSyncInts; out Count: Integer);
+var
+  P, Q, N, V: Integer;
+begin
+  Count := 0;
+  N := E.TextLength;
+  P := 0;
+  while P < N do
+  begin
+    V := E.Sci(SCI_INDICATORVALUEAT, IND_SYNC, P);
+    Q := E.Sci(SCI_INDICATOREND, IND_SYNC, P);
+    if Q <= P then Break;
+    if V > 0 then
+    begin
+      if Count = Length(Starts) then
+      begin
+        SetLength(Starts, Count * 2 + 16);
+        SetLength(Ends, Count * 2 + 16);
+        SetLength(Values, Count * 2 + 16);
+      end;
+      Starts[Count] := P;
+      Ends[Count] := Q;
+      Values[Count] := V;
+      Inc(Count);
+    end;
+    P := Q;
+  end;
+end;
+
+{ the places of the name Group selected together, the first the main selection }
+procedure SyncSelect(E: TSciEdit; Group: Integer);
+var
+  S, En, V: TSyncInts;
+  N, K: Integer;
+  First: Boolean;
+begin
+  SyncRuns(E, S, En, V, N);
+  First := True;
+  for K := 0 to N - 1 do
+    if V[K] = Group + 1 then
+    begin
+      if First then E.Sci(SCI_SETSELECTION, En[K], S[K]) else E.Sci(SCI_ADDSELECTION, En[K], S[K]);
+      First := False;
+    end;
+  E.Sci(SCI_SETMAINSELECTION, 0);
+  E.Sci(SCI_SCROLLCARET);
+end;
+
+function TSciEdit.SyncEditStart(Pascal: Boolean): Boolean;
+var
+  A, B, K, I, P, Q: Integer;
+  Text, W: string;
+  Names: TStringList;
+  RT: TRawToks;
+  Starts, Lens: array of Integer;
+  N: Integer;
+
+  procedure Add(Start, Len: Integer);
+  begin
+    if N = Length(Starts) then
+    begin
+      SetLength(Starts, N * 2 + 16);
+      SetLength(Lens, N * 2 + 16);
+    end;
+    Starts[N] := Start;
+    Lens[N] := Len;
+    Inc(N);
+  end;
+
+begin
+  Result := False;
+  if not Ready or FSyncOn then Exit;
+  A := SelStart;
+  B := SelEnd;
+  if A >= B then Exit;
+  Text := GetRange(A, B);
+  N := 0;
+  { the names of the selection: a Pascal text's identifiers (no reserved word, comment or string),
+    else its words }
+  if Pascal then
+  begin
+    RT := TRawToks.Create(Text, False);
+    try
+      for K := 0 to RT.N - 1 do
+        if RT.T[K].Kind = tkIdent then Add(RT.T[K].Start, RT.T[K].Len);
+    finally
+      RT.Free;
+    end;
+  end
+  else
+  begin
+    P := 1;
+    while P <= Length(Text) do
+      if IdentTab[Text[P]] and not (Text[P] in ['0'..'9']) then
+      begin
+        Q := P;
+        while (Q <= Length(Text)) and IdentTab[Text[Q]] do Inc(Q);
+        Add(P - 1, Q - P);
+        P := Q;
+      end
+      else
+        Inc(P);
+  end;
+  Names := TStringList.Create;
+  try
+    { the names by their count: Objects the count, then the number of each name kept }
+    for K := 0 to N - 1 do
+    begin
+      W := System.Copy(Text, Starts[K] + 1, Lens[K]);
+      if Pascal then W := UpperCase(W);
+      I := Names.IndexOf(W);
+      if I < 0 then Names.AddObject(W, TObject(1)) else Names.Objects[I] := TObject(Integer(Names.Objects[I]) + 1);
+    end;
+    FSyncCount := 0;
+    for I := 0 to Names.Count - 1 do
+      if Integer(Names.Objects[I]) > 1 then
+      begin
+        Inc(FSyncCount);
+        Names.Objects[I] := TObject(-FSyncCount);
+      end;
+    if FSyncCount = 0 then Exit;
+    ClearIndicator(IND_SYNC);
+    Sci(SCI_SETINDICATORCURRENT, IND_SYNC);
+    for K := 0 to N - 1 do
+    begin
+      W := System.Copy(Text, Starts[K] + 1, Lens[K]);
+      if Pascal then W := UpperCase(W);
+      I := Integer(Names.Objects[Names.IndexOf(W)]);
+      if I >= 0 then Continue;
+      Sci(SCI_SETINDICATORVALUE, -I);
+      Sci(SCI_INDICATORFILLRANGE, A + Starts[K], Lens[K]);
+    end;
+    Sci(SCI_SETINDICATORVALUE, 1);
+  finally
+    Names.Free;
+  end;
+  FSyncOn := True;
+  FSyncGroup := 0;
+  SyncSelect(Self, 0);
+  Result := True;
+end;
+
+procedure TSciEdit.SyncEditEnd;
+var
+  P: Integer;
+begin
+  if not FSyncOn then Exit;
+  FSyncOn := False;
+  ClearIndicator(IND_SYNC);
+  P := CaretPos;
+  Sci(SCI_SETEMPTYSELECTION, P);
+end;
+
+{ after a change or a move: the places of the name being edited boxed again (typing over a place
+  takes its box), a click on another name selects its places, the caret away from them ends it }
+procedure SyncEditUpdate(E: TSciEdit);
+var
+  S, En, V: TSyncInts;
+  N, K, P, A, B, Lo, Hi: Integer;
+begin
+  for K := 0 to E.Sci(SCI_GETSELECTIONS) - 1 do
+  begin
+    A := E.Sci(SCI_GETSELECTIONNSTART, K);
+    B := E.Sci(SCI_GETSELECTIONNEND, K);
+    while (A > 0) and IdentTab[E.CharAt(A - 1)] do Dec(A);
+    while (B < E.TextLength) and IdentTab[E.CharAt(B)] do Inc(B);
+    if B > A then
+    begin
+      E.Sci(SCI_SETINDICATORCURRENT, IND_SYNC);
+      E.Sci(SCI_SETINDICATORVALUE, E.FSyncGroup + 1);
+      E.Sci(SCI_INDICATORFILLRANGE, A, B - A);
+      E.Sci(SCI_SETINDICATORVALUE, 1);
+    end;
+  end;
+  SyncRuns(E, S, En, V, N);
+  if N = 0 then
+  begin
+    E.SyncEditEnd;
+    Exit;
+  end;
+  Lo := S[0];
+  Hi := En[N - 1];
+  P := E.CaretPos;
+  if (P < Lo) or (P > Hi) then
+  begin
+    E.SyncEditEnd;
+    Exit;
+  end;
+  if E.Sci(SCI_GETSELECTIONS) = 1 then
+    for K := 0 to N - 1 do
+      if (P >= S[K]) and (P <= En[K]) and (V[K] <> E.FSyncGroup + 1) then
+      begin
+        E.FSyncGroup := V[K] - 1;
+        SyncSelect(E, E.FSyncGroup);
+        E.Sci(SCI_SETSELECTION, P, P);
+        SyncSelect(E, E.FSyncGroup);
+        Break;
+      end;
 end;
 
 procedure TSciEdit.ExpandSelection;
@@ -5494,6 +5753,13 @@ begin
   SciS(SCI_INSERTTEXT, Pos, S);
 end;
 
+procedure TSciEdit.ReplaceRange(Pos, Len: Integer; const S: string; Minimal: Boolean);
+begin
+  Sci(SCI_SETTARGETRANGE, Pos, Pos + Len);
+  if Minimal then SciS(SCI_REPLACETARGETMINIMAL, Length(S), S)
+  else SciS(SCI_REPLACETARGET, Length(S), S);
+end;
+
 procedure TSciEdit.DeleteRange(Pos, Len: Integer);
 begin
   Sci(SCI_DELETERANGE, Pos, Len);
@@ -5794,7 +6060,24 @@ end;
 function TSciEdit.GetModified: Boolean;
 begin
   if FDirectPtr = nil then Result := FModifiedCache
-  else Result := Sci(SCI_GETMODIFY) <> 0;
+  else Result := (Sci(SCI_GETMODIFY) <> 0) and not FAtSaved;
+end;
+
+{ the document holds the text of the save point: compared only when the lengths agree, the two
+  parts on either side of Scintilla's gap apart, so that the comparison does not move the gap }
+function TSciEdit.IsSavedText: Boolean;
+var
+  L, G: Integer;
+begin
+  L := Sci(SCI_GETLENGTH);
+  Result := L = Length(FSavedText);
+  if not Result or (L = 0) then Exit;
+  G := Sci(SCI_GETGAPPOSITION);
+  if (G < 0) or (G > L) then G := L;
+  if G > 0 then
+    Result := CompareMem(PChar(Sci(SCI_GETRANGEPOINTER, 0, G)), Pointer(FSavedText), G);
+  if Result and (G < L) then
+    Result := CompareMem(PChar(Sci(SCI_GETRANGEPOINTER, G, L - G)), @FSavedText[G + 1], L - G);
 end;
 
 function TSciEdit.GetReadOnly: Boolean;
@@ -5847,7 +6130,7 @@ begin
   PutText(S);
   Sci(SCI_SETUNDOCOLLECTION, 1);
   Sci(SCI_EMPTYUNDOBUFFER);
-  Sci(SCI_SETSAVEPOINT);
+  SetSavePoint;
   Sci(SCI_GOTOPOS, 0);
   ReadOnly := WasRO;
   Sci(SCI_SETSCROLLWIDTH, 1);        // the widest line of the old text is no measure any more
@@ -5976,6 +6259,8 @@ end;
 procedure TSciEdit.SetSavePoint;
 begin
   Sci(SCI_SETSAVEPOINT);
+  FSavedText := GetText;               // what an edit is compared with (typed back: not modified)
+  FAtSaved := False;
 end;
 { --- markers --- }
 
@@ -6576,6 +6861,7 @@ begin
   HistoryMarker(SC_MARKNUM_HISTORY_REVERTED_TO_MODIFIED, Modified);
   { indicators }
   Box(IND_OCCURRENCE, ThemeBack(eeOccurrence), 255, 255);
+  Box(IND_SYNC, ThemeFore(eeIdentDecl), 40, 255);
   Sci(SCI_INDICSETSTYLE, IND_LINK, INDIC_PLAIN);
   Sci(SCI_INDICSETFORE, IND_LINK, SciColor(ThemeFore(eeHotLink)));
   Sci(SCI_INDICSETHOVERSTYLE, IND_LINK, INDIC_PLAIN);
@@ -6813,7 +7099,8 @@ begin
 end;
 
 { the minimap's colours: its ground the scroll bars' track, the box of the lines in view the thumb's
-  colours (under the pointer, dragged: theirs too), the tip on the plain text's ground; the caret's
+  colours (under the pointer, dragged: theirs too), the line at its left the bars' line, the tip on
+  the plain text's ground; the caret's
   line in the colour of its scroll bar marker; the selection's ground and text, as the editor draws
   it; the find matches and Error Insight's errors in the colours of their scroll bar markers }
 function MapColors(const C: TEditorColors; Bg: TColor; const SC: TSciScrollColors): TSciMapColors;
@@ -6822,6 +7109,7 @@ begin
   Result.View := SC.Thumb;
   Result.ViewHot := SC.ThumbHot;
   Result.ViewDown := SC.ThumbDown;
+  Result.Line := SC.Line;
   Result.Tip := Bg;
   Result.Caret := SC.ArrowHot;
   Result.Selection := ElementBack(C, eeSelection);
@@ -7361,13 +7649,20 @@ begin
     if (SciFileWindow <> nil) and (SciFileWindow.FMap <> nil) then Room := SciFileWindow.FMap.Room;
   end
   else if (Self = SciFileWindow) and (EditorOptions.Minimap <> MinimapNone) then
-    Room := SciMapWidth(GetControlDpi(Self));
+    Room := SciMapWidth(GetControlDpi(Self), EditorOptions.MinimapLarge);
   if (FMap = nil) and (Room > 0) then
   begin
     FMap := TSciMinimap.Create(Self);
     FMap.SciCall := Sci;
     FMap.OnStyleTo := MapStyleTo;
     FMap.OnPreview := MapPreview;
+  end;
+  { the whole text in the map, or the strip that scrolls with the view (Show Entire Code) }
+  if FMap <> nil then
+  begin
+    FMap.Entire := EditorOptions.MinimapEntire;
+    FMap.Large := EditorOptions.MinimapLarge;
+    FMap.FontName := EditorOptions.FontName;
   end;
   if (FMap = nil) or (FMap.Room = Room) then Exit;
   FMap.Room := Room;

@@ -1520,56 +1520,6 @@ end;
 
 { ---------------------------------------------------------------- DLL experts }
 
-{ the experts' DLLs, as Delphi 7 reads them - Wizards, then Experts (any value name, the file as
-  its value; each DLL may have either entry point): D7 Studio's registry key in Delphi's layout,
-  and the sections [Wizards] and [Experts] of the settings (name=file); each file once }
-procedure ExpertFiles(Files: TStrings);
-const
-  Sections: array[0..1] of string = ('Wizards', 'Experts');
-var
-  Reg: TRegistry;
-  Names: TStringList;
-  I, K: Integer;
-  F: string;
-begin
-  Files.Clear;
-  Names := TStringList.Create;
-  Reg := TRegistry.Create(KEY_READ);
-  try
-    Reg.RootKey := HKEY_CURRENT_USER;
-    for K := Low(Sections) to High(Sections) do
-    begin
-      try
-        Names.Clear;
-        if Reg.OpenKeyReadOnly(SettingsRegKey + '\' + Sections[K]) then
-        begin
-          Reg.GetValueNames(Names);
-          for I := 0 to Names.Count - 1 do
-          begin
-            F := ExpandDelphiMacros(Reg.ReadString(Names[I]));
-            if (F <> '') and (Files.IndexOf(F) < 0) then Files.Add(F);
-          end;
-          Reg.CloseKey;
-        end;
-      except
-      end;
-      if Settings <> nil then
-      begin
-        Names.Clear;
-        Settings.ReadSectionValues(Sections[K], Names);
-        for I := 0 to Names.Count - 1 do
-        begin
-          F := ExpandDelphiMacros(Names.ValueFromIndex[I]);
-          if (F <> '') and (Files.IndexOf(F) < 0) then Files.Add(F);
-        end;
-      end;
-    end;
-  finally
-    Reg.Free;
-    Names.Free;
-  end;
-end;
-
 procedure PackageUnloading(Module: HMODULE); forward;
 
 { a DLL expert's terminate procedures (Delphi's order: INITEXPERT0017's, then INITWIZARD0001's) }
@@ -1606,7 +1556,7 @@ var
 begin
   Files := TStringList.Create;
   try
-    ExpertFiles(Files);
+    ExpertFiles(Settings, SettingsRegKey, Files);
     for I := 0 to Files.Count - 1 do
     begin
       { an expert that cannot be loaded: why, in error.log }

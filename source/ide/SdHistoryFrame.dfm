@@ -26,7 +26,6 @@ inherited SdHistoryView: TSdHistoryView
     BevelOuter = bvNone
     Color = clWindow
     TabOrder = 1
-    OnResize = DiffHostResize
     object StatusPanel: TPanel
       Left = 0
       Top = 378

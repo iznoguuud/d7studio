@@ -49,13 +49,14 @@ modernized RTL/VCL in full is in [MODERNIZATION.md](MODERNIZATION.md).
   *Dock Right*, *Dock Bottom*, *Dock Bottom (Full Width)*, *Dock in Editor Area* (left, top, right or
   bottom), *Floating*, *Tabs* (top, bottom, left or right), *Auto Hide* and *Close*.
 - **Auto hide.** The pin on a caption collapses its group into tabs along the window's edge. Click
-  a tab, or rest the pointer on it, and the group slides out; it slides back when you leave it. A
-  failed compile slides Messages out, a debugger stop its view.
+  a tab, or rest the pointer on it, and the group slides out; it slides back when you leave it. Drag
+  its inner edge to make it wider or taller. A failed compile slides Messages out, a debugger stop its view.
 - **Floating groups.** Any group floats in a window of its own, which stays above the main window
   and has no task bar button. A double click on its caption docks it back where it was.
 - **Tabs in any order.** Drag a group's tabs, or the file tabs, into the order you want.
-- **File tabs** have a close box, a middle click closes them too, and the tab of a modified file
-  ends in `*`. The project's desktop keeps their order, and Delphi 7 reopens the files in that order
+- **File tabs** have a close box when the pointer is on them, a middle click closes them too, and in its place
+  a modified file's tab shows a green dot, the others a light grey one. A file whose text is back to what was saved -
+  by undo or by typing it back - is no longer modified. The project's desktop keeps their order, and Delphi 7 reopens the files in that order
   too. A button at the end of the row lists the open files; or the tabs go into as many rows as they need (*Tools ▸
   Editor Options ▸ Display ▸ Multi-line file tabs*).
 - **The *Tabs* menu** (Delphi 7's *Window*): *Next Tab* (Ctrl+Tab) and *Previous Tab* (Ctrl+Shift+Tab) go through
@@ -151,10 +152,15 @@ modernized RTL/VCL in full is in [MODERNIZATION.md](MODERNIZATION.md).
   rainbow brackets if you want them.
 - **Markers on the scroll bar** for changed lines, search matches, the places of the name at the
   caret, breakpoints, bookmarks, the execution point and errors.
-- **A minimap** beside the scroll bar: the file in miniature in its colours, the lines in view in a
+- **A minimap** beside the scroll bar: the file in miniature in its colours (the large minimap draws
+  its characters from the editor's font), the lines in view in a
   box, the caret's line, the selection, search matches and errors. A click jumps there, dragging the
   box scrolls, and the pointer over it shows the code around that line in a tip (*Editor Options ▸
-  Display ▸ Scroll bars ▸ Minimap*: *Enabled + preview*, *Enabled* without the tip, or *Disabled*).
+  Display ▸ Scroll bars ▸ Minimap*: *Enabled + preview*, *Enabled* without the tip, or *Disabled*). It
+  can scroll with the view (the default) or show the entire file, squeezed to its height (*Layout*
+  beside *Minimap*), and be drawn twice as large for big screens (*Large minimap*). A drop-down button
+  at the right end of the code editor's bar has all four switches: show or hide it, its preview, the
+  entire file and the large size.
 - **Typing aids** (*Editor Options ▸ Typing*): brackets and quotes close themselves; Enter after
   `begin`, `try`, `repeat` or `case` adds the missing `end`, `finally` ... `end` or `until`; the
   next line is indented after `then`, `do`, `else` and section words, and `end` or `until` goes
@@ -208,6 +214,59 @@ modernized RTL/VCL in full is in [MODERNIZATION.md](MODERNIZATION.md).
 - **Value tips as trees.** While the program is stopped, the tip shows the value of the whole
   expression under the pointer, with records, arrays and objects to open in place. Delphi 7 shows
   one line.
+
+## Refactoring
+
+*Edit ▸ Refactor*, the *Refactor* button on the code editor's bar, and *Refactoring* in the code editor's menu. Each
+refactoring shows its changes first
+in the *Refactorings* view - every file and line it changes, and the file before and after compared as in the History
+tab - and makes them when you
+click *Apply*; an open file's changes are undone in one step, a closed file keeps its text before in its History.
+Delphi 7 has none of them.
+
+- **Rename** (F2): a variable, constant, type, routine, method, field, property or parameter, everywhere the project
+  group uses it - code insight tells same-named symbols apart. A routine's overloads, a method's overrides and a
+  parameter's other heading come along; a component, an event handler or a form's class is renamed in the form files
+  too, and the open form designer follows.
+- **Declare Variable** (Shift+Ctrl+V) and **Declare Field**: a name that is not declared yet becomes a local variable
+  or a field of the class, its type guessed from how it is used.
+- **Find Unit** (Shift+Ctrl+A): the units that declare the name at the caret; the one you choose goes into the uses
+  clause.
+- **Extract Method** (Shift+Ctrl+M): the selected statements become a method (or routine) of their own; the
+  variables they need become its parameters, a value they produce its result, and the statements a call.
+- **Introduce Variable** and **Inline Variable**: an expression kept in a new local variable, or a variable assigned
+  once replaced by its value.
+- **Change Parameters** (Shift+Ctrl+X): add, remove, reorder, rename and retype a routine's parameters; its
+  declarations and every call change with them.
+- **Extract Resource String** (Shift+Ctrl+L): the string at the caret becomes a resource string of the unit.
+- **Extract Constant**: the number or string at the caret, or a selected constant expression, becomes a named
+  constant of the routine, the implementation or the interface - the same value elsewhere there too, if you like.
+- **Convert to Format**: a string concatenation becomes a call of `Format`: `'Total: ' + IntToStr(N)` becomes
+  `Format('Total: %d', [N])`.
+- **Implement Methods**: the methods of a class's interfaces that it lacks, and overrides of its ancestors' virtual
+  and abstract methods, chosen from a list; they are declared and implemented, an override calling the inherited
+  method.
+- **Encapsulate Field**: a field goes behind a property - the field private, the property reading and writing it or
+  writing through a setter -, and the code outside the class uses the property. It refuses where a property cannot
+  stand, such as a var argument.
+- **Complete Case**: a case statement on an enumeration gets a branch for each value none of its branches has.
+- **Remove With**: a with statement goes and what it gave is named through its expression; a call or a typecast is
+  kept in a new variable first.
+- **Clean Uses**: the units a unit does not need are removed from its uses clauses, and those only its
+  implementation needs move there - except a unit whose start-up code a program of the group would lose.
+- **Safe Delete**: a declaration nothing in the project uses is deleted with its implementation; otherwise it tells
+  you where it is still used.
+- **Const Parameters**: the string, record, array, Variant and interface parameters a routine never changes become
+  `const`, in every heading of the routine.
+- **Rename Unit**: a unit, everywhere it is named - uses clauses, the project's entry and path -, and its file and
+  its form's file.
+- **Move to Unit**: a type, routine, constant or variable goes into another unit of the project, and the uses
+  clauses follow. What only it used of the unit's implementation goes with it; what other code there uses too, or a
+  private member it reaches, stops the move with the reason.
+- **Pull Members Up** and **Push Members Down**: members of a class move into its ancestor, or into each of its
+  descendants, declared and implemented there.
+- **Sync Edit**: the names that occur more than once in the selected text are linked - typing over one changes them
+  all; Tab goes to the next name, Esc ends it.
 
 ## The formatter
 
@@ -324,7 +383,8 @@ modernized RTL/VCL in full is in [MODERNIZATION.md](MODERNIZATION.md).
   Several copies can run at once without undoing each other's changes. D7 Studio never writes
   Delphi 7's registry key, so Delphi 7's IDE keeps its own settings.
 - **A crash log**: an unexpected error is written with its call stack to `error.log` next to the
-  settings.
+  settings. *Help ▸ Create Bug Report...* turns it into `bugreport.txt` for an issue: the errors grouped,
+  their call stacks with procedures, lines and source, and the system, Delphi 7, the packages and experts.
 - **Updates from GitHub**: *Help ▸ Check for Updates...*, and once a day at start-up (*Tools ▸ Environment
   Options ▸ Preferences ▸ Check for updates at start-up*), look for a newer release. Its dialog
   shows what's new: the release notes of every version since yours; *Update* downloads the setup, checks its SHA-256, closes D7 Studio and

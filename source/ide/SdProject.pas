@@ -541,6 +541,9 @@ function WarningOnByDefault(const W: TCompilerWarning): Boolean;
 { a compiler switch of the .dof's [Compiler] section when neither the project nor the default
   options (defproj.dof) have it: the compiler's own default (A = 8; Y = 1, definitions only) }
 function CompilerSwitchDefault(Switch: Char): Integer;
+{ runs a console program (CmdLine, in WorkDir) without a window and waits for it: what it wrote
+  (its output and its errors) and its exit code; False when it cannot start }
+function RunConsoleTool(const CmdLine, WorkDir: string; out Output: string; out Code: Cardinal): Boolean;
 
 implementation
 

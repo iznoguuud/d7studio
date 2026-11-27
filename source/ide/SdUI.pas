@@ -400,7 +400,11 @@ procedure UITitleColors(out Back, Fore: TColor; Active: Boolean = True);
 procedure UIDrawPaneCaption(DC: HDC; const R: TRect; const Text: string; Pinned: Boolean;
   PinState, CloseState: TUIButtonState; Active: Boolean; ShowPin: Boolean = True);   // no pin: a floating group
 function UIPaneCaptionButton(const R: TRect; Index: Integer): TRect;   // 0 the pin, 1 the close box
-procedure UIDrawCloseBox(DC: HDC; const R: TRect; State: TUIButtonState; Solid: Boolean);
+{ a close box; Cross not clNone: at rest only its cross, in that colour (a caption's), else a grey
+  square (a tab's) }
+procedure UIDrawCloseBox(DC: HDC; const R: TRect; State: TUIButtonState; Cross: TColor = clNone);
+{ a file tab's mark in its close box's place: green while the file is Modified, else light grey }
+procedure UIDrawTabDot(DC: HDC; const R: TRect; Modified: Boolean);
 function UIBlend(A, B: TColor; Percent: Integer): TColor;           // Percent of A
 { a colour's brightness, 0 .. 255: its luminance (299 R + 587 G + 114 B) div 1000 }
 function UILuma(Color: TColor): Integer;
@@ -3373,94 +3377,146 @@ end;
 
 const
   CaptionMargin = 2;          // the face colour between a docked view's title bar and the view
-  CloseRed = $005050C7;       // the close button of Windows' tool windows (Delphi 7's floating
-  CloseRedHot = $004343E0;    // views show it): #C75050, under the pointer #E04343, pressed
-  CloseRedDown = $003D3D99;   // #993D3D
+  CloseRedHot = $004343E0;    // the close button of Windows' tool windows under the pointer:
+  CloseRedDown = $003D3D99;   // #E04343, pressed #993D3D
+  ModifiedGreen = $0043A02E;  // a modified file's dot on its tab (UIDrawTabDot): #2EA043
   TabCloseGap = 3;            // between a tab's close box and the tab's end
 
-{ the title bar (the text with 3 px above and below it) and the margin below it }
+{ the title bar (the text with 7 px of room, centred: 22 px at Segoe UI 9, so that its 16 px
+  buttons lie in its middle) and the margin below it }
 function UIPaneCaptionHeight: Integer;
 begin
-  Result := UITextHeight + 6 + CaptionMargin;
+  Result := UITextHeight + 7 + CaptionMargin;
 end;
 
-{ A close box: on a caption (Solid) always in the red of the close button of a tool window, on a
-  tab only while the pointer is over it or it is pressed; in its middle the cross of that button
-  - 5 x 5 px, each arm 2 px wide but the centre pixel; a third of the box with a large UI font -
-  white on red, else in the text colour. }
-procedure UIDrawCloseBox(DC: HDC; const R: TRect; State: TUIButtonState; Solid: Boolean);
+{ a square of R's height div Part, at least 5, in the middle of R: the mark of a close box (the
+  cross, Part 3) or of a file tab (its dot, Part 2). Its side has the parity of R's, so that it
+  lies exactly in the middle - 5 in 13 or 17, 6 in 16 }
+function MarkSquare(const R: TRect; Part: Integer): TRect;
 var
-  N, C, X0, Y0, Y, D: Integer;
+  N: Integer;
+begin
+  N := (R.Bottom - R.Top) div Part;
+  if N < 5 then N := 5;
+  if Odd(N) <> Odd(R.Bottom - R.Top) then Inc(N);
+  Result.Left := R.Left + (R.Right - R.Left - N) div 2;
+  Result.Top := R.Top + (R.Bottom - R.Top - N) div 2;
+  Result.Right := Result.Left + N;
+  Result.Bottom := Result.Top + N;
+end;
+
+{ A close box: while the pointer is over it or it is pressed a square in the red of the close
+  button of a tool window, else, on a tab, one in the shadow's grey - with the cross of that
+  button in white -, or on a caption (Cross) only the cross in that colour; the cross 5 x 5 px in
+  an odd box, 6 x 6 in an even one, a third of the box with a large UI font: in each row a 2 px
+  stroke from either side, meeting in the middle in one pixel (odd) or two (even). }
+procedure UIDrawCloseBox(DC: HDC; const R: TRect; State: TUIButtonState; Cross: TColor = clNone);
+var
+  M: TRect;
+  N, Y, K, A, B: Integer;
   Color: TColor;
 begin
-  Color := clBtnText;
-  if Solid or (State in [bsHot, bsDown]) then
-  begin
-    case State of
-      bsHot: UIFill(DC, R, CloseRedHot);
-      bsDown: UIFill(DC, R, CloseRedDown);
-    else
-      UIFill(DC, R, CloseRed);
-    end;
-    Color := clWhite;
+  Color := clWhite;
+  case State of
+    bsHot: UIFill(DC, R, CloseRedHot);
+    bsDown: UIFill(DC, R, CloseRedDown);
+  else
+    if Cross = clNone then UIFill(DC, R, clBtnShadow) else Color := Cross;
   end;
-  N := (R.Bottom - R.Top) div 3;
-  if not Odd(N) then Inc(N);
-  if N < 5 then N := 5;
-  C := N div 2;
-  X0 := R.Left + (R.Right - R.Left - N) div 2;
-  Y0 := R.Top + (R.Bottom - R.Top - N) div 2;
+  M := MarkSquare(R, 3);
+  N := M.Right - M.Left;
   for Y := 0 to N - 1 do
   begin
-    D := Abs(Y - C);
-    if D = 0 then
-      UIFill(DC, Rect(X0 + C, Y0 + Y, X0 + C + 1, Y0 + Y + 1), Color)
+    K := N - 1 - Y;                              // the strokes' distance from the sides
+    if Y < K then K := Y;
+    A := M.Left + K;
+    B := M.Left + N - 1 - K;
+    if A = B then
+      UIFill(DC, Rect(A, M.Top + Y, A + 1, M.Top + Y + 1), Color)
     else
     begin
-      UIFill(DC, Rect(X0 + C - D, Y0 + Y, X0 + C - D + 2, Y0 + Y + 1), Color);
-      UIFill(DC, Rect(X0 + C + D - 1, Y0 + Y, X0 + C + D + 1, Y0 + Y + 1), Color);
+      UIFill(DC, Rect(A, M.Top + Y, A + 2, M.Top + Y + 1), Color);
+      UIFill(DC, Rect(B - 1, M.Top + Y, B + 1, M.Top + Y + 1), Color);
     end;
   end;
 end;
 
-{ The buttons at the right end of a caption's bar, squares 4 px less than the bar, 2 px from its
-  top and right end, 1 px apart: the close box last, the pin before it. }
+{ A file tab's mark: a dot in the middle of R (its close box), an odd size about half of R's
+  height - 7 px in a 13 px box -, green for a modified file, else a light grey between the
+  shadow and the face }
+procedure UIDrawTabDot(DC: HDC; const R: TRect; Modified: Boolean);
+var
+  M: TRect;
+  Color: COLORREF;
+  Brush: HBRUSH;
+  Pen: HPEN;
+  OldBrush: HBRUSH;
+  OldPen: HPEN;
+begin
+  M := MarkSquare(R, 2);
+  if Modified then Color := ModifiedGreen
+  else Color := ColorToRGB(UIBlend(clBtnShadow, clBtnFace, 60));
+  Brush := CreateSolidBrush(Color);
+  Pen := CreatePen(PS_SOLID, 1, Color);
+  OldBrush := SelectObject(DC, Brush);
+  OldPen := SelectObject(DC, Pen);
+  Ellipse(DC, M.Left, M.Top, M.Right, M.Bottom);
+  SelectObject(DC, OldPen);
+  SelectObject(DC, OldBrush);
+  DeleteObject(Pen);
+  DeleteObject(Brush);
+end;
+
+{ The buttons at the right end of a caption's bar, squares 6 px less than the bar, in its middle
+  from top to bottom (3 px above and below), 2 px from its right end, 1 px apart: the close box
+  last, the pin before it. }
 function UIPaneCaptionButton(const R: TRect; Index: Integer): TRect;
 var
-  S: Integer;
+  S, T: Integer;
 begin
-  S := R.Bottom - CaptionMargin - R.Top - 4;
-  Result := Rect(R.Right - S - 2, R.Top + 2, R.Right - 2, R.Top + 2 + S);
+  S := R.Bottom - CaptionMargin - R.Top - 6;
+  T := R.Top + 3;
+  Result := Rect(R.Right - S - 2, T, R.Right - 2, T + S);
   if Index = 0 then OffsetRect(Result, -(S + 1), 0);
 end;
 
 { The pin of a caption, in the bar's text colour (a shade of it behind the glyph under the
   pointer, a deeper one pressed): pinned it stands, the point down; unpinned (the group hides at
-  the edge) it lies, the point to the left - as Visual Studio draws it. 9 x 9: a head with a
-  thick side, a collar, the needle. }
+  the edge) it lies, the point to the left - as Visual Studio draws it. 7 x 7 in an odd box, 8 x 8
+  in an even one, so that it lies exactly in the middle: a head with a thick side, a collar, the
+  needle (2 px wide at 8). Pins holds the standing pin's rectangles; the lying one is it turned a
+  quarter to the right. }
 procedure DrawPin(DC: HDC; const R: TRect; Pinned: Boolean; State: TUIButtonState; Back, Fore: TColor);
+type
+  TPinPart = record L, T, RR, B: Integer; end;   // a rectangle of the 7 px pin, E added where it grows
+const
+  Pins: array[0..4] of TPinPart = (
+    (L: 1; T: 0; RR: 6; B: 1),                   // head: its top
+    (L: 1; T: 0; RR: 2; B: 3),                   // ... its thin side
+    (L: 4; T: 0; RR: 6; B: 3),                   // ... its thick side
+    (L: 0; T: 3; RR: 7; B: 4),                   // collar
+    (L: 3; T: 4; RR: 4; B: 7));                  // needle
 var
-  X, Y: Integer;
+  N, E, X, Y, I: Integer;
+  P: TRect;
 begin
   if State = bsHot then UIFill(DC, R, UIBlend(Fore, Back, 25))
   else if State = bsDown then UIFill(DC, R, UIBlend(Fore, Back, 45));
-  X := R.Left + (R.Right - R.Left - 9) div 2;
-  Y := R.Top + (R.Bottom - R.Top - 9) div 2;
-  if Pinned then
+  E := Ord(not Odd(R.Bottom - R.Top));           // 1 in an even box: the 8 px pin
+  N := 7 + E;
+  X := R.Left + (R.Right - R.Left - N) div 2;
+  Y := R.Top + (R.Bottom - R.Top - N) div 2;
+  for I := Low(Pins) to High(Pins) do
   begin
-    UIFill(DC, Rect(X + 2, Y, X + 7, Y + 1), Fore);         // head
-    UIFill(DC, Rect(X + 2, Y, X + 3, Y + 4), Fore);
-    UIFill(DC, Rect(X + 5, Y, X + 7, Y + 4), Fore);
-    UIFill(DC, Rect(X + 1, Y + 4, X + 8, Y + 5), Fore);     // collar
-    UIFill(DC, Rect(X + 4, Y + 5, X + 5, Y + 9), Fore);     // needle
-  end
-  else
-  begin
-    UIFill(DC, Rect(X + 5, Y + 2, X + 9, Y + 3), Fore);     // head
-    UIFill(DC, Rect(X + 8, Y + 2, X + 9, Y + 7), Fore);
-    UIFill(DC, Rect(X + 5, Y + 5, X + 9, Y + 7), Fore);
-    UIFill(DC, Rect(X + 4, Y + 1, X + 5, Y + 8), Fore);     // collar
-    UIFill(DC, Rect(X, Y + 4, X + 4, Y + 5), Fore);         // needle
+    { the 8 px pin: one more column right of the middle (4 and up), one more row below the head }
+    P.Left := Pins[I].L + E * Ord(Pins[I].L >= 4);
+    P.Right := Pins[I].RR + E * Ord(Pins[I].RR >= 4);
+    P.Top := Pins[I].T + E * Ord(Pins[I].T >= 3);
+    P.Bottom := Pins[I].B + E * Ord(Pins[I].B >= 3);
+    if Pinned then
+      UIFill(DC, Rect(X + P.Left, Y + P.Top, X + P.Right, Y + P.Bottom), Fore)
+    else
+      UIFill(DC, Rect(X + N - P.Bottom, Y + P.Left, X + N - P.Top, Y + P.Right), Fore);
   end;
 end;
 
@@ -3485,7 +3541,7 @@ begin
   end
   else
     PinRect := UIPaneCaptionButton(R, 1);       // the title runs up to the close box
-  UIDrawCloseBox(DC, UIPaneCaptionButton(R, 1), CloseState, True);
+  UIDrawCloseBox(DC, UIPaneCaptionButton(R, 1), CloseState, Fore);
   TR := Bar;
   Inc(TR.Left, 5);
   TR.Right := PinRect.Left - 2;
@@ -3605,11 +3661,12 @@ end;
 
 { A tab - of the dock's groups, the Code / Design tabs, the inspector's, the file tabs:
   flat. The tab chosen (bsChecked) has the window colour, joining
-  its view, and a 2 px bar in the colour of Windows' title bars (as the docked views' captions)
+  its view, and a 1 px line in the colour of Windows' title bars (as the docked views' captions)
   along its outer edge; the others the face colour - a shade darker under the pointer (bsHot) -
   and a dimmed title. The title in the UI font, centred; on a strip left of its view it reads
   upwards, right of it downwards. CloseBox (the file tabs, above their pages): the tab ends in a
-  close box (UITabCloseRect, its own state CloseState) and the title is centred in the rest.
+  close box (UITabCloseRect, its own state CloseState; bsDisabled: its room only, no box) and the
+  title is centred in the rest.
   Images[ImageIndex] (when given): an icon before the title, both centred together and turned
   with it; a tab too short cuts the title (its ellipsis), not the icon. TextColor (when not
   clNone): the title's colour in every state, in place of the state's. }
@@ -3618,7 +3675,7 @@ procedure UIDrawTab(DC: HDC; const R: TRect; const Text: WideString; State: TUIB
   Images: TCustomImageList = nil; ImageIndex: Integer = -1; TextColor: TColor = clNone);
 const
   FLAGS = DT_CENTER or DT_VCENTER or DT_SINGLELINE or DT_NOPREFIX or DT_END_ELLIPSIS;
-  BarWidth = 2;
+  BarWidth = 1;
 var
   L, T: Integer;                    // the tab along the strip, across it
   TextEnd: Integer;                 // where its title ends along it (as the tab reads)
@@ -3728,7 +3785,7 @@ begin
     end;
     UIFill(DC, BR, Bar);
   end;
-  if CloseBox then UIDrawCloseBox(DC, UITabCloseRect(R), CloseState, False);
+  if CloseBox and (CloseState <> bsDisabled) then UIDrawCloseBox(DC, UITabCloseRect(R), CloseState);
 end;
 
 { the icon and a 4 px gap before the title }

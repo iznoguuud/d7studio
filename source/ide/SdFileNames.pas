@@ -90,6 +90,10 @@ function FileStampU(const Path: string): TSdFileStamp;
 function SameFileStamp(const A, B: TSdFileStamp): Boolean;
 function ReadFileU(const Path: string): string;                  // the bytes of the file
 procedure WriteFileU(const Path, Data: string);
+{ a file under another name (not over a file there), a file gone: False - Windows' error in
+  GetLastError }
+function RenameFileU(const Path, NewPath: string): Boolean;
+function DeleteFileU(const Path: string): Boolean;
 { the file as it is becomes <name>.~<ext>: Delphi 7's backup of a file before it is saved }
 procedure BackupFileU(const Path: string);
 { the folder Path and those above it made where they are missing; False when one cannot be made }
@@ -296,6 +300,16 @@ end;
   way (disk full, a network drop) leaves the old file as it was, and the temporary file goes -
   but for a replace that took the target away and could not rename the new file: then it is
   moved into the target's place, or kept and named in the error. }
+function RenameFileU(const Path, NewPath: string): Boolean;
+begin
+  Result := MoveFileW(PWideChar(WidePath(Path)), PWideChar(WidePath(NewPath)));
+end;
+
+function DeleteFileU(const Path: string): Boolean;
+begin
+  Result := DeleteFileW(PWideChar(WidePath(Path)));
+end;
+
 procedure WriteFileU(const Path, Data: string);
 const
   REPLACEFILE_IGNORE_MERGE_ERRORS = 2;

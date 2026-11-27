@@ -71,6 +71,8 @@ type
     FoldPreview: Boolean;           // the code a folded line hides, in a tip over its box (TSciEdit.FoldPreview)
     WordWrap, ScrollBarMarkers: Boolean;
     Minimap: Integer;               // the text in miniature beside the vertical scroll bar (SdSciMinimap): MinimapNone ...
+    MinimapEntire: Boolean;         // ... the whole text in it (TSciMinimap.Entire), not a strip scrolling with the view
+    MinimapLarge: Boolean;          // ... its characters twice as big, the strip twice as wide (TSciMinimap.Large)
     NavigationBar: Boolean;         // the Class and Methods/functions boxes over a Pascal file's code
     MultiLineTabs: Boolean;         // the file tabs in as many rows as they need (off: one row and its list button)
     SelectionButton: Boolean;       // a button by the selection that opens the menu of its commands (TSciEdit.SelectionButton)
@@ -93,6 +95,8 @@ const
   MinimapNone = 0;
   MinimapOn = 1;
   MinimapPreview = 2;
+  { TEditorOptions.MinimapEntire False / True, as the minimap's menu and the Display page name them }
+  MinimapModeCaptions: array[Boolean] of string = ('&Scroll with the View', 'Show &Entire Code');
 
 var
   EditorOptions: TEditorOptions;
@@ -270,6 +274,8 @@ begin
   O.WordWrap := False;
   O.ScrollBarMarkers := True;
   O.Minimap := MinimapPreview;
+  O.MinimapEntire := False;
+  O.MinimapLarge := False;
   O.NavigationBar := True;
   O.MultiLineTabs := False;
   O.SelectionButton := True;
@@ -431,6 +437,8 @@ begin
     OptFlag('WordWrap', O.WordWrap, -1),
     OptFlag('ScrollBarMarkers', O.ScrollBarMarkers, -1),
     OptInt('Minimap', O.Minimap, -1),
+    OptFlag('MinimapEntire', O.MinimapEntire, -1),
+    OptFlag('MinimapLarge', O.MinimapLarge, -1),
     OptFlag('NavigationBar', O.NavigationBar, -1),
     OptFlag('MultiLineTabs', O.MultiLineTabs, -1),
     OptFlag('SelectionButton', O.SelectionButton, -1),

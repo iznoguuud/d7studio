@@ -20,7 +20,7 @@ unit SdFormSrc;
 interface
 
 uses
-  SysUtils, Classes;
+  SysUtils, Classes, SdPasParser;
 
 function FSGetUnitName(const Source: string): string;
 function FSRenameUnit(var Source: string; const NewName: string): Boolean;
@@ -48,6 +48,9 @@ function FSFindMethodBody(const Source, AClassName, MethodName: string; out Body
   False: no class there or nothing to complete. }
 function FSCompleteClass(var Source: string; Offset: Integer; FinishProperties: Boolean;
   out BodyLine, BodyCol: Integer): Boolean;
+{ the class declared around Ofs (0-based), or the class of the method implemented around it; nil:
+  none }
+function ClassAtOffset(U: TUnitInfo; Ofs: Integer): TSymbol;
 function FSRenameMethod(var Source: string; const AClassName, OldName, NewName: string): Boolean;
 function FSRemoveEmptyMethods(var Source: string; const AClassName: string; Removed: TStrings): Integer;
 function FSRenameClass(var Source: string; const OldClassName, NewClassName: string): Boolean;
@@ -56,6 +59,11 @@ procedure FSGetUses(const Source: string; InInterface: Boolean; Units: TStrings)
 { the unit names of every uses clause of a source - a unit's two, a program's or a library's one;
   from its tokens, without parsing it (both sides of a conditional directive count) }
 procedure UsesClauseNames(const Source: string; Units: TStrings);
+{ the parts of a text that take the units Names out of its uses clause whose word begins at
+  UsesOfs: a pair of offsets A, B (B excluded) in Ranges for each unit, with its comma - the
+  whole clause with its lines when none stays. False: a unit is not in the clause, or a compiler
+  directive between its units would go with one }
+function UsesRemoveRanges(const Source: string; UsesOfs: Integer; Names: TStrings; Ranges: TList): Boolean;
 function FSAddUses(var Source: string; const UnitName: string; InInterface: Boolean): Boolean;
 
 { The units of a project source: its uses clause, or the contains clause of a package (.dpk) -
@@ -110,43 +118,11 @@ function DprRenameResScript(var Source: string; const RelRc, NewRelRes, NewRelRc
 implementation
 
 uses
-  SdPasLex, SdPasParser, SdCIEngine;
+  SdPasLex, SdCIEngine;
 
 { ---------------------------------------------------------------------------- }
-{ text helpers (offsets are 0-based; the lines: SdPasLex's LineStartOf, LineEndOf, NextLineStart) }
-
-function IndentAt(const S: string; LineStart: Integer): string;
-var
-  I: Integer;
-begin
-  I := LineStart;
-  while (I < Length(S)) and (S[I + 1] in [' ', #9]) do Inc(I);
-  Result := Copy(S, LineStart + 1, I - LineStart);
-end;
-
-function IsBlank(const S: string; A, B: Integer): Boolean;
-var
-  I: Integer;
-begin
-  Result := False;
-  if B > Length(S) then B := Length(S);
-  for I := A + 1 to B do
-    if S[I] > ' ' then Exit;
-  Result := True;
-end;
-
-{ A..B taken to whole lines - from the start of A's line to the start of the line after B's -
-  when nothing else stands on them (True) }
-function WholeLines(const S: string; var A, B: Integer): Boolean;
-var
-  LS: Integer;
-begin
-  LS := LineStartOf(S, A);
-  Result := IsBlank(S, LS, A) and IsBlank(S, B, LineEndOf(S, B));
-  if not Result then Exit;
-  A := LS;
-  B := NextLineStart(S, B);
-end;
+{ text helpers (offsets are 0-based; the lines: SdPasLex's LineStartOf, LineEndOf, NextLineStart,
+  IndentAt, IsBlank, WholeLines) }
 
 { from Ofs to the end of the line: only blanks, optionally followed by one comment }
 function TailIsBlankOrComment(const S: string; Ofs: Integer): Boolean;
@@ -923,9 +899,7 @@ begin
             Prefix := EOL + EOL
           else if InsOfs > 0 then
           begin
-            PrevLS := LineStartOf(S, InsOfs - 1);
-            if (InsOfs >= 2) and (S[InsOfs] = #10) and (S[InsOfs - 1] = #13) then
-              PrevLS := LineStartOf(S, InsOfs - 2);
+            PrevLS := PrevLineStart(S, InsOfs);
             if not IsBlank(S, PrevLS, InsOfs) then Prefix := EOL;
           end;
           if (InsOfs = Length(S)) and (InsOfs > 0) and not (S[InsOfs] in [#10, #13]) then
@@ -957,7 +931,6 @@ end;
 
 { --- class completion --- }
 
-{ the class declared around Ofs, or the class of the method implemented around it }
 function ClassAtOffset(U: TUnitInfo; Ofs: Integer): TSymbol;
 
   function InTable(T: TSymTable): TSymbol;
@@ -1668,28 +1641,30 @@ begin
   Result := -1;
 end;
 
-{ the text [A, B) that removes entry K: the entry with its comma; the whole clause (and its
-  lines) when it is the only entry - with the empty line after it when one is before it too }
-procedure UsesEntryRange(RT: TRawToks; const S: string; UsesTok, SemiTok: Integer;
-  const Entries: TUsesEntries; K: Integer; out A, B: Integer);
+{ the text [A, B) of the whole clause (and its lines) - with the empty line after it when one is
+  before it too }
+procedure UsesClauseRange(RT: TRawToks; const S: string; UsesTok, SemiTok: Integer; out A, B: Integer);
 var
   NB: Integer;
 begin
-  if Length(Entries) = 1 then
+  A := RT.T[UsesTok].Start;
+  B := RT.EndOf(SemiTok);
+  if WholeLines(S, A, B) then
   begin
-    A := RT.T[UsesTok].Start;
-    B := RT.EndOf(SemiTok);
-    if WholeLines(S, A, B) then
-    begin
-      { the line before: its end E (before its line break) }
-      NB := A;
-      if (NB > 0) and (S[NB] = #10) then Dec(NB);
-      if (NB > 0) and (S[NB] = #13) then Dec(NB);
-      if (A > 0) and (B < Length(S)) and IsBlank(S, LineStartOf(S, NB), NB) and
-        IsBlank(S, B, LineEndOf(S, B)) and (NextLineStart(S, B) > B) then B := NextLineStart(S, B);
-    end;
-  end
-  else if K < High(Entries) then
+    { the line before: its end E (before its line break) }
+    NB := A;
+    if (NB > 0) and (S[NB] = #10) then Dec(NB);
+    if (NB > 0) and (S[NB] = #13) then Dec(NB);
+    if (A > 0) and (B < Length(S)) and IsBlank(S, LineStartOf(S, NB), NB) and
+      IsBlank(S, B, LineEndOf(S, B)) and (NextLineStart(S, B) > B) then B := NextLineStart(S, B);
+  end;
+end;
+
+{ the text [A, B) of entry K with the comma after it (WithNext: up to the next entry), else with the
+  comma before it (from the entry before) }
+procedure EntryRange(RT: TRawToks; const Entries: TUsesEntries; K: Integer; WithNext: Boolean; out A, B: Integer);
+begin
+  if WithNext then
   begin
     A := RT.T[Entries[K].NameTok].Start;
     B := RT.T[Entries[K + 1].NameTok].Start;
@@ -1698,6 +1673,122 @@ begin
   begin
     A := RT.EndOf(Entries[K - 1].LastTok);
     B := RT.EndOf(Entries[K].LastTok);
+  end;
+end;
+
+{ the text [A, B) that removes entry K: the entry with its comma; the whole clause when it is the
+  only entry }
+procedure UsesEntryRange(RT: TRawToks; const S: string; UsesTok, SemiTok: Integer;
+  const Entries: TUsesEntries; K: Integer; out A, B: Integer);
+begin
+  if Length(Entries) = 1 then UsesClauseRange(RT, S, UsesTok, SemiTok, A, B)
+  else EntryRange(RT, Entries, K, K < High(Entries), A, B);
+end;
+
+function UsesRemoveRanges(const Source: string; UsesOfs: Integer; Names: TStrings; Ranges: TList): Boolean;
+var
+  RT: TRawToks;
+  UT, ST, K, J, I, A, B, P, S2: Integer;
+  Entries: TUsesEntries;
+  Gone: array of Boolean;
+  Kept, AtKept: Boolean;
+  Runs: TList;
+
+  procedure Add(X, Y: Integer);
+  begin
+    if X >= Y then Exit;
+    Ranges.Add(Pointer(X));
+    Ranges.Add(Pointer(Y));
+  end;
+
+begin
+  Result := False;
+  Ranges.Clear;
+  RT := TRawToks.Create(Source);
+  try
+    UT := RT.IndexAt(UsesOfs);
+    if (UT < 0) or not ParseUsesEntries(RT, UT, ST, Entries) then Exit;
+    SetLength(Gone, Length(Entries));
+    for K := 0 to High(Gone) do Gone[K] := False;
+    for I := 0 to Names.Count - 1 do
+    begin
+      K := FindUsesEntry(RT, Entries, Names[I]);
+      if K < 0 then Exit;
+      Gone[K] := True;
+    end;
+    Kept := False;
+    for K := 0 to High(Gone) do
+      if not Gone[K] then Kept := True;
+    if not Kept then
+    begin
+      UsesClauseRange(RT, Source, UT, ST, A, B);
+      Ranges.Add(Pointer(A));
+      Ranges.Add(Pointer(B));
+      Result := True;
+      Exit;
+    end;
+    Runs := TList.Create;
+    try
+      for K := 0 to High(Entries) do
+      begin
+        if not Gone[K] then Continue;
+        { with the comma after it while a unit that stays comes later, else with the one before it }
+        J := K + 1;
+        while (J <= High(Entries)) and Gone[J] do Inc(J);
+        EntryRange(RT, Entries, K, J <= High(Entries), A, B);
+        { a directive there would lose its other half }
+        for J := RT.FirstAt(A) to RT.N - 1 do
+        begin
+          if RT.T[J].Start >= B then Break;
+          if RT.IsDirective(J) then Exit;
+        end;
+        { the entries that go one after another as one run }
+        if (Runs.Count > 0) and (A <= Integer(Runs[Runs.Count - 1])) then
+          Runs[Runs.Count - 1] := Pointer(B)
+        else
+        begin
+          Runs.Add(Pointer(A));
+          Runs.Add(Pointer(B));
+        end;
+      end;
+      { a run up to a unit that stays, after a unit that stays on its first line, over a line's end: the
+        line's end stays - the run goes from that line's end, then up to the unit on the line it is on -,
+        or the lines would run together }
+      I := 0;
+      while I < Runs.Count do
+      begin
+        A := Integer(Runs[I]);
+        B := Integer(Runs[I + 1]);
+        AtKept := False;
+        for K := 0 to High(Entries) do
+          if not Gone[K] and (RT.T[Entries[K].NameTok].Start = B) then AtKept := True;
+        P := -1;
+        for J := A to B - 1 do
+          if Source[J + 1] in [#13, #10] then
+          begin
+            P := J;
+            Break;
+          end;
+        if AtKept and (P >= 0) and not IsBlank(Source, LineStartOf(Source, A), A) then
+        begin
+          J := A;
+          while (J > 0) and (Source[J] in [' ', #9]) do Dec(J);
+          Add(J, P);
+          S2 := NextLineStart(Source, P);
+          while (S2 < B) and (Source[S2 + 1] in [' ', #9]) do Inc(S2);
+          Add(S2, B);
+        end
+        else
+          Add(A, B);
+        Inc(I, 2);
+      end;
+    finally
+      Runs.Free;
+    end;
+    Result := True;
+  finally
+    if not Result then Ranges.Clear;
+    RT.Free;
   end;
 end;
 
@@ -2488,7 +2579,7 @@ begin
           B := RT.EndOf(L[I].Tok);
           { its whole line; between two empty lines one of them goes too }
           if WholeLines(S, A, B) and (A > 0) and (B < Length(S)) and
-            IsBlank(S, LineStartOf(S, A - 1), A) and IsBlank(S, B, LineEndOf(S, B)) then
+            IsBlank(S, PrevLineStart(S, A), A) and IsBlank(S, B, LineEndOf(S, B)) then
             B := NextLineStart(S, B);
           Delete(S, A + 1, B - A);
           Source := S;

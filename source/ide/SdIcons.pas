@@ -103,7 +103,11 @@ type
     { Edit | Line: Upper, Lower and Toggle Case, Sort Lines, Surround With - also on the code view's
       page bar -; the button by the selection that opens its menu; Edit | Hide Non-Visual Components,
       also on the designer's page bar }
-    iiUpperCase, iiLowerCase, iiToggleCase, iiSortLines, iiSurround, iiSelectionMenu, iiHideNonVisual);
+    iiUpperCase, iiLowerCase, iiToggleCase, iiSortLines, iiSurround, iiSelectionMenu, iiHideNonVisual,
+    { the code view's page bar: the minimap shown, the whole text in it, its large cells (its preview is iiPreview) }
+    iiMinimap, iiMinimapEntire, iiMinimapLarge,
+    { Help: Check for Updates, Create Bug Report }
+    iiCheckUpdates, iiBugReport);
 
 const
   { the icons that also come at 32 x 32 (ICONS32, in this order): File | New | Other's items.

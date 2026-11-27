@@ -28,7 +28,8 @@ uses
   SdCustomizeDlg, SdKeymaps, SdCpuView, SdDebugInspector, SdWatchViewFrame, SdTodo, SdAddTodoDlg, SdNewCompDlg, SdPackageViewFrame,
   SdPackageAddDlg, SdNavHistory, SdOptionsDlg, SdOtaCore, SdMessageView, SdResourceViewFrame, SdResources,
   SdResImage, SdResPage, SdOtaPalette, SdOtaViews, SdOtaToDo, SdNavBar, SdPageBar, SdZoom, SdHistory,
-  SdHistoryFrame, SdUpdate;
+  SdHistoryFrame, SdUpdate, SdRefactor, SdRefactorGen, SdRefactorClean, SdRefactorMove, SdRefactorView,
+  SdRefactorDlg, SdRefactorListDlg, SdChangeParamsDlg;
 
 const
   WM_SDTESTKEY = WM_APP + 76;          // test mode: the postkey command's key, from the message loop (CMTestKey)
@@ -102,6 +103,8 @@ type
     function ZoomBar: TWinControl; override;
     function HistoryBar: TWinControl; override;
     function DesignerBar: TWinControl; override;
+    function CodeBar: TWinControl; override;
+    function MinimapBar: TWinControl; override;
     procedure HistoryViewMade(View: TSdHistoryView); override;
     procedure PageBarChanged(Page: TEditorPage); override;
     procedure PageEdited(Page: TEditorPage; Position, LinesAdded: Integer); override;
@@ -241,6 +244,11 @@ type
     aFoldNested: TAction;
     aFoldRegions: TAction;
     aCodeFolding: TAction;
+    aMinimapMenu: TAction;
+    aMinimapShow: TAction;
+    aMinimapPreview: TAction;
+    aMinimapEntire: TAction;
+    aMinimapLarge: TAction;
     aZoomIn: TAction;
     aZoomOut: TAction;
     aZoomReset: TAction;
@@ -321,6 +329,7 @@ type
     ToolsOptionsCommand: TAction;
     HelpAboutCommand: TAction;
     aCheckUpdates: TAction;
+    aBugReport: TAction;
     aPaneLeft: TAction;
     aPaneFloat: TAction;
     aPaneRight: TAction;
@@ -673,6 +682,8 @@ type
     HelpAboutSeparator: TMenuItem;
     HelpAboutItem: TMenuItem;
     miCheckUpdates: TMenuItem;
+    miBugReport: TMenuItem;
+    miAboutSeparator: TMenuItem;
     ClosedFilesPopup: TPopupMenu;
     ProcessMenu: TPopupMenu;
     DesktopsMenu: TPopupMenu;
@@ -734,6 +745,18 @@ type
     aAlignVSpace: TAction;
     aAlignBottoms: TAction;
     DesignerBar: TToolBar;
+    CodeBar: TToolBar;
+    tbRefactor: TToolButton;
+    MinimapBar: TToolBar;
+    tbMinimap: TToolButton;
+    MinimapPopup: TPopupMenu;
+    mmShow: TMenuItem;
+    mmSep1: TMenuItem;
+    mmPreview: TMenuItem;
+    mmEntire: TMenuItem;
+    mmSep2: TMenuItem;
+    mmLarge: TMenuItem;
+    RefactorPopup: TPopupMenu;
     ThreadList: TListView;
     ModuleList: TListView;
     tbAlGrid: TToolButton;
@@ -771,6 +794,31 @@ type
     aBrowseSymbolAtCursor: TAction;
     aTopicSearch: TAction;
     ecCompleteClass: TAction;
+    aRefRename: TAction;
+    aRefDeclareVar: TAction;
+    aRefDeclareField: TAction;
+    aRefExtractMethod: TAction;
+    aRefIntroduceVar: TAction;
+    aRefInlineVar: TAction;
+    aRefChangeParams: TAction;
+    aRefExtractResString: TAction;
+    aRefFindUnit: TAction;
+    aRefSyncEdit: TAction;
+    aRefMenu: TAction;
+    aRefRenameUnit: TAction;
+    aRefExtractConst: TAction;
+    aRefConvertFormat: TAction;
+    aRefImplementMethods: TAction;
+    aRefEncapsulateField: TAction;
+    aRefCompleteCase: TAction;
+    aRefRemoveWith: TAction;
+    aRefConstParams: TAction;
+    aRefCleanUses: TAction;
+    aRefSafeDelete: TAction;
+    aRefMoveToUnit: TAction;
+    aRefPullUp: TAction;
+    aRefPushDown: TAction;
+    aViewRefactorings: TAction;
     EditAddToDoItemCommand: TAction;
     aGotoAddress: TAction;
     aViewAsForm: TAction;
@@ -824,6 +872,43 @@ type
     pmEdComplete: TMenuItem;
     pmEdTodo: TMenuItem;
     pmEdFormatSource: TMenuItem;
+    miRefactorMenu: TMenuItem;
+    rpRename: TMenuItem;
+    rpRenameUnit: TMenuItem;
+    rpSep1: TMenuItem;
+    rpDeclareVar: TMenuItem;
+    rpDeclareField: TMenuItem;
+    rpFindUnit: TMenuItem;
+    rpSep2: TMenuItem;
+    rpExtractMethod: TMenuItem;
+    rpIntroduceVar: TMenuItem;
+    rpInlineVar: TMenuItem;
+    rpExtractConst: TMenuItem;
+    rpExtractResString: TMenuItem;
+    rpConvertFormat: TMenuItem;
+    rpChangeParams: TMenuItem;
+    rpSep4: TMenuItem;
+    rpImplementMethods: TMenuItem;
+    rpEncapsulateField: TMenuItem;
+    rpCompleteCase: TMenuItem;
+    rpSep5: TMenuItem;
+    rpRemoveWith: TMenuItem;
+    rpConstParams: TMenuItem;
+    rpCleanUses: TMenuItem;
+    rpSafeDelete: TMenuItem;
+    rpSep6: TMenuItem;
+    rpMoveToUnit: TMenuItem;
+    rpPullUp: TMenuItem;
+    rpPushDown: TMenuItem;
+    rpSep3: TMenuItem;
+    rpSyncEdit: TMenuItem;
+    miEditRefSep: TMenuItem;
+    miViewRefactorings: TMenuItem;
+    pmEdRefactor: TMenuItem;
+    selSep5: TMenuItem;
+    selExtractMethod: TMenuItem;
+    selIntroduceVar: TMenuItem;
+    selSyncEdit: TMenuItem;
     pmEdFold: TMenuItem;
     pmEdFoldAll: TMenuItem;
     pmEdUnfoldAll: TMenuItem;
@@ -979,6 +1064,7 @@ type
     procedure ActViewMenu(Sender: TObject);
     procedure ActTwin(Sender: TObject);
     procedure ActEditorMenu(Sender: TObject);
+    procedure ActRefactor(Sender: TObject);
     procedure ActBookmark(Sender: TObject);
     procedure ActAlign(Sender: TObject);
     procedure ActFormText(Sender: TObject);
@@ -1000,6 +1086,8 @@ type
     procedure ActEdit(Sender: TObject);
     procedure ActEditor(Sender: TObject);
     procedure ActCodeFolding(Sender: TObject);
+    procedure ActMinimap(Sender: TObject);
+    procedure ActMinimapMenu(Sender: TObject);
     procedure ActZoom(Sender: TObject);
     procedure ActDesign(Sender: TObject);
     procedure ActSearch(Sender: TObject);
@@ -1131,6 +1219,10 @@ type
     FMsgHints: TSdMessageHints;      // View | Additional Message Info (SdMsgInfo)
     FBrowser: TSdBrowser;            // View | Browser (SdBrowserFrame)
     FBrowserPanel: TSdDockPanel;
+    FRefView: TRefactoringsView;     // Refactor: what a refactoring will change (SdRefactorView) ...
+    FRefPanel: TSdDockPanel;         // ... its view of the dock
+    FRefFiles: TStringList;          // while a refactoring is planned: the files it reaches (RefactorFiles) ...
+    FRefSources: TStringList;        // ... the texts of those that are not open, as the editor reads them (CIGetSource)
     FBrowserFresh: Boolean;          // just built (Browse Symbol): showing it builds nothing
     FBrowserStale: Boolean;          // a unit of the active project was saved since the Browser was built
     FBrowserPosted: Boolean;         // WM_SDBROWSERREBUILD is on its way
@@ -1138,6 +1230,7 @@ type
     FTypeLibPanel: TSdDockPanel;
     FPkgViews: TList;                // the package editors made (TSdPackageView): one for each open package, the free ones hidden
     FPkgStatus: Boolean;             // ... their status lines ([Layout] PackageStatusBar)
+    FMinimapShown: Integer;          // Editor Options' Minimap before Show Minimap hid it (MinimapNone: none yet)
     FResView: TSdResourceView;       // View | Resources: the active project's .res (SdResourceViewFrame)
     FResPanel: TSdDockPanel;
     FResNote: string;                // what its status line says without a chosen resource
@@ -1333,6 +1426,34 @@ type
     procedure InspectExpression(const Expr: string);
     procedure DebugInspDescend(Sender: TObject);
     procedure BrowserFiles(Sender: TObject; Files: TStrings);
+    procedure AddProjectFiles(P: TSdProject; Files: TStrings; ThereOnly: Boolean = False);
+    { Refactor (SdRefactor): the files a refactoring reaches, the texts it reads, its changes shown
+      and applied }
+    procedure RefactorFiles(Files: TStrings);
+    function RefGetSource(const FileName: string; out Source: string): Boolean;
+    procedure RefBegin;
+    procedure RefEnd;
+    function RefRename(R: TRefactoring; P: TEditorPage; out Error: string): Boolean;
+    function RefChangeParams(R: TRefactoring; P: TEditorPage; out Error: string): Boolean;
+    function RefImplementMethods(R: TRefactoring; P: TEditorPage; out Error: string): Boolean;
+    function RefEncapsulateField(R: TRefactoring; P: TEditorPage; out Error: string): Boolean;
+    function RefExtractConst(R: TRefactoring; P: TEditorPage; out Error: string): Boolean;
+    function RefCleanUses(R: TRefactoring; P: TEditorPage; out Error: string): Boolean;
+    function RefSafeDelete(R: TRefactoring; P: TEditorPage; out Error: string): Boolean;
+    function RefConstParams(R: TRefactoring; P: TEditorPage; out Error: string): Boolean;
+    function RefRenameUnit(R: TRefactoring; P: TEditorPage; out Error: string): Boolean;
+    function RefMoveToUnit(R: TRefactoring; P: TEditorPage; out Error: string): Boolean;
+    function RefMoveMembers(R: TRefactoring; P: TEditorPage; Up: Boolean; out Error: string): Boolean;
+    procedure RefFormRenames(R: TRefactoring);
+    function RefFormNaming(R: TRefactoring; Kind: TRefFormKind; const ClassName, Name: string;
+      AsProperty: Boolean): string;
+    function RefFormClass(const Pas: string): string;
+    procedure RefRenameFiles(R: TRefactoring; var Problems: string);
+    function RefCurrentText(const FileName: string; out Text: string): Boolean;
+    procedure RefShow(R: TRefactoring);
+    procedure RefApply(Sender: TObject);
+    procedure RefDiscard(Sender: TObject);
+    procedure RefOpen(Sender: TObject; const FileName: string; Line: Integer);
     procedure BrowserGoto(Sender: TObject; const FileName: string; Line, Col: Integer);
     function AlignActionKind(A: TObject; out Kind: TAlignKind; out Need: Integer): Boolean;
     procedure OpenFileAtCursor;
@@ -1484,6 +1605,7 @@ type
     function SaveAllFiles: Boolean;
     procedure PageViewChanged(Page: TEditorPage);
     procedure ApplyEditorOptions;
+    procedure EditorOptionChanged;
     procedure ApplyFixedFont;
     { project }
     procedure OpenProject(const FileName: string; Mode: TOpenMode = omOpen);
@@ -1658,7 +1780,6 @@ type
     procedure SearchRange(Ed: TSciEdit; out Lo, Hi: Integer);
     function FindNextMatch(ShowNotFound: Boolean): Boolean;
     procedure DoReplace;
-    procedure AddProjectFiles(Files: TStrings);
     function MenuList: TListBox;
     procedure DoFindInFiles;
     procedure LoadState;
@@ -1700,6 +1821,8 @@ type
     { the check for updates in the background: Manual (Help | Check for Updates) reports every result,
       else it runs only when it is due (SdUpdate.UpdateCheckDue) and reports only a newer release }
     procedure CheckForUpdates(Manual: Boolean);
+    { Help | Create Bug Report: bugreport.txt of the crash log, opened in the editor }
+    procedure CreateBugReport;
     { the IDE closed to update: D7Studio.dpr starts this setup once the experts are shut down }
     property UpdateSetup: string read FUpdateSetup;
   end;
@@ -2662,6 +2785,17 @@ begin
   Result := FMain.DesignerBar;
 end;
 
+{ the code view's bar: the Refactor drop-down }
+function TMainServices.CodeBar: TWinControl;
+begin
+  Result := FMain.CodeBar;
+end;
+
+function TMainServices.MinimapBar: TWinControl;
+begin
+  Result := FMain.MinimapBar;
+end;
+
 { the History tab's menu: the timeline's commands on its list, the diff's on its windows (HistoryMenuPopup) }
 procedure TMainServices.HistoryViewMade(View: TSdHistoryView);
 begin
@@ -2814,6 +2948,20 @@ end;
 procedure CopyInspectorOptions; forward;
 function MenuTextW(Item: TMenuItem): WideString; forward;
 
+{ the items of Source again under Dest: the same actions and lines (menus that show one list) }
+procedure CopyMenuItems(Source, Dest: TMenuItem);
+var
+  I: Integer;
+  M: TMenuItem;
+begin
+  for I := 0 to Source.Count - 1 do
+  begin
+    M := TMenuItem.Create(Dest.Owner);
+    if Source[I].IsLine then M.Caption := cLineCaption else M.Action := Source[I].Action;
+    Dest.Add(M);
+  end;
+end;
+
 procedure TMainForm.FormCreate(Sender: TObject);
 var
   X, Y, I: Integer;
@@ -2835,6 +2983,9 @@ begin
   UIDisabledImages(Icons, DisabledIcons);
   { the debugger finds Run's debug information where MoveDebugInfo keeps it }
   TD32SideFile := DebugInfoFile;
+  { Edit | Refactor and the editor's Refactoring list the code view's Refactor drop-down }
+  CopyMenuItems(RefactorPopup.Items, miRefactorMenu);
+  CopyMenuItems(RefactorPopup.Items, pmEdRefactor);
   { the menus in D7 Studio's flat style (SdUI); a Reopen entry outside the code page with its
     real name }
   UIMenuTextW := MenuTextW;
@@ -3011,6 +3162,7 @@ begin
   FEditWindow := TEditControl.CreateShared(Self);
   FEditWindow.Borderless := True;       // the page's views have the frame, around the page bar too
   FEditWindow.SelectionMenu := SelectionPopup;
+  aMinimapEntire.Caption := MinimapModeCaptions[True];
   FEditWindow.Visible := False;
   FEditWindow.Parent := CenterPanel;
   SciFileWindow := FEditWindow;
@@ -3232,6 +3384,20 @@ begin
   FTypeLibPanel := FDock.AddTab(FTypeLibView, 'TypeLibrary', 'Type Library', FBottomPanels[BT_MESSAGES]);
   FTypeLibPanel.PopupMenu := FTypeLibView.TypeLibPopup;
   FDock.HidePanel(FTypeLibPanel);
+  { Refactor: the Refactorings view, what a refactoring will change before it changes it, a tab of
+    the bottom group hidden until a refactoring shows its changes }
+  FRefView := TRefactoringsView.Create(Self);
+  FRefView.OnApply := RefApply;
+  FRefView.OnDiscard := RefDiscard;
+  FRefView.OnOpen := RefOpen;
+  FRefView.OnMenuPopup := PaneMenuPopup;
+  FRefView.OnEncoding := SourceEncoding;
+  FRefView.OnZoom := EditorZoomChanged;
+  FRefPanel := FDock.AddTab(FRefView, 'Refactorings', 'Refactorings', FBottomPanels[BT_MESSAGES]);
+  FRefPanel.ToolBar := FRefView.Bar;
+  FRefPanel.FocusControl := FRefView.Tree;
+  FRefPanel.PopupMenu := FRefView.RefPopup;
+  FDock.HidePanel(FRefPanel);
   { Delphi's package editors: one view for each open package (NewPackageView), the first made now
     for the arrangement to place }
   FPkgViews := TList.Create;
@@ -3286,7 +3452,7 @@ begin
   FBottomPanels[BT_TODO].PopupMenu := FTodoView.TodoPopup;
   AddDockItems([FProjView.ProjPopup, FCodeExp.ExpPopup, FObjTree.ObjTreePopup, FInspector.InspPopup, FCompBar.CompPopup, FWatchView.WatchPopup, FDebugInsp.DebugInspPopup,
     MsgHintsPopup, FBrowser.BrowserPopup, FTypeLibView.TypeLibPopup, FResView.ResPopup, MsgPopup, FBreakView.BreakPopup,
-    FBreakView.BreakItemPopup, StackPopup, LocalsPopup, LogPopup, FTodoView.TodoPopup, FCpuView.CpuPopup, DockPopup]);
+    FBreakView.BreakItemPopup, StackPopup, LocalsPopup, LogPopup, FTodoView.TodoPopup, FCpuView.CpuPopup, FRefView.RefPopup, DockPopup]);
   { a view without a menu of its own - an expert's, made later too - has the dock's commands alone
     on its caption, its tab and its auto-hide tab (TSdDock.CaptionMenu) }
   FDock.CaptionMenu := DockPopup;
@@ -5030,7 +5196,7 @@ begin
     L.Add('errors=' + S);
     L.Add('errorlist=' + IntToStr(ErrorList.Items.Count));
     S := '';
-    for I := 0 to FDocs.Count - 1 do S := S + FPageTabs.Tabs[I] + ';';
+    for I := 0 to FDocs.Count - 1 do S := S + FPageTabs.DebugTitle(I) + ';';
     L.Add('pages=' + S);
     L.Add('filetabs=' + FPageTabs.DebugTabs);
     L.Add('history=' + FHistory.DebugText);
@@ -5730,6 +5896,13 @@ begin
   for FA := Low(TSciFoldAction) to High(TSciFoldAction) do
     FoldAction(FA).Enabled := (Ed <> nil) and Ed.CanFold(FA);
   aCodeFolding.Checked := EditorOptions.ShowFolding;
+  aMinimapShow.Checked := EditorOptions.Minimap <> MinimapNone;
+  aMinimapPreview.Enabled := aMinimapShow.Checked;
+  aMinimapPreview.Checked := EditorOptions.Minimap = MinimapPreview;
+  aMinimapEntire.Enabled := aMinimapShow.Checked;
+  aMinimapEntire.Checked := EditorOptions.MinimapEntire;
+  aMinimapLarge.Enabled := aMinimapShow.Checked;
+  aMinimapLarge.Checked := EditorOptions.MinimapLarge;
   { the zoom of the view shown (SdZoom) }
   ZV := DocZoomView(ActiveDoc);
   aZoomIn.Enabled := (ZV <> nil) and ZV.CanZoom(1);
@@ -5941,6 +6114,33 @@ begin
   aTopicSearch.Enabled := (Ed <> nil);
   EditAddToDoItemCommand.Enabled := (Ed <> nil) and not Ed.ReadOnly;
   ecCompleteClass.Enabled := Pas and not Ed.ReadOnly;
+  { Refactor: a Pascal file's code that can be changed; Extract Method and Introduce Variable a
+    selection of it }
+  aRefRename.Enabled := Pas and not Ed.ReadOnly;
+  aRefDeclareVar.Enabled := aRefRename.Enabled;
+  aRefDeclareField.Enabled := aRefRename.Enabled;
+  aRefFindUnit.Enabled := aRefRename.Enabled;
+  aRefInlineVar.Enabled := aRefRename.Enabled;
+  aRefChangeParams.Enabled := aRefRename.Enabled;
+  aRefExtractResString.Enabled := aRefRename.Enabled;
+  aRefRenameUnit.Enabled := aRefRename.Enabled;
+  aRefExtractConst.Enabled := aRefRename.Enabled;
+  aRefConvertFormat.Enabled := aRefRename.Enabled;
+  aRefImplementMethods.Enabled := aRefRename.Enabled;
+  aRefEncapsulateField.Enabled := aRefRename.Enabled;
+  aRefCompleteCase.Enabled := aRefRename.Enabled;
+  aRefRemoveWith.Enabled := aRefRename.Enabled;
+  aRefConstParams.Enabled := aRefRename.Enabled;
+  aRefCleanUses.Enabled := aRefRename.Enabled;
+  aRefSafeDelete.Enabled := aRefRename.Enabled;
+  aRefMoveToUnit.Enabled := aRefRename.Enabled;
+  aRefPullUp.Enabled := aRefRename.Enabled;
+  aRefPushDown.Enabled := aRefRename.Enabled;
+  aRefExtractMethod.Enabled := aRefRename.Enabled and (Ed.SelStart <> Ed.SelEnd);
+  aRefIntroduceVar.Enabled := aRefExtractMethod.Enabled;
+  aRefSyncEdit.Enabled := (Ed <> nil) and not Ed.ReadOnly and ((Ed.SelStart <> Ed.SelEnd) or Ed.SyncEditing);
+  aRefMenu.Enabled := aRefRename.Enabled or aRefSyncEdit.Enabled;
+  aRefSyncEdit.Checked := (Ed <> nil) and Ed.SyncEditing;
   aReadOnly.Enabled := (Ed <> nil);
   aReadOnly.Checked := (Ed <> nil) and Ed.ReadOnly;
   aMessageView.Checked := FBottomPanels[BT_MESSAGES].Showing;
@@ -6538,15 +6738,1021 @@ begin
 end;
 
 { what the Browser browses: the active project's file and its units }
+{ a project's source and the files of its units, into Files once each (Find in Files, the To-Do
+  List, the Browser, Refactor); ThereOnly: only those on the disk or open }
+procedure TMainForm.AddProjectFiles(P: TSdProject; Files: TStrings; ThereOnly: Boolean);
+var
+  I: Integer;
+
+  procedure Add(const F: string);
+  begin
+    if (F <> '') and (Files.IndexOf(F) < 0) and (not ThereOnly or FileExistsU(F) or (FindPage(F) <> nil)) then
+      Files.Add(F);
+  end;
+
+begin
+  if P = nil then Exit;
+  Add(P.FileName);
+  for I := 0 to P.UnitCount - 1 do Add(P.Units[I].FileName);
+end;
+
 procedure TMainForm.BrowserFiles(Sender: TObject; Files: TStrings);
+begin
+  AddProjectFiles(FProject, Files, True);
+end;
+
+{ a component (Component) or an event handler of a designed form renamed through its designer: the
+  unit's field or method and the form's references follow; False - the form has none of that name }
+function DesignerRename(D: TFormDesigner; Component: Boolean; const OldName, NewName: string): Boolean;
+var
+  C: TComponent;
+begin
+  Result := False;
+  if (D = nil) or (D.Root = nil) then Exit;
+  if Component then
+  begin
+    C := D.Root.FindComponent(OldName);
+    if C = nil then Exit;
+    C.Name := NewName;
+  end
+  else
+  begin
+    if D.Root.MethodAddress(OldName) = nil then Exit;
+    D.RenameMethod(OldName, NewName);
+  end;
+  D.Modified;
+  Result := True;
+end;
+
+{ --- Refactor (SdRefactor): a refactoring plans its changes over the texts code insight reads - an
+  open file's editor text, another's as the editor would read it -, the Refactorings view shows
+  them, Apply makes them: an open file's in its editor as one undo step, another's on the disk (its
+  History keeps the text before), a form's through its designer, its page or its file. }
+
+type
+  { a text RefGetSource read once }
+  TRefText = class
+  public
+    Text: string;
+  end;
+
+{ the files a refactoring reaches: the sources and units of the group's loaded projects and of the
+  packages beside it, and the open Pascal files }
+procedure TMainForm.RefactorFiles(Files: TStrings);
+var
+  I: Integer;
+  X: string;
+begin
+  Files.Clear;
+  if FGroup <> nil then
+    for I := 0 to FGroup.AllCount - 1 do AddProjectFiles(FGroup.AllProject(I), Files, True);
+  AddProjectFiles(FProject, Files, True);
+  for I := 0 to PageCount - 1 do
+    if Pages[I].IsPascal and (Files.IndexOf(Pages[I].FileName) < 0) then Files.Add(Pages[I].FileName);
+  { Pascal only: a project's resource scripts and the like are no units }
+  for I := Files.Count - 1 downto 0 do
+  begin
+    X := LowerCase(ExtractFileExt(Files[I]));
+    if not ((X = '.pas') or (X = '.dpr') or (X = '.dpk')) then Files.Delete(I);
+  end;
+end;
+
+{ a file's text as a refactoring reads it: the editor's, else the file's decoded as the editor
+  would (once for a refactoring) }
+function TMainForm.RefGetSource(const FileName: string; out Source: string): Boolean;
+var
+  E: TSdEncoding;
+  I: Integer;
+  T: TRefText;
+begin
+  Result := FindPage(FileName) <> nil;
+  if Result then
+  begin
+    Source := SourceOf(FileName);
+    Exit;
+  end;
+  if FRefSources <> nil then
+  begin
+    I := FRefSources.IndexOf(FileName);
+    if I >= 0 then
+    begin
+      Source := TRefText(FRefSources.Objects[I]).Text;
+      Result := True;
+      Exit;
+    end;
+  end;
+  Source := '';
+  if not FileExistsU(FileName) then Exit;
+  try
+    Source := SourceAndEncoding(FileName, E);
+    Result := True;
+  except
+    Result := False;
+  end;
+  if Result and (FRefSources <> nil) then
+  begin
+    T := TRefText.Create;
+    T.Text := Source;
+    FRefSources.AddObject(FileName, T);
+  end;
+end;
+
+procedure TMainForm.RefBegin;
+begin
+  RefEnd;
+  FRefFiles := TStringList.Create;
+  RefactorFiles(FRefFiles);
+  FRefSources := TStringList.Create;
+end;
+
+{ code insight reads the files that are not open from the disk again }
+procedure TMainForm.RefEnd;
 var
   I: Integer;
 begin
-  if FProject = nil then Exit;
-  Files.Add(FProject.FileName);
-  for I := 0 to FProject.UnitCount - 1 do
-    if FileExistsU(FProject.Units[I].FileName) or (FindPage(FProject.Units[I].FileName) <> nil) then
-      Files.Add(FProject.Units[I].FileName);
+  if FRefSources <> nil then
+    for I := 0 to FRefSources.Count - 1 do
+    begin
+      FCodeInsight.InvalidateFile(FRefSources[I]);
+      FRefSources.Objects[I].Free;
+    end;
+  FreeAndNil(FRefSources);
+  FreeAndNil(FRefFiles);
+end;
+
+function TMainForm.RefRename(R: TRefactoring; P: TEditorPage; out Error: string): Boolean;
+var
+  Info: TCISymbolInfo;
+  Places: TList;
+  NewName: string;
+begin
+  Result := False;
+  Error := '';
+  Places := TList.Create;
+  try
+    if not FCodeInsight.SymbolPlaces(P.FileName, P.GetSource, P.Editor.CaretPos, FRefFiles, Info, Places) then
+    begin
+      Error := 'Put the caret on a name that code insight knows';
+      Exit;
+    end;
+    Error := CanRename(Info, FRefFiles);
+    if Error <> '' then Exit;
+    NewName := Info.Name;
+    if not InputDialog(Self, 'Rename', Format('&New name for %s:', [SymbolTitle(Info)]), NewName, CheckNewName) then Exit;
+    Result := PlanRename(R, FCodeInsight, Info, Places, FRefFiles, Trim(NewName), Error);
+  finally
+    FreeObjects(Places);
+    Places.Free;
+  end;
+end;
+
+function TMainForm.RefChangeParams(R: TRefactoring; P: TEditorPage; out Error: string): Boolean;
+var
+  Info: TCISymbolInfo;
+  Places, Params: TList;
+  ResType, Head: string;
+begin
+  Places := TList.Create;
+  Params := TList.Create;
+  try
+    Result := ChangeParamsTarget(R, FCodeInsight, P.FileName, P.GetSource, P.Editor.CaretPos, FRefFiles, Info, Places,
+      Params, ResType, Head, Error) and TChangeParamsDlg.Execute(Self, Head, ResType, Params) and
+      PlanChangeParams(R, FCodeInsight, Info, Places, Params, Error);
+  finally
+    FreeObjects(Params);
+    FreeObjects(Places);
+    Params.Free;
+    Places.Free;
+  end;
+end;
+
+{ the text of a unit's form as a refactoring reads and changes it: the open form's (its text page's
+  when it is shown as text), else the form file's (a binary one as text) }
+function RefFormTextOf(Main: TMainForm; const Pas: string; out Dfm, DfmFile: string): Boolean;
+var
+  P: TEditorPage;
+begin
+  Result := False;
+  Dfm := '';
+  DfmFile := ChangeFileExt(Pas, '.dfm');
+  P := Main.FindPage(Pas);
+  if (P <> nil) and P.HasForm then
+  begin
+    DfmFile := P.FormFileName;
+    if P.FormTextPage <> nil then Dfm := P.FormTextPage.GetSource else Dfm := P.CurrentDfm;
+    Result := True;
+  end
+  else if (P = nil) and FileExistsU(DfmFile) then
+  begin
+    Dfm := ReadFileU(DfmFile);
+    if DfmIsBinary(Dfm) then Dfm := DfmBinaryToText(Dfm);
+    Result := True;
+  end;
+end;
+
+{ the forms a rename reaches: the component's and the handler's form and those derived from it, a
+  component's references from other forms, a class's name in every form }
+procedure TMainForm.RefFormRenames(R: TRefactoring);
+var
+  I, K: Integer;
+  F: TRefFormRename;
+  Dfm, DfmFile, NewDfm, Root, Cls, FormName: string;
+  Own: Boolean;
+  Texts: TStringList;
+begin
+  if R.FormRenames.Count = 0 then Exit;
+  Texts := TStringList.Create;
+  try
+    { the forms of the files, read once: 'dfm file' with the text, Objects - its unit's place }
+    for K := 0 to FRefFiles.Count - 1 do
+      if SameText(ExtractFileExt(FRefFiles[K]), '.pas') and RefFormTextOf(Self, FRefFiles[K], Dfm, DfmFile) then
+        Texts.AddObject(DfmFile + #9 + Dfm, nil);
+    for I := 0 to R.FormRenames.Count - 1 do
+    begin
+      F := TRefFormRename(R.FormRenames[I]);
+      { the name of the form of the class (its references from other forms) }
+      FormName := '';
+      for K := 0 to Texts.Count - 1 do
+        if DfmObjectHeader(Copy(Texts[K], Pos(#9, Texts[K]) + 1, MaxInt), Root, Cls) and SameText(Cls, F.ClassName) then
+          FormName := Root;
+      for K := 0 to Texts.Count - 1 do
+      begin
+        DfmFile := Copy(Texts[K], 1, Pos(#9, Texts[K]) - 1);
+        Dfm := Copy(Texts[K], Pos(#9, Texts[K]) + 1, MaxInt);
+        if not DfmObjectHeader(Dfm, Root, Cls) then Continue;
+        Own := R.ClassIs(FCodeInsight, FRefFiles, Cls, F.ClassName);
+        if (F.Kind = rfHandler) and not Own then Continue;
+        NewDfm := DfmRename(Dfm, F.Kind, F.OldName, F.NewName, FormName, Own);
+        if NewDfm <> Dfm then Texts[K] := DfmFile + #9 + NewDfm;
+      end;
+    end;
+    { what changed, as changes of the form files }
+    for K := 0 to FRefFiles.Count - 1 do
+      if SameText(ExtractFileExt(FRefFiles[K]), '.pas') and RefFormTextOf(Self, FRefFiles[K], Dfm, DfmFile) then
+        for I := 0 to Texts.Count - 1 do
+          if SameText(Copy(Texts[I], 1, Pos(#9, Texts[I]) - 1), DfmFile) and
+            (Copy(Texts[I], Pos(#9, Texts[I]) + 1, MaxInt) <> Dfm) then
+            R.AddTextChange(DfmFile, Dfm, Copy(Texts[I], Pos(#9, Texts[I]) + 1, MaxInt));
+  finally
+    Texts.Free;
+  end;
+end;
+
+{ the form file that names Name - Kind: a component or a handler of the class ClassName (in its
+  forms and those of its descendants), a class in any form; AsProperty: a property set in any form -;
+  '' none names it }
+function TMainForm.RefFormNaming(R: TRefactoring; Kind: TRefFormKind; const ClassName, Name: string;
+  AsProperty: Boolean): string;
+var
+  K, P, Q: Integer;
+  Dfm, DfmFile, Root, Cls, Line: string;
+begin
+  Result := '';
+  for K := 0 to FRefFiles.Count - 1 do
+  begin
+    if not SameText(ExtractFileExt(FRefFiles[K]), '.pas') or not RefFormTextOf(Self, FRefFiles[K], Dfm, DfmFile) or
+      not DfmObjectHeader(Dfm, Root, Cls) then Continue;
+    if not AsProperty then
+    begin
+      if ((Kind = rfClass) or R.ClassIs(FCodeInsight, FRefFiles, Cls, ClassName)) and
+        (DfmRename(Dfm, Kind, Name, Name + '_', Root, True) <> Dfm) then
+      begin
+        Result := DfmFile;
+        Exit;
+      end;
+      Continue;
+    end;
+    { a property set in a form: Name = value }
+    P := 1;
+    while P <= Length(Dfm) do
+    begin
+      Q := P;
+      while (Q <= Length(Dfm)) and not (Dfm[Q] in [#13, #10]) do Inc(Q);
+      Line := Trim(Copy(Dfm, P, Q - P));
+      if SameText(Copy(Line, 1, Length(Name) + 3), Name + ' = ') then
+      begin
+        Result := DfmFile;
+        Exit;
+      end;
+      P := Q + 1;
+    end;
+  end;
+end;
+
+{ the class of a unit's form ('' none): its page's, else its form file's }
+function TMainForm.RefFormClass(const Pas: string): string;
+var
+  P: TEditorPage;
+  Dfm, DfmFile, Root: string;
+begin
+  Result := '';
+  P := FindPage(Pas);
+  if (P <> nil) and P.HasForm then Result := P.FormClass
+  else if not (RefFormTextOf(Self, Pas, Dfm, DfmFile) and DfmObjectHeader(Dfm, Root, Result)) then Result := '';
+end;
+
+function TMainForm.RefImplementMethods(R: TRefactoring; P: TEditorPage; out Error: string): Boolean;
+var
+  Items, Chosen: TList;
+  Lines: TStringList;
+  Cls, G, T: string;
+  I: Integer;
+  It: TCIMethodItem;
+  D: TRefListData;
+  Intf, Over: Boolean;
+begin
+  Result := False;
+  Items := TList.Create;
+  Chosen := TList.Create;
+  Lines := TStringList.Create;
+  try
+    if not ImplementTarget(FCodeInsight, P.FileName, P.GetSource, P.Editor.CaretPos, Cls, Items, Error) then Exit;
+    { an interface's methods and an ancestor's abstract ones checked, by where they come from }
+    Intf := False;
+    Over := False;
+    for I := 0 to Items.Count - 1 do
+    begin
+      It := TCIMethodItem(Items[I]);
+      G := It.Owner;
+      if It.OwnerUnit <> '' then G := G + ' (' + It.OwnerUnit + ')';
+      T := MethodItemText(It);
+      if It.Abstract then T := T + '  (abstract)';
+      Lines.AddObject(G + #9 + T, TObject(Ord(It.FromInterface or It.Abstract)));
+      if It.FromInterface then Intf := True else Over := True;
+    end;
+    D := RefListData('Implement Methods', Format('&Methods for %s:', [Cls]), Lines);
+    if Intf then
+    begin
+      D.ChoiceCaption := '&Visibility of the interfaces'' methods:';
+      D.Choices := 'published'#13#10'private'#13#10'protected'#13#10'public';
+      D.Choice := 3;
+    end;
+    if Over then
+    begin
+      D.CheckCaption := '&Call the inherited method in an override';
+      D.Checked := True;
+    end;
+    Screen.Cursor := crDefault;
+    if not TRefactorListDlg.Execute(Self, D) then Exit;
+    Screen.Cursor := crHourGlass;
+    for I := 0 to Lines.Count - 1 do
+      if Lines.Objects[I] <> nil then Chosen.Add(Items[I]);
+    Result := PlanImplementMethods(R, FCodeInsight, P.FileName, P.GetSource, Cls, Chosen, D.Choice, D.Checked, Error);
+  finally
+    Lines.Free;
+    Chosen.Free;
+    FreeObjects(Items);
+    Items.Free;
+  end;
+end;
+
+function TMainForm.RefEncapsulateField(R: TRefactoring; P: TEditorPage; out Error: string): Boolean;
+var
+  Info: TCISymbolInfo;
+  Places: TList;
+  Prop, T: string;
+  D: TRefDlgData;
+begin
+  Result := False;
+  Places := TList.Create;
+  try
+    if not EncapsulateTarget(R, FCodeInsight, P.FileName, P.GetSource, P.Editor.CaretPos, FRefFiles, Info, Places, Prop,
+      T, Error) then Exit;
+    D := RefDlgData('Encapsulate Field', [rrName, rrAccess, rrValue, rrCheck]);
+    D.Name := Prop;
+    D.Access := 3;
+    D.ValueCaption := 'Field:';
+    D.Value := SymbolTitle(Info) + ': ' + T;
+    D.CheckCaption := '&Write through a setter method';
+    Screen.Cursor := crDefault;
+    if not TRefactorDlg.Execute(Self, D) then Exit;
+    Screen.Cursor := crHourGlass;
+    Result := PlanEncapsulateField(R, FCodeInsight, Info, Places, D.Name, T, D.Access, D.Checked, Error);
+  finally
+    FreeObjects(Places);
+    Places.Free;
+  end;
+end;
+
+function TMainForm.RefExtractConst(R: TRefactoring; P: TEditorPage; out Error: string): Boolean;
+var
+  Expr, Name: string;
+  Local: Boolean;
+  A, B: Integer;
+  D: TRefDlgData;
+begin
+  Result := False;
+  A := P.Editor.SelStart;
+  B := P.Editor.SelEnd;
+  if not ConstTarget(FCodeInsight, P.FileName, P.GetSource, A, B, Expr, Name, Local, Error) then Exit;
+  D := RefDlgData('Extract Constant', [rrName, rrChoice, rrValue, rrCheck]);
+  D.Name := Name;
+  D.ChoiceCaption := '&Declare it in:';
+  if Local then D.Choices := 'the routine'#13#10;
+  D.Choices := D.Choices + 'the unit''s implementation'#13#10'the unit''s interface';
+  D.ValueCaption := 'Value:';
+  D.Value := Expr;
+  D.CheckCaption := '&Replace the same value everywhere there';
+  D.Checked := True;
+  Screen.Cursor := crDefault;
+  if not TRefactorDlg.Execute(Self, D) then Exit;
+  Screen.Cursor := crHourGlass;
+  { the choices of a value outside a routine begin with the implementation (Where 1) }
+  Result := PlanExtractConstant(R, FCodeInsight, P.FileName, P.GetSource, A, B, D.Name, D.Choice + Ord(not Local),
+    D.Checked, Error);
+end;
+
+function TMainForm.RefCleanUses(R: TRefactoring; P: TEditorPage; out Error: string): Boolean;
+const
+  Groups: array[0..2] of string = ('Remove', 'Move to the implementation', 'Keep (reason)');
+var
+  Items, Kept, Lines, Chosen, Stays: TStringList;
+  I, Tab: Integer;
+  D: TRefListData;
+begin
+  Result := False;
+  Items := TStringList.Create;
+  Kept := TStringList.Create;
+  Lines := TStringList.Create;
+  Chosen := TStringList.Create;
+  Stays := TStringList.Create;
+  try
+    if not CleanUsesTarget(R, FCodeInsight, P.FileName, P.GetSource, FRefFiles, Items, Kept, Error) then Exit;
+    { what goes and moves checked; what stays for a reason unchecked, to take anyway }
+    for I := 0 to Items.Count - 1 do
+    begin
+      Tab := Pos(#9, Items[I]);
+      if Copy(Items[I], 1, Tab - 1) = 'move' then Lines.AddObject(Groups[1] + #9 + Copy(Items[I], Tab + 1, MaxInt), TObject(1))
+      else Lines.AddObject(Groups[0] + #9 + Copy(Items[I], Tab + 1, MaxInt), TObject(1));
+    end;
+    for I := 0 to Kept.Count - 1 do Lines.AddObject(Groups[2] + #9 + Kept[I], nil);
+    D := RefListData('Clean Uses', Format('&Units of %s:', [ChangeFileExt(ExtractFileName(P.FileName), '')]), Lines);
+    Screen.Cursor := crDefault;
+    if not TRefactorListDlg.Execute(Self, D) then Exit;
+    Screen.Cursor := crHourGlass;
+    for I := 0 to Lines.Count - 1 do
+    begin
+      if I < Items.Count then
+      begin
+        if Lines.Objects[I] <> nil then Chosen.Add(Items[I]);
+        Continue;
+      end;
+      { a unit kept for a reason and taken anyway goes; the others stay, said in the notes }
+      if Lines.Objects[I] <> nil then Chosen.Add('remove'#9 + Copy(Kept[I - Items.Count], 1, Pos(':', Kept[I - Items.Count]) - 1))
+      else Stays.Add(Kept[I - Items.Count]);
+    end;
+    Result := PlanCleanUses(R, FCodeInsight, P.FileName, P.GetSource, Chosen, Stays, Error);
+  finally
+    Stays.Free;
+    Chosen.Free;
+    Lines.Free;
+    Kept.Free;
+    Items.Free;
+  end;
+end;
+
+function TMainForm.RefSafeDelete(R: TRefactoring; P: TEditorPage; out Error: string): Boolean;
+var
+  Used: TStringList;
+  Info: TCISymbolInfo;
+  Dfm: string;
+  I: Integer;
+begin
+  Used := TStringList.Create;
+  try
+    Result := PlanSafeDelete(R, FCodeInsight, P.FileName, P.GetSource, P.Editor.CaretPos, FRefFiles, Used, Info, Error);
+    if not Result then
+    begin
+      { the places that still name it }
+      for I := 1 to Used.Count - 1 do
+        if I <= 12 then Error := Error + #13#10 + Used[I]
+        else if I = 13 then Error := Error + #13#10 + '...';
+      Exit;
+    end;
+    { a form that names it: a component or handler of its class, a class, a property set there }
+    Dfm := '';
+    if Info.Kind = ckClass then Dfm := RefFormNaming(R, rfClass, Info.Name, Info.Name, False)
+    else if Info.OwnerIsClass and (Info.Kind = ckField) then
+      Dfm := RefFormNaming(R, rfComponent, Info.Owner, Info.Name, False)
+    else if Info.OwnerIsClass and IsRoutineKind(Info.Kind) then
+      Dfm := RefFormNaming(R, rfHandler, Info.Owner, Info.Name, False)
+    else if Info.OwnerIsClass and (Info.Kind = ckProperty) then
+      Dfm := RefFormNaming(R, rfComponent, Info.Owner, Info.Name, True);
+    if Dfm <> '' then
+    begin
+      Error := Format('%s names %s: it is still used', [ExtractFileName(Dfm), SymbolTitle(Info)]);
+      Result := False;
+    end;
+  finally
+    Used.Free;
+  end;
+end;
+
+function TMainForm.RefConstParams(R: TRefactoring; P: TEditorPage; out Error: string): Boolean;
+var
+  Params: TList;
+  Lines: TStringList;
+  I: Integer;
+  C: TRefConstParam;
+  D: TRefListData;
+begin
+  Result := False;
+  Params := TList.Create;
+  Lines := TStringList.Create;
+  try
+    if not ConstParamsTarget(R, FCodeInsight, P.FileName, P.GetSource, P.Editor.CaretPos, FRefFiles, Params, Error) then
+      Exit;
+    for I := 0 to Params.Count - 1 do
+    begin
+      C := TRefConstParam(Params[I]);
+      Lines.AddObject(C.Routine + #9 + C.Param, TObject(Ord(C.Checked)));
+    end;
+    D := RefListData('Const Parameters', '&Parameters that can be const:', Lines);
+    Screen.Cursor := crDefault;
+    if not TRefactorListDlg.Execute(Self, D) then Exit;
+    Screen.Cursor := crHourGlass;
+    for I := 0 to Params.Count - 1 do TRefConstParam(Params[I]).Checked := Lines.Objects[I] <> nil;
+    Result := PlanConstParams(R, FCodeInsight, P.FileName, P.GetSource, FRefFiles, Params, Error);
+  finally
+    Lines.Free;
+    FreeObjects(Params);
+    Params.Free;
+  end;
+end;
+
+function TMainForm.RefRenameUnit(R: TRefactoring; P: TEditorPage; out Error: string): Boolean;
+var
+  Info: TCISymbolInfo;
+  Places: TList;
+  NewName: string;
+begin
+  Result := False;
+  Places := TList.Create;
+  try
+    if not RenameUnitTarget(R, FCodeInsight, P.FileName, P.GetSource, P.Editor.CaretPos, FRefFiles, Info, Places, Error) then
+      Exit;
+    NewName := Info.Name;
+    Screen.Cursor := crDefault;
+    if not InputDialog(Self, 'Rename Unit', Format('&New name for %s:', [Info.Name]), NewName, CheckNewName) then Exit;
+    Screen.Cursor := crHourGlass;
+    Result := PlanRenameUnit(R, FCodeInsight, Info, Places, Trim(NewName), Error);
+  finally
+    FreeObjects(Places);
+    Places.Free;
+  end;
+end;
+
+function TMainForm.RefMoveToUnit(R: TRefactoring; P: TEditorPage; out Error: string): Boolean;
+var
+  Info: TCISymbolInfo;
+  Places: TList;
+  Units, Shown: TStringList;
+  I: Integer;
+begin
+  Result := False;
+  Places := TList.Create;
+  Units := TStringList.Create;
+  Shown := TStringList.Create;
+  try
+    if not MoveTarget(R, FCodeInsight, P.FileName, P.GetSource, P.Editor.CaretPos, FRefFiles, Info, Places, Units, Error) then
+      Exit;
+    for I := 0 to Units.Count - 1 do Shown.Add(ChangeFileExt(ExtractFileName(Units[I]), ''));
+    I := 0;
+    Screen.Cursor := crDefault;
+    if not ListDialog(Self, Format('Move %s to', [Info.Name]), Shown, I) or (I < 0) then Exit;
+    Screen.Cursor := crHourGlass;
+    Result := PlanMoveToUnit(R, FCodeInsight, Info, Places, FRefFiles, Units[I], RefFormClass(Info.FileName), Error);
+  finally
+    Shown.Free;
+    Units.Free;
+    FreeObjects(Places);
+    Places.Free;
+  end;
+end;
+
+function TMainForm.RefMoveMembers(R: TRefactoring; P: TEditorPage; Up: Boolean; out Error: string): Boolean;
+var
+  Members: TList;
+  Targets, Lines: TStringList;
+  Cls: string;
+  I: Integer;
+  D: TRefListData;
+begin
+  Result := False;
+  Members := TList.Create;
+  Targets := TStringList.Create;
+  Lines := TStringList.Create;
+  try
+    if not MembersTarget(R, FCodeInsight, P.FileName, P.GetSource, P.Editor.CaretPos, FRefFiles, Up, Cls, Members, Targets,
+      Error) then Exit;
+    for I := 0 to Members.Count - 1 do
+      Lines.AddObject(TRefMember(Members[I]).Text, TObject(Ord(TRefMember(Members[I]).Checked)));
+    if Up then
+    begin
+      D := RefListData('Pull Members Up', Format('&Members of %s:', [Cls]), Lines);
+      D.ChoiceCaption := '&Into the ancestor:';
+      D.Choices := Targets.Text;
+    end
+    else
+      D := RefListData('Push Members Down', Format('&Members of %s, into %s:', [Cls, Targets.CommaText]), Lines);
+    Screen.Cursor := crDefault;
+    if not TRefactorListDlg.Execute(Self, D) then Exit;
+    Screen.Cursor := crHourGlass;
+    for I := 0 to Members.Count - 1 do TRefMember(Members[I]).Checked := Lines.Objects[I] <> nil;
+    if Up then Result := PlanPullUp(R, FCodeInsight, P.FileName, P.GetSource, Cls, Members, FRefFiles, Targets[D.Choice], Error)
+    else Result := PlanPushDown(R, FCodeInsight, P.FileName, P.GetSource, Cls, Members, FRefFiles, Error);
+  finally
+    Lines.Free;
+    Targets.Free;
+    FreeObjects(Members);
+    Members.Free;
+  end;
+end;
+
+{ the files a refactoring renames (Rename Unit's unit and its form): an open unit's page saved under
+  its new name - its form with it - and the old files deleted; a closed unit's files renamed }
+procedure TMainForm.RefRenameFiles(R: TRefactoring; var Problems: string);
+var
+  I: Integer;
+  OldF, NewF: string;
+  P: TEditorPage;
+begin
+  for I := 0 to R.Renames.Count - 1 do
+  begin
+    OldF := R.Renames.Names[I];
+    NewF := Copy(R.Renames[I], Length(OldF) + 2, MaxInt);
+    try
+      if SameText(ExtractFileExt(OldF), '.dfm') then
+      begin
+        P := FindPage(ChangeFileExt(NewF, '.pas'));
+        if (P <> nil) and P.HasForm then Continue;
+      end;
+      P := FindPage(OldF);
+      if P <> nil then
+      begin
+        if not SavePageAs(P, NewF) then
+        begin
+          Problems := Problems + #13#10 + Format('%s could not be saved as %s', [ExtractFileName(OldF), ExtractFileName(NewF)]);
+          Continue;
+        end;
+        UpdatePageTab(P);
+        DeleteFileU(OldF);
+        if P.HasForm then DeleteFileU(ChangeFileExt(OldF, '.dfm'));
+      end
+      else if not RenameFileU(OldF, NewF) then
+        Problems := Problems + #13#10 + Format('%s could not be renamed %s: %s', [ExtractFileName(OldF), ExtractFileName(NewF),
+          SysErrorMessage(GetLastError)]);
+    finally
+      FCodeInsight.InvalidateFile(OldF);
+      FCodeInsight.InvalidateFile(NewF);
+    end;
+  end;
+end;
+
+{ a file's text now, as the refactoring read it (a form file's through its unit) }
+function TMainForm.RefCurrentText(const FileName: string; out Text: string): Boolean;
+var
+  DfmFile: string;
+begin
+  if SameText(ExtractFileExt(FileName), '.dfm') then
+    Result := RefFormTextOf(Self, ChangeFileExt(FileName, '.pas'), Text, DfmFile)
+  else
+    Result := RefGetSource(FileName, Text);
+end;
+
+procedure TMainForm.RefShow(R: TRefactoring);
+begin
+  FRefView.ShowPlan(R);
+  FRefPanel.StatusText := FRefView.Summary;
+  FRefPanel.ShowStatus := True;
+  ShowDockPanel(FRefPanel, True);
+end;
+
+procedure TMainForm.ActRefactor(Sender: TObject);
+var
+  P: TEditorPage;
+  R: TRefactoring;
+  Ok, InMethod, InImpl: Boolean;
+  Err, Src, FN, Name, TypeName, Lit, Cls: string;
+  Caret, A, B, I: Integer;
+  Units, Shown: TStringList;
+  D: TRefDlgData;
+begin
+  P := ActivePage;
+  if (P = nil) or not P.CodeView or P.Editor.ReadOnly then Exit;
+  { the code view's Refactor button: its menu under it }
+  if Sender = aRefMenu then
+  begin
+    with tbRefactor.ClientToScreen(Point(0, tbRefactor.Height)) do RefactorPopup.Popup(X, Y);
+    Exit;
+  end;
+  if Sender = aRefSyncEdit then
+  begin
+    if P.Editor.SyncEditing then P.Editor.SyncEditEnd
+    else if not P.Editor.SyncEditStart(P.IsPascal) then
+      MessageBox(Handle, 'The selection has no name that occurs more than once.', 'Sync Edit', MB_OK or MB_ICONINFORMATION);
+    Exit;
+  end;
+  if not P.IsPascal then Exit;
+  FN := P.FileName;
+  Src := P.GetSource;
+  Caret := P.Editor.CaretPos;
+  A := P.Editor.SelStart;
+  B := P.Editor.SelEnd;
+  Err := '';
+  Ok := False;
+  R := nil;
+  Screen.Cursor := crHourGlass;
+  RefBegin;
+  try
+    R := TRefactoring.Create(RefGetSource);
+    R.SetSource(FN, Src);
+    if Sender = aRefRename then
+    begin
+      Screen.Cursor := crDefault;
+      Ok := RefRename(R, P, Err);
+    end
+    else if (Sender = aRefDeclareVar) or (Sender = aRefDeclareField) then
+    begin
+      Ok := DeclareTarget(FCodeInsight, FN, Src, Caret, Name, TypeName, InMethod, Err);
+      if Ok and (Sender = aRefDeclareField) and not InMethod then
+      begin
+        Ok := False;
+        Err := 'Declare Field works on a name in a method of a class';
+      end;
+      Screen.Cursor := crDefault;
+      if Ok then
+      begin
+        if Sender = aRefDeclareVar then D := RefDlgData('Declare Variable', [rrName, rrType])
+        else D := RefDlgData('Declare Field', [rrName, rrType, rrAccess]);
+        D.Name := Name;
+        D.TypeName := TypeName;
+        Ok := TRefactorDlg.Execute(Self, D);
+        if Ok then
+          if Sender = aRefDeclareVar then
+            Ok := PlanDeclareVariable(R, FCodeInsight, FN, Src, Caret, D.Name, D.TypeName, Err)
+          else
+            Ok := PlanDeclareField(R, FCodeInsight, FN, Src, Caret, D.Name, D.TypeName, D.Access, Err);
+      end;
+    end
+    else if Sender = aRefFindUnit then
+    begin
+      Units := TStringList.Create;
+      Shown := TStringList.Create;
+      try
+        Ok := FindUnitTarget(FCodeInsight, FN, Src, Caret, Name, Units, InImpl, Err);
+        Screen.Cursor := crDefault;
+        if Ok then
+        begin
+          for I := 0 to Units.Count - 1 do
+            Shown.Add(Units.Names[I] + '  (' + Copy(Units[I], Pos('=', Units[I]) + 1, MaxInt) + ')');
+          I := 0;
+          Ok := ListDialog(Self, Format('Find Unit - %s', [Name]), Shown, I) and (I >= 0) and
+            PlanAddUses(R, FCodeInsight, FN, Src, Units.Names[I], InImpl, Err);
+        end;
+      finally
+        Shown.Free;
+        Units.Free;
+      end;
+    end
+    else if Sender = aRefExtractMethod then
+    begin
+      Ok := ExtractTarget(FCodeInsight, FN, Src, A, B, Cls, Err);
+      Screen.Cursor := crDefault;
+      if Ok then
+      begin
+        D := RefDlgData('Extract Method', [rrName]);
+        if Cls <> '' then Include(D.Rows, rrAccess);
+        D.Name := 'NewMethod';
+        Ok := TRefactorDlg.Execute(Self, D);
+        if Ok then
+        begin
+          Screen.Cursor := crHourGlass;
+          Ok := PlanExtractMethod(R, FCodeInsight, FN, Src, A, B, D.Name, D.Access, Err);
+        end;
+      end;
+    end
+    else if Sender = aRefIntroduceVar then
+    begin
+      Ok := IntroduceTarget(FCodeInsight, FN, Src, A, B, Lit, TypeName, Name, Err);
+      Screen.Cursor := crDefault;
+      if Ok then
+      begin
+        D := RefDlgData('Introduce Variable', [rrName, rrType, rrValue, rrCheck]);
+        D.Name := Name;
+        D.TypeName := TypeName;
+        D.ValueCaption := 'Expression:';
+        D.Value := Lit;
+        Ok := TRefactorDlg.Execute(Self, D) and
+          PlanIntroduceVariable(R, FCodeInsight, FN, Src, A, B, D.Name, D.TypeName, D.Checked, Err);
+      end;
+    end
+    else if Sender = aRefInlineVar then
+      Ok := PlanInlineVariable(R, FCodeInsight, FN, Src, Caret, Err)
+    else if Sender = aRefChangeParams then
+    begin
+      Screen.Cursor := crDefault;
+      Ok := RefChangeParams(R, P, Err);
+    end
+    else if Sender = aRefExtractResString then
+    begin
+      Ok := ResStringTarget(FCodeInsight, FN, Src, Caret, Lit, Name, Err);
+      Screen.Cursor := crDefault;
+      if Ok then
+      begin
+        D := RefDlgData('Extract Resource String', [rrName, rrValue]);
+        D.Name := Name;
+        D.ValueCaption := 'String:';
+        D.Value := Lit;
+        Ok := TRefactorDlg.Execute(Self, D) and PlanExtractResString(R, FCodeInsight, FN, Src, Caret, D.Name, Err);
+      end;
+    end
+    else if Sender = aRefImplementMethods then
+      Ok := RefImplementMethods(R, P, Err)
+    else if Sender = aRefEncapsulateField then
+      Ok := RefEncapsulateField(R, P, Err)
+    else if Sender = aRefExtractConst then
+      Ok := RefExtractConst(R, P, Err)
+    else if Sender = aRefCompleteCase then
+      Ok := PlanCompleteCase(R, FCodeInsight, FN, Src, Caret, Err)
+    else if Sender = aRefConvertFormat then
+      Ok := PlanConvertToFormat(R, FCodeInsight, FN, Src, A, B, Err)
+    else if Sender = aRefRemoveWith then
+      Ok := PlanRemoveWith(R, FCodeInsight, FN, Src, Caret, Err)
+    else if Sender = aRefCleanUses then
+      Ok := RefCleanUses(R, P, Err)
+    else if Sender = aRefSafeDelete then
+      Ok := RefSafeDelete(R, P, Err)
+    else if Sender = aRefConstParams then
+      Ok := RefConstParams(R, P, Err)
+    else if Sender = aRefRenameUnit then
+      Ok := RefRenameUnit(R, P, Err)
+    else if Sender = aRefMoveToUnit then
+      Ok := RefMoveToUnit(R, P, Err)
+    else if (Sender = aRefPullUp) or (Sender = aRefPushDown) then
+      Ok := RefMoveMembers(R, P, Sender = aRefPullUp, Err);
+    if Ok then
+    begin
+      Screen.Cursor := crHourGlass;
+      RefFormRenames(R);
+      R.Finish;
+      if R.EditCount = 0 then
+        Err := 'There is nothing to change.'
+      else
+      begin
+        RefShow(R);
+        R := nil;
+      end;
+    end;
+  finally
+    Screen.Cursor := crDefault;
+    RefEnd;
+    R.Free;
+  end;
+  if Err <> '' then MessageBox(Handle, PChar(Err), 'Refactor', MB_OK or MB_ICONINFORMATION);
+end;
+
+{ the changes made: the texts must still be those the refactoring read; an open file's changes in its
+  editor as one undo step, a closed file's written (History keeps the text before), a form's through
+  its designer (a component's or a handler's name, a class), else its page or its file }
+procedure TMainForm.RefApply(Sender: TObject);
+var
+  R: TRefactoring;
+  Files: TStringList;
+  I, K: Integer;
+  F, Cur, NewDfm, Pas, Title: string;
+  P: TEditorPage;
+  Ed: TSciEdit;
+  FR: TRefFormRename;
+  Problems: string;
+  Prj: TSdProject;
+  E: TSdEncoding;
+  Changed: Boolean;
+begin
+  R := FRefView.Plan;
+  if R = nil then Exit;
+  Files := TStringList.Create;
+  try
+    R.GetFiles(Files);
+    for I := 0 to Files.Count - 1 do
+      if not RefCurrentText(Files[I], Cur) or (Cur <> R.Source(Files[I])) then
+      begin
+        MessageBox(Handle, PChar(Format('%s has changed since the refactoring was prepared. Run the refactoring again.',
+          [ExtractFileName(Files[I])])), 'Refactor', MB_OK or MB_ICONWARNING);
+        Exit;
+      end;
+    Problems := '';
+    Screen.Cursor := crHourGlass;
+    HistoryBeginMoment;
+    try
+      for I := 0 to Files.Count - 1 do
+      begin
+        F := Files[I];
+        try
+          if SameText(ExtractFileExt(F), '.dfm') then
+          begin
+            NewDfm := R.NewText(F);
+            Pas := ChangeFileExt(F, '.pas');
+            P := FindPage(Pas);
+            if (P <> nil) and P.HasForm then
+            begin
+              if P.FormTextPage <> nil then
+                P.FormTextPage.SetSourceUndoable(NewDfm)
+              else
+              begin
+                { the form's own names through its designer: the field and the handler follow there }
+                if P.Designer <> nil then
+                  for K := 0 to R.FormRenames.Count - 1 do
+                  begin
+                    FR := TRefFormRename(R.FormRenames[K]);
+                    if (FR.Kind = rfClass) and SameText(P.FormClass, FR.OldName) then
+                      P.FormClassRenamed(FR.NewName, NewDfm)
+                    else if (FR.Kind <> rfClass) and SameText(P.FormClass, FR.ClassName) then
+                      DesignerRename(P.Designer, FR.Kind = rfComponent, FR.OldName, FR.NewName);
+                  end;
+                if P.CurrentDfm <> NewDfm then P.TakeChangedForm(NewDfm);
+              end;
+            end
+            else if DfmIsBinary(ReadFileU(F)) then
+              WriteFileU(F, DfmTextToBinary(NewDfm))
+            else
+              WriteFileU(F, NewDfm);
+          end
+          else
+          begin
+            P := FindPage(F);
+            if P <> nil then
+            begin
+              { the changes from the last: the places before them stay where they are }
+              Ed := P.Editor;
+              Ed.BeginUndo;
+              try
+                for K := R.Edits.Count - 1 downto 0 do
+                  with TRefEdit(R.Edits[K]) do
+                    if SameText(FileName, F) then Ed.ReplaceRange(Start, Len, Text, True);
+              finally
+                Ed.EndUndo;
+              end;
+              FServices.PageChanged(P);
+            end
+            else
+            begin
+              RewriteSourceFile(F, R.NewText(F), SourceEncoding(F), 'Refactoring');
+              FCodeInsight.InvalidateFile(F);
+            end;
+          end;
+        except
+          on Ex: Exception do Problems := Problems + #13#10 + ExtractFileName(F) + ': ' + Ex.Message;
+        end;
+      end;
+      { a project's source changed: its units as it names them now; then the files renamed }
+      Changed := R.Renames.Count > 0;
+      for I := 0 to Files.Count - 1 do
+      begin
+        Prj := FGroup.LoadedProjectOf(Files[I]);
+        if Prj = nil then Continue;
+        Cur := SourceAndEncoding(Files[I], E);
+        Prj.ParseSource(Cur, E);
+        Changed := True;
+      end;
+      RefRenameFiles(R, Problems);
+      if Changed then
+      begin
+        RefreshProjectTree;
+        ConfigureCodeInsight;
+      end;
+    finally
+      HistoryEndMoment;
+      Screen.Cursor := crDefault;
+    end;
+  finally
+    Files.Free;
+  end;
+  Title := R.Title;
+  FRefView.Clear;
+  FRefPanel.StatusText := 'Applied: ' + Title;
+  UpdateStatus;
+  if Problems <> '' then
+    MessageBox(Handle, PChar('Some changes could not be made:' + Problems), 'Refactor', MB_OK or MB_ICONWARNING);
+end;
+
+procedure TMainForm.RefDiscard(Sender: TObject);
+begin
+  FRefView.Clear;
+  FRefPanel.StatusText := '';
+  FRefPanel.ShowStatus := False;
+end;
+
+{ a change opened: its line in the code; a form file's change: the unit's form }
+procedure TMainForm.RefOpen(Sender: TObject; const FileName: string; Line: Integer);
+begin
+  if SameText(ExtractFileExt(FileName), '.dfm') then
+  begin
+    NavMark;
+    OpenFileView(ChangeFileExt(FileName, '.pas'), True, True);
+  end
+  else
+    ShowFileLine(FileName, Line, 1);
 end;
 
 procedure TMainForm.RebuildBrowser;
@@ -6611,6 +7817,45 @@ begin
   end;
 end;
 
+{ Help | Create Bug Report: bugreport.exe beside the EXE writes bugreport.txt of the crash log of the
+  settings' folder (error.log), run without a window and waited for - -NoOpen: its hidden console would
+  count as one of its own, and it would open the report itself -; the report opens in the editor -
+  read again when a page shows it already }
+procedure TMainForm.CreateBugReport;
+var
+  Exe, Report, Output: string;
+  Code: Cardinal;
+  Ok: Boolean;
+  P: TEditorPage;
+begin
+  Exe := ExtractFilePath(ParamStr(0)) + 'bugreport.exe';
+  Report := SettingsDir + 'bugreport.txt';
+  if not FileExistsU(Exe) then
+  begin
+    MessageBox(Handle, PChar(Format('%s is missing: install D7 Studio again.', [Exe])), AppTitle,
+      MB_OK or MB_ICONERROR);
+    Exit;
+  end;
+  Screen.Cursor := crHourGlass;
+  try
+    Ok := RunConsoleTool(Format('"%s" "%s" -Out "%s" -NoOpen', [Exe, SettingsDir + 'error.log', Report]),
+      ExcludeTrailingPathDelimiter(SettingsDir), Output, Code);
+  finally
+    Screen.Cursor := crDefault;
+  end;
+  if not Ok then
+    Output := SysErrorMessage(GetLastError);
+  if not Ok or (Code <> 0) or not FileExistsU(Report) then
+  begin
+    MessageBox(Handle, PChar('The bug report could not be made.'#13#10#13#10 + Trim(Output)), AppTitle,
+      MB_OK or MB_ICONERROR);
+    Exit;
+  end;
+  P := FindPage(ExpandPathU(Report));
+  if P <> nil then P.Reload;
+  OpenFile(Report, True);
+end;
+
 procedure TMainForm.UpdateCheckFailed(const Error: string);
 begin
   MessageBox(Handle, PChar('D7 Studio could not check for updates.'#13#10#13#10 + Error), AppTitle,
@@ -6622,7 +7867,7 @@ end;
 procedure TMainForm.UpdateCheckEnded(Sender: TObject);
 var
   C: TSdUpdateCheck;
-  Latest: string;
+  Msg: string;
 begin
   C := Sender as TSdUpdateCheck;
   FUpdateCheck := nil;
@@ -6645,10 +7890,13 @@ begin
   end
   else if C.Manual then
   begin
-    if C.HasRelease then Latest := 'the latest release is ' + C.Release.Version
-    else Latest := 'there is no release with a setup';
-    MessageBox(Handle, PChar(Format('D7 Studio %s is up to date: %s.', [CurrentVersion, Latest])), AppTitle,
-      MB_OK or MB_ICONINFORMATION);
+    { nothing newer: the running version is the latest release's, or a build newer than it }
+    if not C.HasRelease then Msg := 'No release of D7 Studio with a setup was found.'
+    else if CompareVersions(CurrentVersion, C.Release.Version) > 0 then
+      Msg := Format('This D7 Studio (%s) is newer than the latest release (%s).', [CurrentVersion, C.Release.Version])
+    else
+      Msg := Format('You have the latest version of D7 Studio (%s).', [CurrentVersion]);
+    MessageBox(Handle, PChar(Msg), AppTitle, MB_OK or MB_ICONINFORMATION);
   end;
 end;
 
@@ -7988,6 +9236,7 @@ begin
   end
   else
     FPageTabs.Tabs[Idx] := Caption;
+  FPageTabs.SetTabModified(Idx, DocModified(Page));
   if FPageTabs.MultiLine then FitTabRow;        // a tab more or a longer title: maybe a row more
   if P = nil then Exit;
   { a name outside the code page: the tab gets the real one }
@@ -8837,6 +10086,7 @@ begin
   EditWindowFontChanged;                      // the editor control's font, as experts measure it (SdOtaEditWindow)
   CopyInspectorOptions;
   if FInspector <> nil then FInspector.OptionsChanged;
+  if FRefView <> nil then FRefView.OptionsChanged;
   if FDock <> nil then FDock.AutoDragDocking := EnvOptions.AutoDragDocking;
   if FCompBar <> nil then ApplyCompBarOptions;
   ConfigureCodeInsight;                       // the library and browsing paths
@@ -10290,7 +11540,10 @@ begin
   { called on the UI thread only: the engine is never used from a worker here }
   P := FindPage(FileName);
   Result := P <> nil;
-  if Result then Source := P.GetSource;
+  if Result then Source := P.GetSource
+  { a refactoring reads the files it reaches as the editor would: offsets of their decoded texts }
+  else if (FRefFiles <> nil) and (FRefFiles.IndexOf(FileName) >= 0) then
+    Result := RefGetSource(FileName, Source);
 end;
 
 { the units of the components placed on an open page's form since its last save, which the save
@@ -10544,12 +11797,23 @@ end;
 type
   TToolBarAccess = class(TToolBar);     // CheckMenuDropdown
 
-{ the drop-down at the end of the file tabs' row, the open files as a list to choose from: the
-  button drops the list as its arrow
-  does - the VCL's own drop-down, the button pressed while the list is open }
+{ a drop-down button's face drops its menu as its arrow does - the VCL's own drop-down, the button
+  pressed while the menu is open }
+procedure DropButtonMenu(Button: TToolButton);
+begin
+  TToolBarAccess(Button.Parent as TToolBar).CheckMenuDropdown(Button);
+end;
+
+{ the drop-down at the end of the file tabs' row, the open files as a list to choose from }
 procedure TMainForm.ActFileList(Sender: TObject);
 begin
-  TToolBarAccess(FilesBar).CheckMenuDropdown(tbFileList);
+  DropButtonMenu(tbFileList);
+end;
+
+{ the drop-down at the right end of the code view's page bar: the minimap's switches }
+procedure TMainForm.ActMinimapMenu(Sender: TObject);
+begin
+  DropButtonMenu(tbMinimap);
 end;
 
 procedure TMainForm.FilesMenuPopup(Sender: TObject);
@@ -12239,7 +13503,6 @@ var
   P: TEditorPage;
   D: TFormDesigner;
   Kind: TExpRenameKind;
-  C: TComponent;
   S, Err: string;
 begin
   Result := False;
@@ -12275,25 +13538,12 @@ begin
         Result := True;
         Exit;
       end;
-      if SameText(ClassName, D.Root.ClassName) then
-        if Kind = erField then
-        begin
-          C := D.Root.FindComponent(Node.Name);
-          if C <> nil then
-          begin
-            C.Name := NewName;
-            D.Modified;
-            Result := True;
-            Exit;
-          end;
-        end
-        else if (Kind = erMethod) and (D.Root.MethodAddress(Node.Name) <> nil) then
-        begin
-          D.RenameMethod(Node.Name, NewName);
-          D.Modified;
-          Result := True;
-          Exit;
-        end;
+      if SameText(ClassName, D.Root.ClassName) and (Kind in [erField, erMethod]) and
+        DesignerRename(D, Kind = erField, Node.Name, NewName) then
+      begin
+        Result := True;
+        Exit;
+      end;
     except
       on E: Exception do
       begin
@@ -12525,15 +13775,6 @@ begin
   ShowFileLine(FileName, Line, 1);
 end;
 
-{ the project file and the files of its units (Find in Files, the To-Do List) }
-procedure TMainForm.AddProjectFiles(Files: TStrings);
-var
-  I: Integer;
-begin
-  if FProject = nil then Exit;
-  Files.Add(FProject.FileName);
-  for I := 0 to FProject.UnitCount - 1 do Files.Add(FProject.Units[I].FileName);
-end;
 
 { a character of a word for Whole word (Find in Files): a letter or digit of any script, '_' }
 function IsWordCharW(C: WideChar): Boolean;
@@ -12664,7 +13905,7 @@ begin
   Screen.Cursor := crHourGlass;
   try
     case FFindFiles.Where of
-      0: AddProjectFiles(Files);
+      0: AddProjectFiles(FProject, Files);
       1:
         for I := 0 to FPages.Count - 1 do Files.Add(Pages[I].FileName);
       2:
@@ -13563,9 +14804,43 @@ end;
 procedure TMainForm.ActCodeFolding(Sender: TObject);
 begin
   EditorOptions.ShowFolding := not EditorOptions.ShowFolding;
+  EditorOptionChanged;
+end;
+
+{ an editor option a command changed: into the settings, then applied as the Options dialog's OK applies
+  the options - every editor, the minimap, the experts told }
+procedure TMainForm.EditorOptionChanged;
+begin
   SaveEditorOptions(Settings);
   SaveSettings;
   ApplyEditorOptions;
+end;
+
+{ the minimap's menu (the code view's page bar): Editor Options' Minimap shown or not (shown again as it was, else Enabled +
+  preview), with or without its tip, Layout's whole text, its large cells }
+procedure TMainForm.ActMinimap(Sender: TObject);
+begin
+  if Sender = aMinimapShow then
+  begin
+    if EditorOptions.Minimap <> MinimapNone then
+    begin
+      FMinimapShown := EditorOptions.Minimap;
+      EditorOptions.Minimap := MinimapNone;
+    end
+    else if FMinimapShown <> MinimapNone then EditorOptions.Minimap := FMinimapShown
+    else EditorOptions.Minimap := MinimapPreview;
+  end
+  else if Sender = aMinimapPreview then
+  begin
+    if EditorOptions.Minimap = MinimapPreview then EditorOptions.Minimap := MinimapOn
+    else EditorOptions.Minimap := MinimapPreview;
+    if FEditWindow.Map <> nil then FEditWindow.Map.HideTip;
+  end
+  else if Sender = aMinimapLarge then
+    EditorOptions.MinimapLarge := not EditorOptions.MinimapLarge
+  else
+    EditorOptions.MinimapEntire := not EditorOptions.MinimapEntire;
+  EditorOptionChanged;
 end;
 
 { View | Zoom and the zoom bar's buttons: the zoom of the view shown (SdZoom) - the editors' (one for
@@ -13947,7 +15222,7 @@ begin
   FTodoTexts := TStringList.Create;
   Files := TStringList.Create;
   try
-    AddProjectFiles(Files);
+    AddProjectFiles(FProject, Files);
     for I := 0 to Files.Count - 1 do Files.Objects[I] := Pointer(1);    // in the project
     for I := 0 to PageCount - 1 do
       if (Files.IndexOf(Pages[I].FileName) < 0) and not SameText(ExtractFileExt(Pages[I].FileName), TodoExt) then
@@ -14697,6 +15972,7 @@ begin
   else if Sender = aViewComponents then ViewDockPanel(FCompPanel)
   else if Sender = ViewObjInspCommand then ViewDockPanel(FInspPanel)
   else if Sender = aViewMessages then ViewDockPanel(FBottomPanels[BT_MESSAGES])
+  else if Sender = aViewRefactorings then ViewDockPanel(FRefPanel)
   else if Sender = aViewErrorList then ViewDockPanel(FBottomPanels[BT_ERRORS])
   else if Sender = DebugBreakPointsCommand then ViewDockPanel(FBottomPanels[BT_BREAKS])
   else if Sender = DebugCallStackCommand then ViewDockPanel(FBottomPanels[BT_STACK])
@@ -16459,7 +17735,9 @@ begin
   else if Sender = HelpAboutCommand then
     AboutDialog(Self)
   else if Sender = aCheckUpdates then
-    CheckForUpdates(True);
+    CheckForUpdates(True)
+  else if Sender = aBugReport then
+    CreateBugReport;
 end;
 
 { Edit | Format Source (Ctrl+D) and Project | Format Project Sources }

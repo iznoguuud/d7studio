@@ -26,8 +26,8 @@ checks its SHA-256 and starts it. Uninstalling D7 Studio gives Delphi 7 its own 
 
 - **The IDE**: one main window with docked, tabbed views; Delphi 7's form designer with
   Borland's design-time packages; the Object Inspector and Code Explorer in Delphi 7's layout; a
-  Scintilla code editor with code insight, names coloured by kind, Error Insight, a minimap and a
-  source formatter; the debugger; light and dark themes. It loads Delphi 7's experts and design packages.
+  Scintilla code editor with code insight, names coloured by kind, Error Insight, a minimap,
+  refactorings (Rename, Extract Method, Change Parameters ...) and a source formatter; the debugger; light and dark themes. It loads Delphi 7's experts and design packages.
 - **Two experts of its own**: an AI assistant and Git, as docked views of the IDE.
 - **The modernized RTL/VCL**: programs built with it can run with UTF-8 as their code page, scale
   per monitor (per-monitor DPI awareness V2), use the current file and folder dialogs, task
@@ -52,7 +52,8 @@ Setup installs the first four, the notices and the license into Delphi 7's `Bin`
 ## This repository
 
 - `source\` - D7 Studio's sources: the IDE (`ide`, `editor`, `designer`, `codeinsight`,
-  `debugger`), `migrate`, which carries an existing Delphi 7 configuration over, and the two
+  `debugger`), `migrate`, which carries an existing Delphi 7 configuration over, `bugreport`, which makes a bug
+  report of D7 Studio's crash log (*Help | Create Bug Report*), and the two
   experts (`experts\aiharness`, `experts\git`, with the code they share in `experts\kit`);
   `README.md` and `FEATURES.md` with a copy of `patch\MODERNIZATION.md` beside them, as Setup
   installs them into Delphi 7's `Bin` with the release notes, `RELEASE-NOTES.md` at the root.

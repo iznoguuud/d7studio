@@ -21,7 +21,9 @@ unit SdSciScroll;
   tells their state (OnGetInfo) and scrolls (OnScroll). Positions come from the messages.
   The vertical bar lies at the frame's right edge: a strip that another hook takes between the
   client area and it (the minimap, SdSciMinimap) is that hook's to paint; the horizontal bar runs
-  under the client area, the corner beside it under that strip too. }
+  under the client area, the corner beside it under that strip too. A 1 px line on each bar's inner
+  edge - the vertical one's left, the horizontal one's top, on across the corner - parts them from
+  the text and from such a strip. }
 
 interface
 
@@ -42,6 +44,7 @@ type
 
   TSciScrollColors = record
     Track, Thumb, ThumbHot, ThumbDown, Arrow, ArrowHot, ArrowOff: TColor;
+    Line: TColor;                // the 1 px line on a bar's inner edge
   end;
 
   TSciBarPart = (bpNone, bpArrowBack, bpTrackBack, bpThumb, bpTrackOn, bpArrowOn);
@@ -233,6 +236,8 @@ begin
       ArrowHot := ThumbDown;
     end;
     ArrowOff := UIBlend(Toward, G, 22);
+    { the hot thumb's: seen against the text, the track, the thumb and the minimap's box }
+    Line := ThumbHot;
   end;
 end;
 
@@ -379,10 +384,15 @@ begin
   try
     PaintBar(DC, sbVert);
     PaintBar(DC, sbHorz);
-    { the corner between them, under a strip between the client area and the vertical bar too }
+    { the corner between them, under a strip between the client area and the vertical bar too; the
+      horizontal bar's line goes on along its top to the frame's edge }
     V := BarRect(sbVert);
     H := BarRect(sbHorz);
-    if not IsRectEmpty(V) and not IsRectEmpty(H) then UIFill(DC, Rect(H.Right, H.Top, V.Right, H.Bottom), FColors.Track);
+    if not IsRectEmpty(V) and not IsRectEmpty(H) then
+    begin
+      UIFill(DC, Rect(H.Right, H.Top, V.Right, H.Bottom), FColors.Track);
+      UIFill(DC, Rect(H.Right, H.Top, V.Right, H.Top + 1), FColors.Line);
+    end;
   finally
     ReleaseDC(FControl.Handle, DC);
   end;
@@ -421,6 +431,12 @@ var
     OffsetRect(Result, -R.Left, -R.Top);
   end;
 
+  { a part's inner edge one pixel further in: past the line }
+  procedure PastLine(var X: TRect);
+  begin
+    if Vertical then Inc(X.Left) else Inc(X.Top);
+  end;
+
   function ArrowColor(Part: TSciBarPart): TColor;
   begin
     if Off then Result := FColors.ArrowOff
@@ -433,6 +449,11 @@ begin
   if IsRectEmpty(R) then Exit;
   Parts(Bar, AB, T, Th, AO);
   Vertical := Bar = sbVert;
+  { the line takes the inner edge's pixel: arrows, thumb and markers are centred beside it }
+  PastLine(AB);
+  PastLine(T);
+  PastLine(Th);
+  PastLine(AO);
   Off := FInfo[Bar].Max <= 0;
   if FBuffers[Bar] = nil then FBuffers[Bar] := TBitmap.Create;
   Bmp := FBuffers[Bar];
@@ -460,6 +481,10 @@ begin
     Bmp.Canvas.FillRect(Th);
   end;
   if Vertical and Assigned(FOnGetMarks) then PaintMarks(Bmp.Canvas, Shift(T));
+  { the line on its inner edge, over the markers: the vertical bar's left, the horizontal one's top }
+  Bmp.Canvas.Brush.Color := FColors.Line;
+  if Vertical then Bmp.Canvas.FillRect(Rect(0, 0, 1, Bmp.Height))
+  else Bmp.Canvas.FillRect(Rect(0, 0, Bmp.Width, 1));
   BitBlt(DC, R.Left, R.Top, Bmp.Width, Bmp.Height, Bmp.Canvas.Handle, 0, 0, SRCCOPY);
 end;
 

@@ -305,6 +305,9 @@ function PageNameFree(Form: TForm; Pages: TStrings; const Name: string; Index: I
 { a list to choose from (D, freed here; View Unit ..., Window List): List shows Items with Index
   chosen (else the first row), the row chosen after OK into Index }
 function RunListDialog(D: TForm; List: TListBox; Items: TStrings; var Index: Integer): Boolean;
+{ a row of a dialog that it does not ask for: Row's controls (nil ones skipped) hidden, the
+  controls below the first one's top moved up by Height, the dialog as much lower }
+procedure HideDialogRow(Form: TForm; const Row: array of TControl; Height: Integer);
 { the dialogs of the Resources view and its editors. NewImageDialog: the
   sizes and colours of new images (Sizes and Bits shown first; OfferScale: empty or Scale - the
   image shown, scaled); ImageSizeDialog: the image editor's Resize (Mode 0 smooth, 1 pixels, 2 the
@@ -957,6 +960,23 @@ begin
   finally
     D.Free;
   end;
+end;
+
+procedure HideDialogRow(Form: TForm; const Row: array of TControl; Height: Integer);
+var
+  I, Top: Integer;
+begin
+  Top := MaxInt;
+  for I := 0 to High(Row) do
+    if Row[I] <> nil then
+    begin
+      if Top = MaxInt then Top := Row[I].Top;
+      Row[I].Visible := False;
+    end;
+  if Top = MaxInt then Exit;
+  for I := 0 to Form.ControlCount - 1 do
+    if Form.Controls[I].Top > Top then Form.Controls[I].Top := Form.Controls[I].Top - Height;
+  Form.ClientHeight := Form.ClientHeight - Height;
 end;
 
 function FindDialog(AOwner: TComponent; var Opts: TFindOptionsRec; Replace: Boolean): Boolean;

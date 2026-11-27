@@ -23,8 +23,22 @@ interface
 uses
   Windows, SysUtils, SdDbgTD32, SdDbgDisasm;
 
+const
+  { the time at the start of an entry of the log }
+  CrashTimeFormat = 'yyyy-mm-dd hh:nn:ss';
+
 procedure InstallCrashLog;
 procedure LogException(E: Exception; const Context, LogFile: string);
+
+{ the procedure and the source line of an address of a module (RVA), from its map read by Info:
+  Name a map's name, "Unit.TClass.Method" ('' none), SrcFile as the map names the file and Line
+  (0: none) }
+procedure MapAddress(Info: TTD32Info; RVA: Cardinal; out Name, SrcFile: string; out Line: Integer);
+{ a frame's symbol as the log writes it: Name, then "  (<file>:<line>)" when Line > 0 }
+function FrameSymbolText(const Name, SrcFile: string; Line: Integer): string;
+{ a frame's line of the log without its indent: the module padded to 18, the offset from its base,
+  then the symbol when there is one }
+function FrameText(const Module: string; Offset: Cardinal; const Symbol: string): string;
 
 implementation
 
@@ -175,22 +189,48 @@ end;
 
 { the procedure and the line of an address of the program (RVA), from its detailed map file -
   read by the debugger's reader (SdDbgTD32) the first time it is needed }
-function MapLookup(RVA: Cardinal): string;
+procedure MapAddress(Info: TTD32Info; RVA: Cardinal; out Name, SrcFile: string; out Line: Integer);
 var
   I: Integer;
   L: TTDLine;
 begin
-  Result := '';
+  Name := '';
+  SrcFile := '';
+  Line := 0;
+  I := Info.ProcByAddr(RVA);
+  if I >= 0 then Name := Info.ProcShortName(I);
+  if Info.AddrToLine(RVA, L) and (L.Src >= 0) and (L.Src < Info.SrcCount) then
+  begin
+    SrcFile := Info.SrcName[L.Src];
+    Line := L.Line;
+  end;
+end;
+
+function FrameSymbolText(const Name, SrcFile: string; Line: Integer): string;
+begin
+  Result := Name;
+  if Line > 0 then Result := Result + Format('  (%s:%d)', [ExtractFileName(SrcFile), Line]);
+end;
+
+function FrameText(const Module: string; Offset: Cardinal; const Symbol: string): string;
+begin
+  Result := Format('%-18s %.8x', [Module, Offset]);
+  if Symbol <> '' then Result := Result + '  ' + Symbol;
+end;
+
+function MapLookup(RVA: Cardinal): string;
+var
+  Name, SrcFile: string;
+  Line: Integer;
+begin
   if not MapLoaded then
   begin
     MapLoaded := True;
     MapInfo := TTD32Info.Create;
     if not MapInfo.LoadFromMap(ChangeFileExt(ParamStr(0), '.map'), ParamStr(0)) then MapInfo.Clear;
   end;
-  I := MapInfo.ProcByAddr(RVA);
-  if I >= 0 then Result := MapInfo.ProcShortName(I);    // a map's name: "Unit.TClass.Method"
-  if MapInfo.AddrToLine(RVA, L) and (L.Src >= 0) and (L.Src < MapInfo.SrcCount) then
-    Result := Result + Format('  (%s:%d)', [ExtractFileName(MapInfo.SrcName[L.Src]), L.Line]);
+  MapAddress(MapInfo, RVA, Name, SrcFile, Line);
+  Result := FrameSymbolText(Name, SrcFile, Line);
 end;
 
 function Describe(P: Pointer): string;
@@ -203,14 +243,12 @@ begin
   if not CodeModule(P, Base) then Exit;
   ModName := '?';
   if GetModuleFileName(Base, Buf, MAX_PATH) > 0 then ModName := ExtractFileName(Buf);
-  Result := Format('%-18s %.8x', [ModName, Cardinal(P) - Base]);
+  Sym := '';
   if Base = HInstance then
-  begin
-    Sym := MapLookup(Cardinal(P) - Base);
-    if Sym <> '' then Result := Result + '  ' + Sym;
-  end
+    Sym := MapLookup(Cardinal(P) - Base)
   else if NearestExport(Base, Cardinal(P) - Base, Sym, Disp) then
-    Result := Result + Format('  %s + %x', [Sym, Disp]);
+    Sym := Format('%s + %x', [Sym, Disp]);
+  Result := FrameText(ModName, Cardinal(P) - Base, Sym);
 end;
 
 function ExceptionStack(E: TObject): string;
@@ -269,7 +307,7 @@ begin
     AssignFile(F, LogFile);
     if FileExists(LogFile) then Append(F) else Rewrite(F);
     try
-      Writeln(F, FormatDateTime('yyyy-mm-dd hh:nn:ss', Now), '  ', Context, '  ', E.ClassName, ': ', E.Message);
+      Writeln(F, FormatDateTime(CrashTimeFormat, Now), '  ', Context, '  ', E.ClassName, ': ', E.Message);
       Write(F, ExceptionStack(E));
       Writeln(F);
     finally

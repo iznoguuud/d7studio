@@ -12,12 +12,18 @@ unit SdSciMinimap;
 { D7 Studio - the code editor's minimap: the text in miniature in a strip between the editor's text
   and its vertical scroll bar (Editor Options | Display | Scroll bars | Minimap).
 
-  Every character is a cell of a few pixels in its style's colour, its top and bottom half shaded by
-  the kind of character (a capital, a small letter, one with a descender, a dot ...); a line is two
-  cells high. The lines in view lie in the visible-area box, a darker ground than the map's - a
-  shade darker while the pointer is on it, darker still while it is dragged. A text longer than the
+  Every character is a cell of a few pixels in its style's colour, a line two cells high, its top and
+  bottom half shaded by the kind of character (GlyphShade: a capital, a small letter, one with a descender,
+  a dot ...). In the large map a printable ASCII character takes its shape from the editor's font instead
+  (FontName): drawn once in black at several times the cell's size, reduced to the cell - a pixel the
+  glyph covers enough the full colour, one it barely touches none -, kept per cell size and font
+  (BuildGlyphs); in the normal map the shapes' pixels, as many as the shading's, would make it solid.
+  The lines in view lie in the visible-area box, a darker ground than the map's - a shade darker while the pointer is on it, darker still while it is dragged. A text longer than the
   strip holds scrolls in it only as far as the box needs to stay in it, so what is drawn under the
-  pointer is the text a press brings into view.
+  pointer is the text a press brings into view. With Entire the map shows the whole text instead: a
+  text taller than the strip has its rows squeezed into it - each pixel row of the map shows the
+  first line of the rows it covers, a glyph's two halves become one shade below two pixels -, and the
+  box (at least MinBoxRows rows high) lies where the lines in view are in the whole text.
   Also drawn: the caret's line, the selections and the ranges of the indicators the editor names
   (the find matches, Error Insight's errors). It shows display lines: folded lines are left out, a
   wrapped line takes its rows.
@@ -64,6 +70,7 @@ type
     Ground: TColor;              // the map's
     View: TColor;                // the lines in view: the box's ground
     ViewHot, ViewDown: TColor;   // ... while the pointer is on it, while it is dragged
+    Line: TColor;                // the 1 px line at its left edge, beside the text
     Tip: TColor;                 // the tip's ground (the editor's)
     Caret: TColor;               // the caret's line: a band of it
     Selection, SelectionText: TColor;   // the selections' ground, their characters' colour
@@ -79,6 +86,7 @@ type
     Total: Integer;              // the rows of the text
     Last: Integer;               // the editor's last first row
     Top, TopMax: Integer;        // the map's first row (TSciMinimap.ReadView), its last one
+    Entire: Boolean;             // the whole text squeezed into the map (TSciMinimap.Entire, more rows than Fit): Top 0
   end;
 
   { a hook of the editor's window procedure (TUIWindowHook: given back when the map goes) }
@@ -112,11 +120,18 @@ type
     FMouseIn: Boolean;           // ... over the map
     FTip: TSdCodeTip;            // the code around the line under the pointer
     FTipLine: Integer;           // ... its document line (-1: none shown)
+    FEntire: Boolean;            // the whole text in the map, not the strip that scrolls with the view
+    FLarge: Boolean;             // its cells twice as big (SciMapWidth's room for it is the owner's to give)
+    FFontName: string;           // the editor's font: the printable characters' shapes
+    FGlyphs: array of Byte;      // ... per character GlyphFirst .. GlyphLast, its cell's pixels row by row: how much ink (0..255)
+    FGlyphCell: Integer;         // ... the cell they were made for (0: none yet)
+    FGlyphFont: string;          // ... and the font
     function Sci(Msg: Cardinal; W: Cardinal = 0; L: Integer = 0): Integer;
     function MapRect: TRect;
     procedure ReadView(out V: TSciMapView);
     procedure ReadMarks(out CaretRow, SelA, SelB, SelN: Integer);
     function BoxRect(const V: TSciMapView): TRect;
+    function RowY(const V: TSciMapView; Row: Integer): Integer;
     function RowAt(const V: TSciMapView; Y: Integer): Integer;
     procedure ScrollTo(const V: TSciMapView; First: Integer);
     procedure MoveBox(const V: TSciMapView; Y: Integer);
@@ -130,6 +145,11 @@ type
     procedure EndPress;
     procedure ShowTip(const V: TSciMapView; const P: TPoint);
     procedure SetRoom(Value: Integer);
+    procedure SetEntire(Value: Boolean);
+    procedure SetLarge(Value: Boolean);
+    procedure SetFontName(const Value: string);
+    procedure BuildGlyphs(Cell: Integer);
+    procedure DrawGlyph(X, Y, RowH, Cell: Integer; Ch: Char; Fore, Ground: Cardinal);
   protected
     procedure Hook(var Message: TMessage); override;
   public
@@ -146,19 +166,26 @@ type
     procedure HideTip;
     procedure SetColors(const C: TSciMapColors);
     property Room: Integer read FRoom write SetRoom;
+    { the whole text in the map (squeezed when taller than it); False: the strip that scrolls with the
+      view, line for line }
+    property Entire: Boolean read FEntire write SetEntire;
+    { cells twice as big: the room to set with it is SciMapWidth(Dpi, True) }
+    property Large: Boolean read FLarge write SetLarge;
+    { the editor's font, whose shapes the printable characters take }
+    property FontName: string read FFontName write SetFontName;
     property SciCall: TSciMapSci read FSciCall write FSciCall;
     property OnStyleTo: TSciMapStyleTo read FOnStyleTo write FOnStyleTo;
     property OnPreview: TSciMapPreview read FOnPreview write FOnPreview;
     { tests: the pointer at the window point X, Y as a WM_NCMOUSEMOVE puts it, without asking for
       WM_NCMOUSELEAVE (it would come at once: the real pointer is elsewhere) }
     procedure TestHover(X, Y: Integer);
-    { tests: 'room=n map=l,t,r,b top=first row box=top-bottom hot=0|1 down=0|1 tip=its lines' -
+    { tests: 'room=n map=l,t,r,b top=first row box=top-bottom hot=0|1 down=0|1 entire=0|1 tip=its lines' -
       window coordinates; tip SdHints' DebugText, '' while none is shown }
     function StateText: string;
   end;
 
-{ the room the map takes at Dpi: MapColumns cells and its margins }
-function SciMapWidth(Dpi: Integer): Integer;
+{ the room the map takes at Dpi: MapColumns cells and its margins; Large: cells twice as big }
+function SciMapWidth(Dpi: Integer; Large: Boolean): Integer;
 
 { a line's text in columns, for the map and the tip of its lines (TSciEdit.StyledRuns): the styled
   text of Len bytes from Pos into Buf (SCI_GETSTYLEDTEXT - each byte, then its style byte; Buf
@@ -179,6 +206,13 @@ const
   CaretAlpha = 64;                        // of 256: the caret's band over the row's ground
   MapTimerId = $5D53;                     // the drag held past the map: not Scintilla's, the bars' or the editor's
   MapRepeat = 40;                         // ... its ms
+  MinBoxRows = 4;                         // the squeezed map's box: its least height, in rows
+  GlyphFirst = 33;                        // the characters drawn from the font: '!' ...
+  GlyphLast = 126;                        // ... '~'
+  GlyphSample = 12;                       // the width they are drawn at before they are reduced, at least (px)
+  GlyphFloor = 40;                        // a pixel's share of ink (of 256) below this: the ground ...
+  GlyphSolid = 112;                       // ... from this: the full colour; between them GlyphLow .. full
+  GlyphLow = 64;
 
 { a character's cell at Dpi: a pixel at 96, more at higher ones (rounded) }
 function MapCell(Dpi: Integer): Integer;
@@ -187,10 +221,17 @@ begin
   if Result < 1 then Result := 1;
 end;
 
-{ two cells of margin at the left, one at the right }
-function SciMapWidth(Dpi: Integer): Integer;
+{ ... twice that in the large map }
+function MapCellOf(Dpi: Integer; Large: Boolean): Integer;
 begin
-  Result := (MapColumns + 3) * MapCell(Dpi);
+  Result := MapCell(Dpi);
+  if Large then Result := 2 * Result;
+end;
+
+{ two cells of margin at the left, one at the right }
+function SciMapWidth(Dpi: Integer; Large: Boolean): Integer;
+begin
+  Result := (MapColumns + 3) * MapCellOf(Dpi, Large);
 end;
 
 procedure SciStyledText(const Sci: TSciMapSci; Pos, Len: Integer; var Buf: string);
@@ -320,6 +361,7 @@ begin
   FColors.View := clBtnShadow;
   FColors.ViewHot := clGrayText;
   FColors.ViewDown := clBtnText;
+  FColors.Line := clBtnShadow;
   FColors.Tip := clWindow;
   FColors.Caret := clBtnShadow;
   FColors.Selection := clHighlight;
@@ -357,7 +399,7 @@ var
   H: Integer;
 begin
   V.R := MapRect;
-  V.Cell := MapCell(GetControlDpi(FControl));
+  V.Cell := MapCellOf(GetControlDpi(FControl), FLarge);
   V.LineH := 2 * V.Cell;
   H := V.R.Bottom - V.R.Top;
   if H < 0 then H := 0;
@@ -371,8 +413,18 @@ begin
     beyond EOF }
   if Sci(SCI_GETENDATLASTLINE) <> 0 then V.Last := V.Total - V.Page else V.Last := V.Total - 1;
   if V.Last < 0 then V.Last := 0;
-  V.TopMax := V.Total - V.Fit;
+  { the map's last first row: its last rows the text's last, or - with Cursor beyond EOF - the rows
+    the editor scrolls to past the text's end, so that the box stays in the map there too }
+  if V.Last + V.Page > V.Total then V.TopMax := V.Last + V.Page - V.Fit else V.TopMax := V.Total - V.Fit;
   if V.TopMax < 0 then V.TopMax := 0;
+  { the whole text: rows from the first on; back on the strip, the box goes into its middle }
+  V.Entire := FEntire and (V.Total > V.Fit) and (H > 0);
+  if V.Entire then
+  begin
+    V.Top := 0;
+    FMapTop := -1;
+    Exit;
+  end;
   V.Top := FMapTop;
   if (V.Top < 0) or (V.First + V.Page <= V.Top) or (V.First >= V.Top + V.Fit) then
     V.Top := V.First - (V.Fit - V.Page) div 2
@@ -401,22 +453,52 @@ begin
   end;
 end;
 
-{ the box over the lines in view, window coordinates (inside the map) }
+{ the box over the lines in view, window coordinates (inside the map); squeezed, at least MinBoxRows
+  rows high - grown around its lines, kept inside the map - so that it can be seen and taken }
 function TSciMinimap.BoxRect(const V: TSciMapView): TRect;
-var
-  Y: Integer;
 begin
-  Y := V.R.Top + (V.First - V.Top) * V.LineH;
-  Result := Rect(V.R.Left, Y, V.R.Right, Y + V.Page * V.LineH);
+  Result := Rect(V.R.Left, RowY(V, V.First), V.R.Right, RowY(V, V.First + V.Page));
+  if V.Entire and (Result.Bottom - Result.Top < MinBoxRows * V.LineH) then
+  begin
+    { grown around the lines it stands for }
+    Result.Top := (Result.Top + Result.Bottom - MinBoxRows * V.LineH) div 2;
+    Result.Bottom := Result.Top + MinBoxRows * V.LineH;
+    if Result.Top < V.R.Top then OffsetRect(Result, 0, V.R.Top - Result.Top);
+    if Result.Bottom > V.R.Bottom then OffsetRect(Result, 0, V.R.Bottom - Result.Bottom);
+  end;
   if Result.Top < V.R.Top then Result.Top := V.R.Top;
   if Result.Bottom > V.R.Bottom then Result.Bottom := V.R.Bottom;
   if Result.Bottom < Result.Top then Result.Bottom := Result.Top;
 end;
 
+{ the window y where the row Row begins (not cut to the map); squeezed, the first pixel row that
+  shows it or a row after it (RowAt's inverse) }
+function TSciMinimap.RowY(const V: TSciMapView; Row: Integer): Integer;
+var
+  H: Integer;
+begin
+  if V.Entire then
+  begin
+    H := V.R.Bottom - V.R.Top;
+    Result := V.R.Top + Integer((Int64(Row) * H + V.Total - 1) div V.Total);
+  end
+  else
+    Result := V.R.Top + (Row - V.Top) * V.LineH;
+end;
+
 function TSciMinimap.RowAt(const V: TSciMapView; Y: Integer): Integer;
+var
+  H: Integer;
 begin
   if Y < V.R.Top then Y := V.R.Top;
-  Result := V.Top + (Y - V.R.Top) div V.LineH;
+  if V.Entire then
+  begin
+    H := V.R.Bottom - V.R.Top;
+    if Y >= V.R.Bottom then Y := V.R.Bottom - 1;
+    Result := Integer(Int64(Y - V.R.Top) * V.Total div H);
+  end
+  else
+    Result := V.Top + (Y - V.R.Top) div V.LineH;
 end;
 
 procedure TSciMinimap.ScrollTo(const V: TSciMapView; First: Integer);
@@ -489,20 +571,125 @@ begin
   end;
 end;
 
+{ the printable characters' shapes for cells Cell wide and 2 * Cell high: each drawn in black on white
+  with the editor's font, made to fill a cell S times as big (S at least GlyphSample pixels wide), then
+  every S x S block of it one pixel by its share of black: a stroke covers little of a pixel this small,
+  so from GlyphSolid the pixel is the full colour, under GlyphFloor none, between them a ramp. Without a font of that name GDI takes a near one }
+procedure TSciMinimap.BuildGlyphs(Cell: Integer);
+var
+  S, CellW, CellH, Count, W, G, X, Y, SX, SY, N, A: Integer;
+  DC: HDC;
+  Dib, OldDib: HBITMAP;
+  Font, OldFont: HFONT;
+  Bits, P: PCardinal;
+  R: TRect;
+  Ch: Char;
+begin
+  FGlyphCell := Cell;
+  FGlyphFont := FFontName;
+  FGlyphs := nil;
+  if Cell <= 0 then Exit;
+  S := (GlyphSample + Cell - 1) div Cell;
+  CellW := Cell * S;
+  CellH := 2 * CellW;
+  Count := GlyphLast - GlyphFirst + 1;
+  W := Count * CellW;
+  Dib := UICreateDib32(W, CellH, Bits);
+  if (Dib = 0) or (Bits = nil) then Exit;
+  DC := CreateCompatibleDC(0);
+  OldDib := SelectObject(DC, Dib);
+  Font := CreateFont(CellH, CellW, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+    NONANTIALIASED_QUALITY, FIXED_PITCH or FF_MODERN, PChar(FFontName));
+  OldFont := SelectObject(DC, Font);
+  try
+    PatBlt(DC, 0, 0, W, CellH, WHITENESS);
+    SetBkMode(DC, TRANSPARENT);
+    SetTextColor(DC, 0);
+    for G := 0 to Count - 1 do
+    begin
+      Ch := Chr(GlyphFirst + G);
+      R := Rect(G * CellW, 0, (G + 1) * CellW, CellH);
+      ExtTextOut(DC, R.Left, 0, ETO_CLIPPED, @R, @Ch, 1, nil);
+    end;
+    GdiFlush;
+    SetLength(FGlyphs, Count * Cell * 2 * Cell);
+    for G := 0 to Count - 1 do
+      for Y := 0 to 2 * Cell - 1 do
+        for X := 0 to Cell - 1 do
+        begin
+          N := 0;
+          for SY := 0 to S - 1 do
+          begin
+            P := Bits;
+            Inc(P, (Y * S + SY) * W + G * CellW + X * S);
+            for SX := 0 to S - 1 do
+            begin
+              if P^ and $FF < $80 then Inc(N);
+              Inc(P);
+            end;
+          end;
+          A := N * 256 div (S * S);
+          if A < GlyphFloor then A := 0
+          else if A >= GlyphSolid then A := 255
+          else A := GlyphLow + (A - GlyphFloor) * (255 - GlyphLow) div (GlyphSolid - GlyphFloor);
+          FGlyphs[(G * 2 * Cell + Y) * Cell + X] := A;
+        end;
+  finally
+    SelectObject(DC, OldFont);
+    DeleteObject(Font);
+    SelectObject(DC, OldDib);
+    DeleteDC(DC);
+    DeleteObject(Dib);
+  end;
+end;
+
+{ the shape of Ch in Fore over Ground, its cell's top left at X, Y of the picture, RowH pixels high: a
+  row RowH shorter than the cell's (a squeezed map's band) takes the most ink of the cell's rows it covers }
+procedure TSciMinimap.DrawGlyph(X, Y, RowH, Cell: Integer; Ch: Char; Fore, Ground: Cardinal);
+var
+  Base, GH, R, R0, R1, I, J, A, M: Integer;
+  P: PCardinal;
+begin
+  GH := 2 * Cell;
+  Base := (Ord(Ch) - GlyphFirst) * GH * Cell;
+  if RowH > GH then RowH := GH;
+  for R := 0 to RowH - 1 do
+  begin
+    if (Y + R < 0) or (Y + R >= FDibH) then Continue;
+    R0 := R * GH div RowH;
+    R1 := (R + 1) * GH div RowH;
+    if R1 <= R0 then R1 := R0 + 1;
+    P := FBits;
+    Inc(P, (Y + R) * FDibW + X);
+    for I := 0 to Cell - 1 do
+    begin
+      if X + I >= FDibW then Break;
+      M := 0;
+      for J := R0 to R1 - 1 do
+      begin
+        A := FGlyphs[Base + J * Cell + I];
+        if A > M then M := A;
+      end;
+      if M > 0 then P^ := Mix(Fore, Ground, M);
+      Inc(P);
+    end;
+  end;
+end;
+
 { The picture of the rows V.Top .. on, W x H. Each row: its ground (the box's, the caret's band),
   the selections' and the tints' columns on it, then its characters - a row reads at most the bytes
   its columns can take, so a very long line costs no more than a short one. A wrapped line's rows
-  show its bytes in equal parts }
+  show its bytes in equal parts. Squeezed (V.Entire), each band of pixel rows shows the first of the
+  rows it covers, as high as the band: under two pixels a glyph is one shade, its halves' mean }
 procedure TSciMinimap.Render(const V: TSciMapView; W, H: Integer);
 var
-  Ground, View, Caret, Sel, SelText, Base, Fore: Cardinal;
+  Ground, View, Caret, Sel, SelText: Cardinal;
   Fores: array[Byte] of Cardinal;
   Known: array[Byte] of Boolean;
   Tints: array of Cardinal;
-  Row, Last, Y, D, S, E, N, Sub, Chunk, Len, K, Col, Cols, PadL, TabW, CaretRow, I, A, B, P, Q,
-    Top, Bottom, St, X, NSel, SelA, SelB: Integer;
-  LineEnd, Utf8, Wrap: Boolean;
-  Ch: Char;
+  Row, RowEnd, Last, Y, Y2, S, Len, Cols, PadL, TabW, CaretRow, I, NSel, SelA, SelB: Integer;
+  Box: TRect;
+  Utf8, Wrap: Boolean;
 
   { the columns of the bytes A .. B of the document on this row in C (Selected: a selection's);
     past the line's end too when the range goes on beyond it (PastEnd) }
@@ -524,8 +711,115 @@ var
     end;
   end;
 
+  { the row Row at the picture's Y, RowH pixels high; it stands for the rows up to RowEnd (the
+    caret's band when the caret is on one of them) }
+  procedure DrawRow(Row, RowEnd, Y, RowH: Integer);
+  var
+    D, E, N, Sub, Chunk, K, Col, I, A, B, P, Q, Top, Bottom, St, X, TopH, BottomH: Integer;
+    Base, Fore: Cardinal;
+    LineEnd: Boolean;
+    Ch: Char;
+  begin
+    D := Sci(SCI_DOCLINEFROMVISIBLE, Row);
+    S := Sci(SCI_POSITIONFROMLINE, D);
+    E := Sci(SCI_GETLINEENDPOSITION, D);
+    LineEnd := True;
+    if Wrap then
+    begin
+      N := Sci(SCI_WRAPCOUNT, D);
+      if N > 1 then
+      begin
+        Sub := Row - Sci(SCI_VISIBLEFROMDOCLINE, D);
+        Chunk := (E - S + N - 1) div N;
+        Inc(S, Sub * Chunk);
+        if S > E then S := E;
+        if Sub < N - 1 then
+        begin
+          if S + Chunk < E then E := S + Chunk;
+          LineEnd := False;
+        end;
+      end;
+    end;
+    { the row's ground: the box's where the box is }
+    if (Y < Box.Bottom) and (Y + RowH > Box.Top) then Base := View else Base := Ground;
+    if (CaretRow >= Row) and (CaretRow < RowEnd) then Base := Mix(Caret, Base, CaretAlpha);
+    Fill(0, Y, W, RowH, Base);
+    for I := 0 to Cols - 1 do
+    begin
+      FGrounds[I] := Base;
+      FSelected[I] := False;
+    end;
+    { its bytes: as many as its columns can take (a tab takes several columns, a character of
+      UTF-8 several bytes) }
+    Len := E - S;
+    if Len > 4 * Cols then Len := 4 * Cols;
+    if Length(FColOf) < Len + 1 then SetLength(FColOf, Len + 1);
+    SciStyledText(FSciCall, S, Len, FBuf);
+    Col := 0;
+    for K := 0 to Len - 1 do
+    begin
+      FColOf[K] := Col;
+      Ch := FBuf[2 * K + 1];
+      Col := SciColumnAfter(Ch, Col, TabW, Utf8 and (Byte(Ch) and $C0 = $80));
+    end;
+    FColOf[Len] := Col;
+    { the selections; the tints' ranges }
+    for I := 0 to NSel - 1 do
+    begin
+      A := Sci(SCI_GETSELECTIONNSTART, I);
+      B := Sci(SCI_GETSELECTIONNEND, I);
+      if (A < B) and (A <= E) and (B >= S) then
+        Tint(A, B, Sel, LineEnd and (B > E) and (Len = E - S), True);
+    end;
+    for I := 0 to High(Tints) do
+    begin
+      P := S;
+      while P < S + Len do
+      begin
+        Q := Sci(SCI_INDICATOREND, FColors.Tints[I].Indicator, P);
+        if Q <= P then Break;
+        if Sci(SCI_INDICATORVALUEAT, FColors.Tints[I].Indicator, P) <> 0 then Tint(P, Q, Tints[I], False, False);
+        P := Q;
+      end;
+    end;
+    for I := 0 to Cols - 1 do
+      if FGrounds[I] <> Base then Fill(PadL + I * V.Cell, Y, V.Cell, RowH, FGrounds[I]);
+    { the characters: a glyph's top and bottom half, each half the row's height }
+    TopH := RowH div 2;
+    BottomH := RowH - TopH;
+    for K := 0 to Len - 1 do
+    begin
+      Col := FColOf[K];
+      if Col >= Cols then Break;
+      Ch := FBuf[2 * K + 1];
+      if (Ch <= ' ') or (Utf8 and (Byte(Ch) and $C0 = $80)) then Continue;
+      St := Byte(FBuf[2 * K + 2]);
+      if not Known[St] then
+      begin
+        Fores[St] := Pixel(TColor(Sci(SCI_STYLEGETFORE, St)));
+        Known[St] := True;
+      end;
+      if FSelected[Col] then Fore := SelText else Fore := Fores[St];
+      X := PadL + Col * V.Cell;
+      if FLarge and (Ch >= Chr(GlyphFirst)) and (Ch <= Chr(GlyphLast)) and (FGlyphs <> nil) then
+      begin
+        DrawGlyph(X, Y, RowH, V.Cell, Ch, Fore, FGrounds[Col]);
+        Continue;
+      end;
+      GlyphShade(Ch, Top, Bottom);
+      if TopH = 0 then
+      begin
+        Bottom := (Top + Bottom) div 2;
+        Top := 0;
+      end;
+      if Top > 0 then Fill(X, Y, V.Cell, TopH, Mix(Fore, FGrounds[Col], Top));
+      if Bottom > 0 then Fill(X, Y + TopH, V.Cell, BottomH, Mix(Fore, FGrounds[Col], Bottom));
+    end;
+  end;
+
 begin
   if not EnsureDib(W, H) then Exit;
+  if FLarge and ((FGlyphCell <> V.Cell) or (FGlyphFont <> FFontName)) then BuildGlyphs(V.Cell);
   GdiFlush;
   Ground := Pixel(FColors.Ground);
   if FDown then View := Pixel(FColors.ViewDown)
@@ -538,10 +832,12 @@ begin
   for I := 0 to High(Tints) do Tints[I] := Pixel(FColors.Tints[I].Color);
   Fill(0, 0, W, H, Ground);
   ReadMarks(CaretRow, SelA, SelB, NSel);
+  Box := BoxRect(V);
+  OffsetRect(Box, 0, -V.R.Top);
   PadL := 2 * V.Cell;
   Cols := (W - 3 * V.Cell) div V.Cell;
   if Cols > MapColumns then Cols := MapColumns;
-  Last := V.Top + V.Rows;
+  if V.Entire then Last := V.Total else Last := V.Top + V.Rows;
   if Last > V.Total then Last := V.Total;
   if (Cols > 0) and (Last > V.Top) then
   begin
@@ -554,94 +850,35 @@ begin
     FillChar(Known, SizeOf(Known), 0);
     SetLength(FGrounds, Cols);
     SetLength(FSelected, Cols);
-    for Row := V.Top to Last - 1 do
+    if V.Entire then
     begin
-      Y := (Row - V.Top) * V.LineH;
-      D := Sci(SCI_DOCLINEFROMVISIBLE, Row);
-      S := Sci(SCI_POSITIONFROMLINE, D);
-      E := Sci(SCI_GETLINEENDPOSITION, D);
-      LineEnd := True;
-      if Wrap then
+      { a band: the pixel rows whose first row is the same (RowAt) }
+      Y := 0;
+      while Y < H do
       begin
-        N := Sci(SCI_WRAPCOUNT, D);
-        if N > 1 then
-        begin
-          Sub := Row - Sci(SCI_VISIBLEFROMDOCLINE, D);
-          Chunk := (E - S + N - 1) div N;
-          Inc(S, Sub * Chunk);
-          if S > E then S := E;
-          if Sub < N - 1 then
-          begin
-            if S + Chunk < E then E := S + Chunk;
-            LineEnd := False;
-          end;
-        end;
+        Row := Integer(Int64(Y) * V.Total div H);
+        Y2 := Y + 1;
+        while (Y2 < H) and (Integer(Int64(Y2) * V.Total div H) = Row) do Inc(Y2);
+        RowEnd := Integer(Int64(Y2) * V.Total div H);
+        if RowEnd <= Row then RowEnd := Row + 1;
+        DrawRow(Row, RowEnd, Y, Y2 - Y);
+        Y := Y2;
       end;
-      { the row's ground }
-      if (Row >= V.First) and (Row < V.First + V.Page) then Base := View else Base := Ground;
-      if Row = CaretRow then Base := Mix(Caret, Base, CaretAlpha);
-      Fill(0, Y, W, V.LineH, Base);
-      for I := 0 to Cols - 1 do
-      begin
-        FGrounds[I] := Base;
-        FSelected[I] := False;
-      end;
-      { its bytes: as many as its columns can take (a tab takes several columns, a character of
-        UTF-8 several bytes) }
-      Len := E - S;
-      if Len > 4 * Cols then Len := 4 * Cols;
-      if Length(FColOf) < Len + 1 then SetLength(FColOf, Len + 1);
-      SciStyledText(FSciCall, S, Len, FBuf);
-      Col := 0;
-      for K := 0 to Len - 1 do
-      begin
-        FColOf[K] := Col;
-        Ch := FBuf[2 * K + 1];
-        Col := SciColumnAfter(Ch, Col, TabW, Utf8 and (Byte(Ch) and $C0 = $80));
-      end;
-      FColOf[Len] := Col;
-      { the selections; the tints' ranges }
-      for I := 0 to NSel - 1 do
-      begin
-        A := Sci(SCI_GETSELECTIONNSTART, I);
-        B := Sci(SCI_GETSELECTIONNEND, I);
-        if (A < B) and (A <= E) and (B >= S) then
-          Tint(A, B, Sel, LineEnd and (B > E) and (Len = E - S), True);
-      end;
-      for I := 0 to High(Tints) do
-      begin
-        P := S;
-        while P < S + Len do
-        begin
-          Q := Sci(SCI_INDICATOREND, FColors.Tints[I].Indicator, P);
-          if Q <= P then Break;
-          if Sci(SCI_INDICATORVALUEAT, FColors.Tints[I].Indicator, P) <> 0 then Tint(P, Q, Tints[I], False, False);
-          P := Q;
-        end;
-      end;
-      for I := 0 to Cols - 1 do
-        if FGrounds[I] <> Base then Fill(PadL + I * V.Cell, Y, V.Cell, V.LineH, FGrounds[I]);
-      { the characters }
-      for K := 0 to Len - 1 do
-      begin
-        Col := FColOf[K];
-        if Col >= Cols then Break;
-        Ch := FBuf[2 * K + 1];
-        if (Ch <= ' ') or (Utf8 and (Byte(Ch) and $C0 = $80)) then Continue;
-        GlyphShade(Ch, Top, Bottom);
-        St := Byte(FBuf[2 * K + 2]);
-        if not Known[St] then
-        begin
-          Fores[St] := Pixel(TColor(Sci(SCI_STYLEGETFORE, St)));
-          Known[St] := True;
-        end;
-        if FSelected[Col] then Fore := SelText else Fore := Fores[St];
-        X := PadL + Col * V.Cell;
-        if Top > 0 then Fill(X, Y, V.Cell, V.Cell, Mix(Fore, FGrounds[Col], Top));
-        if Bottom > 0 then Fill(X, Y + V.Cell, V.Cell, V.Cell, Mix(Fore, FGrounds[Col], Bottom));
-      end;
-    end;
+    end
+    else
+      for Row := V.Top to Last - 1 do DrawRow(Row, Row + 1, (Row - V.Top) * V.LineH, V.LineH);
   end;
+  { the box past the text's end - the editor scrolled beyond its last line: the rows in view there are
+    empty, the box keeps its height on them }
+  if not V.Entire then
+  begin
+    Y := (Last - V.Top) * V.LineH;
+    if Y < Box.Top then Y := Box.Top;
+    if Box.Bottom > Y then Fill(0, Y, W, Box.Bottom - Y, View);
+  end;
+  { the line beside the text, in the left margin: no character is drawn there (the scroll bar draws
+    the one at the right) }
+  Fill(0, 0, 1, H, Pixel(FColors.Line));
   FFirst := V.First;
   FPage := V.Page;
   FTotal := V.Total;
@@ -733,6 +970,33 @@ begin
       SWP_NOACTIVATE or SWP_FRAMECHANGED);
 end;
 
+procedure TSciMinimap.SetEntire(Value: Boolean);
+begin
+  if Value = FEntire then Exit;
+  FEntire := Value;
+  HideTip;
+  FHot := False;
+  FMapTop := -1;
+  Changed;
+end;
+
+procedure TSciMinimap.SetLarge(Value: Boolean);
+begin
+  if Value = FLarge then Exit;
+  FLarge := Value;
+  HideTip;
+  FHot := False;
+  FMapTop := -1;
+  Changed;
+end;
+
+procedure TSciMinimap.SetFontName(const Value: string);
+begin
+  if Value = FFontName then Exit;
+  FFontName := Value;
+  Changed;
+end;
+
 procedure TSciMinimap.HideTip;
 begin
   FTipLine := -1;
@@ -756,8 +1020,8 @@ begin
   ReadView(V);
   B := BoxRect(V);
   if FTip <> nil then Tip := FTip.DebugText else Tip := '';
-  Result := Format('room=%d map=%d,%d,%d,%d top=%d box=%d-%d hot=%d down=%d tip=%s', [FRoom, V.R.Left, V.R.Top,
-    V.R.Right, V.R.Bottom, V.Top, B.Top, B.Bottom, Ord(FHot), Ord(FDown), Tip]);
+  Result := Format('room=%d map=%d,%d,%d,%d top=%d box=%d-%d hot=%d down=%d entire=%d tip=%s', [FRoom, V.R.Left,
+    V.R.Top, V.R.Right, V.R.Bottom, V.Top, B.Top, B.Bottom, Ord(FHot), Ord(FDown), Ord(V.Entire), Tip]);
 end;
 
 { the code around the line under the pointer, beside the map at its row; a new line under it, a new
@@ -784,11 +1048,10 @@ begin
     Exit;
   end;
   if FTip = nil then FTip := TSdCodeTip.Create(Self);
-  FTip.Color := FColors.Tip;
   GetWindowRect(FControl.Handle, WR);
-  Y := V.R.Top + (Row - V.Top) * V.LineH;
+  Y := RowY(V, Row);
   A := Rect(WR.Left + V.R.Left, WR.Top + Y, WR.Left + V.R.Right, WR.Top + Y + V.LineH);
-  FTip.ShowLinesBeside(Lines, A, Self);
+  FTip.ShowLinesBeside(Lines, A, Self, FColors.Tip);
   FTipLine := Line;
 end;
 
@@ -819,12 +1082,19 @@ end;
 { the editor scrolled so that the box's top lies at Y - FGrab (window coordinates) on the rows the
   map draws now, line for line, the box inside the map while the pointer is; past the map's top or
   bottom the box goes on beyond it - as many rows as the pointer is past it, at least one - and
-  takes the map with it (ReadView) }
+  takes the map with it (ReadView). Squeezed, the box's top row is the one drawn at its top: the
+  whole text is in the map, the editor stops at its first and last lines }
 procedure TSciMinimap.MoveBox(const V: TSciMapView; Y: Integer);
 var
   D, T: Integer;
 begin
   D := Y - FGrab - V.R.Top;
+  if V.Entire then
+  begin
+    if D < 0 then D := 0;
+    ScrollTo(V, RowAt(V, V.R.Top + D));
+    Exit;
+  end;
   if D < 0 then D := D - V.LineH + 1;                  // rounded down above the map too
   T := D div V.LineH;
   if T > V.Fit - V.Page then T := V.Fit - V.Page;
@@ -845,7 +1115,7 @@ begin
   ReadView(V);
   ScrollTo(V, RowAt(V, P.Y) - V.Page div 2);
   ReadView(V);
-  FGrab := P.Y - (V.R.Top + (V.First - V.Top) * V.LineH);
+  FGrab := P.Y - RowY(V, V.First);
   FMouse := P;
   FDown := True;
   SetCapture(FControl.Handle);
@@ -861,7 +1131,7 @@ begin
   FMouse := P;
   ReadView(V);
   MoveBox(V, P.Y);
-  if (P.Y < V.R.Top) or (P.Y >= V.R.Bottom) then SetTimer(FControl.Handle, MapTimerId, MapRepeat, nil)
+  if not V.Entire and ((P.Y < V.R.Top) or (P.Y >= V.R.Bottom)) then SetTimer(FControl.Handle, MapTimerId, MapRepeat, nil)
   else KillTimer(FControl.Handle, MapTimerId);
   Update;
 end;

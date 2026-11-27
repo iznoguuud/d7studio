@@ -88,7 +88,7 @@ type
     function ApplyTo(R: TSdResources; Saving: Boolean): string;
     procedure Saved(const NewKey: string);       // Save wrote it: its key now
     procedure Renamed(It: TSdResItem);           // Properties gave it another name or language
-    function TabCaption: string;                 // the title, '*' after it while modified
+    function TabCaption: string;                 // the title of its file tab
     function IsShortCut(var Message: TWMKey): Boolean;
     function HasFocus: Boolean;                  // the keyboard is in the page
     { the editor's command named as the main form's (EditUndoCommand, EditCopyCommand ...); nil: it has none, or an
@@ -366,7 +366,6 @@ end;
 function TSdResPage.TabCaption: string;
 begin
   Result := FTitle;
-  if Modified then Result := Result + ModifiedMark;
 end;
 
 function TSdResPage.IsShortCut(var Message: TWMKey): Boolean;

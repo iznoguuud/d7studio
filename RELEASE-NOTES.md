@@ -11,6 +11,74 @@ installing in [README.md](source/README.md).
 
 ## [Unreleased]
 
+## [1.0.5.0] - 2026-11-27
+
+### Added
+
+- **Code editor**: refactorings, in *Edit ▸ Refactor*, the *Refactor* button on the code editor's bar and under
+  *Refactoring* in the code editor's menu: *Rename*
+  (F2) a variable, routine, method, field, property, type or parameter everywhere the project uses it - forms
+  included: a component, an event handler or a form's class is renamed in the form files too; *Declare Variable*
+  (Shift+Ctrl+V) and *Declare Field* for a name not declared yet, with its type guessed; *Find Unit* (Shift+Ctrl+A)
+  adds the unit that declares a name to the uses clause; *Extract Method* (Shift+Ctrl+M) makes the selected
+  statements a method or routine of their own, with the parameters they need; *Introduce Variable* and *Inline
+  Variable*; *Change Parameters* (Shift+Ctrl+X) adds, removes, reorders and edits a routine's parameters and changes
+  every call; *Extract Resource String* (Shift+Ctrl+L); *Extract Constant* names a number, a string or a constant
+  expression; *Convert to Format* turns a string concatenation into a call of `Format`; *Implement Methods* adds the
+  methods of a class's interfaces and overrides of its ancestors' virtual methods; *Encapsulate Field* puts a field
+  behind a property; *Complete Case* adds a branch for every value of an enumeration a case statement lacks; *Remove
+  With* names what a with statement gave through its expression; *Clean Uses* removes the units a unit does not need
+  and moves those only its implementation needs; *Safe Delete* deletes a declaration nothing uses; *Const Parameters*
+  makes the parameters a routine never changes `const`; *Rename Unit* renames a unit, its file and its form's file;
+  *Move to Unit* moves a type, routine, constant or variable - with the declarations only it used - into another
+  unit and updates the uses clauses; *Pull Members Up* and *Push Members Down* move members of a class into its
+  ancestor or its descendants. Each shows its changes first in the new *Refactorings* view - every file and line,
+  and the file before and after compared as in the *History* tab - and makes them when you click *Apply*; an open
+  file's changes are undone in one step.
+- **Code editor**: *Sync Edit* (*Edit ▸ Refactor*, the selection button): the names that occur more than once in the
+  selected text are linked, and typing over one changes them all; Tab goes to the next name, Esc ends it.
+- **Code editor**: the minimap can show the entire file, squeezed to its height, instead of the strip that scrolls
+  with the code in view (still the default): *Editor Options ▸ Display ▸ Scroll bars ▸ Layout*. *Large minimap*
+  beside it draws the minimap twice as large and wide, its characters in the shapes of the editor's font, for big
+  screens. A drop-down button at the right end of the
+  code editor's bar has all four switches: show or hide the minimap, its preview, the entire file and the large size.
+- **IDE**: a hidden view that has slid out from the window's edge can be resized: drag its inner edge, marked by a
+  thin line. When you pin it again, it docks at that size.
+- **IDE**: *Help ▸ Create Bug Report...* writes `bugreport.txt` and opens it, ready to attach to an issue on GitHub:
+  the errors in `error.log`, grouped, each with its call stack (procedures and lines from D7 Studio's map, and the
+  source lines around them when the sources are at hand), your Windows, monitors and code page, Delphi 7 and its
+  patch, and the design packages and experts in use. **Setup** installs `bugreport.exe`, which does the same from the
+  command line (`bugreport -?`).
+
+### Changed
+
+- **IDE**: a file tab shows its close box only while the pointer is on the tab, as a grey square with a white cross
+  like the close box of the docked views; it turns red under the pointer. In its place a modified file's tab shows a
+  green dot, the others a light grey one; the title no longer ends in `*`.
+- **IDE**: the line that marks the chosen tab - of the file tabs, the docked views, *Code* / *Design* and the
+  Object Inspector - is 1 px thick instead of 2.
+- **IDE**: the close box and the pin on a docked view's caption are 1 px smaller, with their cross and pin exactly in
+  the middle, and the caption is 1 px taller so that they sit in its middle. The close box shows only its cross, in
+  the caption's text colour, and turns red under the pointer; the pin is smaller.
+- **Code editor**: a 1 px line separates the scroll bars from the code and the minimap - along the vertical bar's
+  left edge and the horizontal bar's top -, and the minimap from the code.
+- **Code editor**: a file whose text is back to what was last saved - by undo or by typing or deleting it back - no
+  longer counts as modified: its tab loses the modified dot, and closing it does not ask to save.
+- **IDE**: when *Help ▸ Check for Updates* finds nothing newer, it says whether you have the latest version or a
+  build newer than the latest release. The command has an icon in the Help menu now, and a line separates *About*
+  from it.
+
+### Fixed
+
+- **Form designer**: closing a form while one of its editor windows was open (the action list, collection or menu
+  editor ...) could end in an access violation.
+- **IDE**: in the trees with check boxes - the Watch List and *Migrate from Delphi 7* - the frame of the chosen item
+  is whole: the check box's cell hid its left edge.
+- **Code editor**: with *Cursor beyond EOF* on, the minimap's box of the lines in view no longer shrinks or
+  disappears when the code is scrolled past its last line.
+- **Code editor**: the tip of the code a folded line hides has the editor theme's background, so its text stays
+  readable in a dark theme.
+
 ## [1.0.4.1] - 2026-11-27
 
 ### Added
@@ -301,7 +369,8 @@ The first release.
   its settings. It also installs Microsoft's WinHelp viewer, which shows Delphi 7's help on
   Windows 10 and 11.
 
-[Unreleased]: https://github.com/iznoguuud/d7studio/compare/v1.0.4.1...HEAD
+[Unreleased]: https://github.com/iznoguuud/d7studio/compare/v1.0.5.0...HEAD
+[1.0.5.0]: https://github.com/iznoguuud/d7studio/compare/v1.0.4.1...v1.0.5.0
 [1.0.4.1]: https://github.com/iznoguuud/d7studio/compare/v1.0.4.0...v1.0.4.1
 [1.0.4.0]: https://github.com/iznoguuud/d7studio/compare/v1.0.3.4...v1.0.4.0
 [1.0.3.4]: https://github.com/iznoguuud/d7studio/compare/v1.0.3.3...v1.0.3.4

@@ -245,6 +245,24 @@ type
     property Text: string read FText write SetText;
   end;
 
+  { the edge of the group that is out, towards the centre: its area's splitter while the group
+    lies over the centre. The dock does the drag (its MouseDown / MouseMove / MouseUp, in its own
+    coordinates); painted as the dock's gaps }
+  TSdDockSizer = class(TSdControl)
+  private
+    FDock: TSdDock;
+    FEdge: TSdDockEdge;             // the edge of the group's area
+    procedure SetEdge(Value: TSdDockEdge);
+  protected
+    procedure PaintBuffer(C: TCanvas); override;
+    procedure MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Integer); override;
+    procedure MouseMove(Shift: TShiftState; X, Y: Integer); override;
+    procedure MouseUp(Button: TMouseButton; Shift: TShiftState; X, Y: Integer); override;
+  public
+    constructor Create(AOwner: TComponent); override;
+    property Edge: TSdDockEdge read FEdge write SetEdge;
+  end;
+
   { the caption of a group: the titles of its visible panels on a bar in the colour of the title
     bars, the pin and the close box; painted through a bitmap, never erased }
   TSdDockCaption = class(TSdControl)
@@ -387,6 +405,9 @@ type
     FSlidByHover: Boolean;          // the pointer rested on its tab (it goes when the pointer does)
     FSlidFocused: Boolean;          // the keyboard has been in it (it goes when the keyboard does)
     FSlideSerial: Cardinal;         // counts the slides out: a posted slide in names the one it ends
+    FSlideSizer: TSdDockSizer;      // its edge towards the centre ...
+    FSlideSplit: TRect;             // ... where Layout put it (empty: no group out)
+    FSlideRoom: Integer;            // ... the most the group may take there (a drag of the edge)
     FAutoTimer: TTimer;
     FHoverTimer: TTimer;
     FHoverPanel: TSdDockPanel;
@@ -620,6 +641,18 @@ begin
     deTop: R.Top := Result.Bottom;
   else
     R.Bottom := Result.Top;
+  end;
+end;
+
+{ the part S thick next to R on its side away from Edge (what lies beside a strip at that edge) }
+function Beside(const R: TRect; Edge: TSdDockEdge; S: Integer): TRect;
+begin
+  case Edge of
+    deLeft: Result := Rect(R.Right, R.Top, R.Right + S, R.Bottom);
+    deRight: Result := Rect(R.Left - S, R.Top, R.Left, R.Bottom);
+    deTop: Result := Rect(R.Left, R.Bottom, R.Right, R.Bottom + S);
+  else
+    Result := Rect(R.Left, R.Top - S, R.Right, R.Top);
   end;
 end;
 
@@ -954,6 +987,54 @@ begin
   UIText(DC, FText, R, DT_LEFT or DT_VCENTER or DT_SINGLELINE or DT_NOPREFIX or
     DT_PATH_ELLIPSIS, clBtnText);
   SelectObject(DC, Old);
+end;
+
+{ ---------------------------------------------------------------- TSdDockSizer }
+
+constructor TSdDockSizer.Create(AOwner: TComponent);
+begin
+  inherited Create(AOwner);
+  FDock := AOwner as TSdDock;
+  ControlStyle := ControlStyle + [csOpaque] - [csAcceptsControls, csSetCaption, csParentBackground];
+  Buffered := True;
+  Cursor := crHSplit;                             // FEdge deLeft
+end;
+
+procedure TSdDockSizer.SetEdge(Value: TSdDockEdge);
+begin
+  if Value = FEdge then Exit;
+  FEdge := Value;
+  if FEdge in [deLeft, deRight] then Cursor := crHSplit else Cursor := crVSplit;
+  Invalidate;
+end;
+
+{ the gap beside the group, then a 1 px line against what the group lies over }
+procedure TSdDockSizer.PaintBuffer(C: TCanvas);
+var
+  Line: TRect;
+begin
+  Line := ClientRect;
+  UIFill(C.Handle, TakeEdge(Line, FEdge, Extent(Line, FEdge in [deTop, deBottom]) - 1), FDock.Color);
+  UIFill(C.Handle, Line, clBtnShadow);
+end;
+
+procedure TSdDockSizer.MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
+begin
+  inherited;
+  FDock.MouseDown(Button, Shift, Left + X, Top + Y);
+end;
+
+{ (the drag moves the sizer: Left and Top are its place when the message came) }
+procedure TSdDockSizer.MouseMove(Shift: TShiftState; X, Y: Integer);
+begin
+  inherited;
+  if ssLeft in Shift then FDock.MouseMove(Shift, Left + X, Top + Y);
+end;
+
+procedure TSdDockSizer.MouseUp(Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
+begin
+  inherited;
+  FDock.MouseUp(Button, Shift, Left + X, Top + Y);
 end;
 
 { ---------------------------------------------------------------- TSdDockCaption }
@@ -1293,6 +1374,10 @@ begin
   FHoverTimer.Interval := 400;
   FHoverTimer.OnTimer := HoverTick;
   UIOnPressCancel(Self, PressCancelled);          // a splitter drag
+  FSlideSizer := TSdDockSizer.Create(Self);
+  FSlideSizer.Visible := False;
+  FSlideSizer.Parent := Self;
+  UIOnPressCancel(FSlideSizer, PressCancelled);   // ... the edge of the group that is out
 end;
 
 destructor TSdDock.Destroy;
@@ -2550,7 +2635,7 @@ begin
   Result := False;
   if FSlid = nil then Exit;
   Result := Within(FSlid.FCaption) or Within(FSlid.FTabs) or Within(FSlid.FStatus) or
-    Within(FSlid.FArea.FAutoTabs);
+    Within(FSlid.FArea.FAutoTabs) or Within(FSlideSizer);
   for I := 0 to FSlid.FPanels.Count - 1 do
     if not Result and (Within(FSlid.Panels[I].FControl) or Within(FSlid.Panels[I].FToolBar)) then Result := True;
 end;
@@ -2568,11 +2653,13 @@ begin
     FSlidFocused := True
   else if FSlidFocused then
     SlideIn                                       // the keyboard went elsewhere
-  else if FSlidByHover and GetCursorPos(P) then
+  else if FSlidByHover and (FSplitArea = nil) and GetCursorPos(P) then
   begin
-    { the pointer has left the group and its strip (a timer has no message to take it from) }
+    { the pointer has left the group, its edge and its strip (a timer has no message to take it
+      from); not while the edge is dragged, which the pointer may run ahead of }
     P := ScreenToClient(P);
-    if not PtInRect(FSlid.FBounds, P) and not PtInRect(FSlid.FArea.FStrip, P) then SlideIn;
+    if not PtInRect(FSlid.FBounds, P) and not PtInRect(FSlideSplit, P) and
+      not PtInRect(FSlid.FArea.FStrip, P) then SlideIn;
   end;
 end;
 
@@ -2801,22 +2888,22 @@ begin
       FPageRect := Rest;
       { the group that is out: as wide (left / right) or high as its area, along its strip - a
         centre area's within the centre }
+      FSlideSplit := NoRect;
       if FSlid <> nil then
       begin
         A := FSlid.FArea;
         Strip := A.FStrip;
         if A.FInCenter then Room := Extent(A.FSpan, not A.Vertical) - Extent(Strip, not A.Vertical)
         else if A.Vertical then Room := ClientWidth - (Strip.Right - Strip.Left) else Room := ClientHeight - (Strip.Bottom - Strip.Top);
+        { its edge (a splitter's Gap) after it: the group as wide as its area's docked groups }
+        FSlideRoom := Room - MinArea - Gap;
+        if FSlideRoom < MinArea then FSlideRoom := MinArea;
         S := A.FSize;
-        if S > Room - MinArea then S := Room - MinArea;
+        if S > FSlideRoom then S := FSlideRoom;
         if S < MinArea then S := MinArea;
-        case A.FEdge of
-          deLeft: FSlid.FBounds := Rect(Strip.Right, Strip.Top, Strip.Right + S, Strip.Bottom);
-          deRight: FSlid.FBounds := Rect(Strip.Left - S, Strip.Top, Strip.Left, Strip.Bottom);
-          deTop: FSlid.FBounds := Rect(Strip.Left, Strip.Bottom, Strip.Right, Strip.Bottom + S);
-        else
-          FSlid.FBounds := Rect(Strip.Left, Strip.Top - S, Strip.Right, Strip.Top);
-        end;
+        FSlideSplit := Beside(Strip, A.FEdge, S + Gap);
+        FSlid.FBounds := TakeEdge(FSlideSplit, A.FEdge, S);
+        FSlideSizer.Edge := A.FEdge;
       end;
       { a floating group fills its window inside the margin (one that has no window yet - the
         dock's form has none - takes no place) }
@@ -2948,6 +3035,7 @@ begin
   end;
   for I := 0 to FAreas.Count - 1 do
     Put(Areas[I].FAutoTabs, Areas[I].FStrip, not IsRectEmpty(Areas[I].FStrip), nil);
+  Put(FSlideSizer, FSlideSplit, not IsRectEmpty(FSlideSplit), nil);
   Batch(Self);
   for I := 0 to FFloatArea.FGroups.Count - 1 do
     if TSdDockGroup(FFloatArea.FGroups[I]).FFloat <> nil then Batch(TSdDockGroup(FFloatArea.FGroups[I]).FFloat);
@@ -2974,6 +3062,7 @@ begin
     end;
     { its status line too: a part of another group made after it would cover it }
     if (FSlid.FStatus <> nil) and FSlid.FStatus.Visible then FSlid.FStatus.BringToFront;
+    if FSlideSizer.Visible then FSlideSizer.BringToFront;
   end;
 end;
 
@@ -3628,6 +3717,13 @@ var
 begin
   A := nil;
   G := nil;
+  { the edge of the group that is out lies over the others }
+  if (FSlid <> nil) and PtInRect(FSlideSplit, P) then
+  begin
+    A := FSlid.FArea;
+    Result := True;
+    Exit;
+  end;
   for I := 0 to FAreas.Count - 1 do
     if PtInRect(Areas[I].FSplit, P) then A := Areas[I];
   if A = nil then
@@ -3652,7 +3748,15 @@ begin
   inherited;
   if (Button <> mbLeft) or not SplitAt(Point(X, Y), FSplitArea, FSplitGroup) then Exit;
   FSplitFrom := Point(X, Y);
-  if FSplitArea <> nil then
+  if (FSlid <> nil) and (FSplitArea = FSlid.FArea) and PtInRect(FSlideSplit, FSplitFrom) then
+  begin
+    { the edge of the group that is out: the area's size is the group's, which may take what
+      Layout leaves it beside its strip }
+    FSplitOld := FSplitArea.FSize;
+    FSplitSize := Extent(FSlid.FBounds, not FSplitArea.Vertical);
+    FSplitRoom := FSlideRoom;
+  end
+  else if FSplitArea <> nil then
   begin
     { the area's width (left/right) or height, and what it may take from the centre }
     V := not FSplitArea.Vertical;

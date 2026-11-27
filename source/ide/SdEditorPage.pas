@@ -24,7 +24,6 @@ uses
 const
   CM_SD_DESIGNSTEP = WM_APP + 120;    // a change of the designer is over: one undo step
   CM_SD_CODEINSIGHT = WM_APP + 121;   // code insight asked for (the Open Tools API): WParam the key (InvokeCodeInsight)
-  ModifiedMark = '*';                 // after the title of a modified page's tab (Visual Studio's)
 
 type
   TEditorPage = class;
@@ -67,6 +66,7 @@ type
     function HistoryBar: TWinControl; virtual;
     function DesignerBar: TWinControl; virtual;
     function CodeBar: TWinControl; virtual;        // a bar of the code view's commands (none: nil)
+    function MinimapBar: TWinControl; virtual;     // ... of its minimap's, at the bar's right end (none: nil)
     { a page's History tab is made: its menus (the main form's) }
     procedure HistoryViewMade(View: TSdHistoryView); virtual;
     { what Page's bar holds changed (Editor Options | Navigation bar, another kind of file): the
@@ -363,7 +363,7 @@ type
     procedure SetSourceUndoable(const NewSource: string);
     function IsPascal: Boolean;
     function UnitName: string;
-    { the title of its file tab; a modified file's ends in '*' }
+    { the title of its file tab (a modified file's tab shows a dot: SetTabModified) }
     function TabCaption: string;
     function TabCaptionW: WideString;
     { the mark its tab shows (the main form sets the tab's title and this together) }
@@ -393,6 +393,10 @@ type
       renamed in a frame or an ancestor the form is built from renames its "inherited" entries:
       the designer reads it, or (none made yet) it is the form's text from now on }
     procedure TakeChangedForm(const NewText: string);
+    { a rename changed the form's class (Refactor | Rename): the designer goes - it was made for
+      the old class - and the page keeps the form's new text (NewDfm, as CurrentDfm gives it);
+      the design view makes the designer again }
+    procedure FormClassRenamed(const NewClass, NewDfm: string);
     { Value: the design view; else the code (also from the Diagram tab) }
     procedure ShowDesign(Value: Boolean; TakeFocus: Boolean = True);
     { the Diagram tab: Value - the unit's classes, made again from its text; else
@@ -680,6 +684,11 @@ begin
 end;
 
 function TIDEServices.CodeBar: TWinControl;
+begin
+  Result := nil;
+end;
+
+function TIDEServices.MinimapBar: TWinControl;
 begin
   Result := nil;
 end;
@@ -1131,14 +1140,12 @@ end;
 function TEditorPage.TabCaption: string;
 begin
   if IsUnitFile then Result := UnitName else Result := ExtractFileName(FFileName);
-  if Modified then Result := Result + ModifiedMark;
 end;
 
 { ... with the real file name, also outside the code page (SdFileNames) }
 function TEditorPage.TabCaptionW: WideString;
 begin
   if IsUnitFile then Result := UnitName else Result := WideFileName(DisplayPath(FFileName));
-  if Modified then Result := Result + ModifiedMark;
 end;
 
 function TEditorPage.IsUnitFile: Boolean;
@@ -1179,9 +1186,7 @@ begin
   while (S < OL - Pos) and (S < NL - Pos) and (OldText[OL - S] = NewSource[NL - S]) do Inc(S);
   Removed := Copy(OldText, Pos + 1, OL - Pos - S);
   Inserted := Copy(NewSource, Pos + 1, NL - Pos - S);
-  FEditor.Sci(SCI_SETTARGETSTART, Pos);
-  FEditor.Sci(SCI_SETTARGETEND, OL - S);
-  FEditor.SciS(SCI_REPLACETARGET, Length(Inserted), Inserted);
+  FEditor.ReplaceRange(Pos, OL - S - Pos, Inserted);
 end;
 
 procedure TEditorPage.SetSource(const NewSource: string);
@@ -1314,6 +1319,15 @@ begin
   CommitDesignStep;             // a change still under way is a step of its own
   Text := FDesigner.SaveToText;
   ReadFormAgain(Text, Text);
+end;
+
+procedure TEditorPage.FormClassRenamed(const NewClass, NewDfm: string);
+begin
+  DropDesigner;
+  FFormClass := NewClass;
+  FDfmText := NewDfm;
+  FFormModified := True;
+  if IDE <> nil then IDE.PageChanged(Self);
 end;
 
 procedure TEditorPage.TakeChangedForm(const NewText: string);
@@ -2600,7 +2614,7 @@ begin
   else
   begin
     if NavigationWanted then Nav := IDE.NavigationBar else Nav := nil;
-    FPageBar.Arrange([IDE.ZoomBar, IDE.CodeBar, Nav], Nav);
+    FPageBar.Arrange([IDE.ZoomBar, IDE.CodeBar, Nav, IDE.MinimapBar], Nav);
   end;
 end;
 
@@ -2755,9 +2769,7 @@ begin
   while Ed.IsIdentChar(Ed.CharAt(ToPos)) do Inc(ToPos);
   Ed.Sci(SCI_BEGINUNDOACTION);
   try
-    Ed.Sci(SCI_SETTARGETSTART, FromPos);
-    Ed.Sci(SCI_SETTARGETEND, ToPos);
-    Ed.SciS(SCI_REPLACETARGET, Length(Text), Text);
+    Ed.ReplaceRange(FromPos, ToPos - FromPos, Text);
   finally
     Ed.Sci(SCI_ENDUNDOACTION);
   end;
@@ -2816,10 +2828,7 @@ begin
     { the last first, so that the positions of the others stay; each part only where it differs
       (the lines that only changed inside keep their markers) }
     for K := High(R.Edits) downto 0 do
-    begin
-      FEditor.Sci(SCI_SETTARGETRANGE, R.Edits[K].Start, R.Edits[K].Start + R.Edits[K].Len);
-      FEditor.SciS(SCI_REPLACETARGETMINIMAL, Length(R.Edits[K].Text), R.Edits[K].Text);
-    end;
+      FEditor.ReplaceRange(R.Edits[K].Start, R.Edits[K].Len, R.Edits[K].Text, True);
   finally
     FEditor.EndUndo;
   end;
@@ -3588,15 +3597,16 @@ var
   V: TDbgVar;
   Lines: TTipLines;
   R: TRect;
+  Ground: TColor;
 begin
   if (IDE = nil) or not FEditor.Shown then Exit;
   if (CompletionPopup <> nil) and CompletionPopup.Active then Exit;
   if (ParamHint <> nil) and ParamHint.Showing then Exit;
   { the box at a folded line's end (past the line's end: no Position): the code it hides }
-  if (CodeTip <> nil) and FEditor.FoldPreview(X, Y, Lines, R) then
+  if (CodeTip <> nil) and FEditor.FoldPreview(X, Y, Lines, R, Ground) then
   begin
     HideTips(False);
-    CodeTip.ShowLines(Lines, R, FEditor);
+    CodeTip.ShowLines(Lines, R, FEditor, Ground);
     Exit;
   end;
   if Position < 0 then Exit;

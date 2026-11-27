@@ -1498,10 +1498,10 @@ end;
 procedure TDesignHost.LoadInstalledPackages;
 var
   Names: TStringList;
-  I, N, P1, P2: Integer;
-  S, FileName: string;
+  I: Integer;
+  FileName: string;
   E: TPackageEntry;
-  Own, Enabled: Boolean;
+  Enabled: Boolean;
 begin
   Initialize;
   { Delphi's VCL designer package: the Menu Designer and its component and property editors.
@@ -1515,26 +1515,8 @@ begin
   end;
   Names := TStringList.Create;
   try
-    Own := (Settings <> nil) and (Settings.ReadInteger('Design Packages', 'Count', -1) >= 0);
-    if Own then
-    begin
-      N := Settings.ReadInteger('Design Packages', 'Count', 0);
-      for I := 0 to N - 1 do
-      begin
-        S := Settings.ReadString('Design Packages', 'P' + IntToStr(I), '');
-        P1 := Pos('|', S);
-        if P1 = 0 then Continue;
-        FileName := Copy(S, P1 + 1, MaxInt);
-        P2 := Pos('|', FileName);
-        if P2 = 0 then P2 := Length(FileName) + 1;
-        { "file=description", a leading '-' when disabled; $(DELPHI)\...: a package of D7
-          Studio's folder (SavePackageList) }
-        FileName := ExpandDelphiMacros(Copy(FileName, 1, P2 - 1)) + '=' + Copy(FileName, P2 + 1, MaxInt);
-        if Copy(S, 1, P1 - 1) = '0' then FileName := '-' + FileName;
-        Names.Add(FileName);
-      end;
-    end
-    else
+    { "file=description", a leading '-' when disabled }
+    if not SettingsPackages(Settings, Names) then
       SeedPackages(Names);
     { the standard package first: other packages depend on its registrations }
     for I := 0 to Names.Count - 1 do
