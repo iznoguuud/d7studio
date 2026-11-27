@@ -228,6 +228,12 @@ type
     aUnfold: TAction;
     aFoldToggle: TAction;
     aFoldMethods: TAction;
+    aFoldClasses: TAction;
+    aFoldSections: TAction;
+    aFoldUnit: TAction;
+    aFoldNested: TAction;
+    aFoldRegions: TAction;
+    aCodeFolding: TAction;
     aZoomIn: TAction;
     aZoomOut: TAction;
     aZoomReset: TAction;
@@ -496,6 +502,13 @@ type
     miUnfold: TMenuItem;
     miFoldToggle: TMenuItem;
     miFoldMethods: TMenuItem;
+    miFoldClasses: TMenuItem;
+    miFoldSections: TMenuItem;
+    miFoldUnit: TMenuItem;
+    miFoldNested: TMenuItem;
+    miFoldRegions: TMenuItem;
+    miFoldSep: TMenuItem;
+    miCodeFolding: TMenuItem;
     SearchMenu: TMenuItem;
     SearchFindItem: TMenuItem;
     SearchFileFindItem: TMenuItem;
@@ -769,6 +782,13 @@ type
     pmEdUnfoldBlock: TMenuItem;
     pmEdFoldToggle: TMenuItem;
     pmEdFoldMethods: TMenuItem;
+    pmEdFoldClasses: TMenuItem;
+    pmEdFoldSections: TMenuItem;
+    pmEdFoldUnit: TMenuItem;
+    pmEdFoldNested: TMenuItem;
+    pmEdFoldRegions: TMenuItem;
+    pmEdFoldSep: TMenuItem;
+    pmEdCodeFolding: TMenuItem;
     pmEdSep2: TMenuItem;
     pmEdCut: TMenuItem;
     pmEdCopy: TMenuItem;
@@ -930,6 +950,7 @@ type
     procedure ActExit(Sender: TObject);
     procedure ActEdit(Sender: TObject);
     procedure ActEditor(Sender: TObject);
+    procedure ActCodeFolding(Sender: TObject);
     procedure ActZoom(Sender: TObject);
     procedure ActDesign(Sender: TObject);
     procedure ActSearch(Sender: TObject);
@@ -1343,6 +1364,7 @@ type
     function DocModified(Doc: TWinControl): Boolean;
     function DocTitle(Doc: TWinControl): string;       // its file's name, a resource's title
     function ActiveEditor: TSciEdit;
+    function FoldAction(FA: TSciFoldAction): TAction;
     { Editor Options | Zoom on every editor - the files' pages and the text resources' -, in the
       status bar }
     procedure ApplyZoom;
@@ -2687,6 +2709,7 @@ begin
       ecExit: Run(FileExitCommand);
       ecFindDecl: Run(aFindDecl);
       ecCompletion: Run(aComplete);
+      ecFoldingOnOff: Run(aCodeFolding);
       ecBlockPrint: Run(FilePrintCommand);
       ecBlockRead, ecBlockWrite:
         begin
@@ -4514,6 +4537,11 @@ begin
   end
   else if Verb = 'erasereset' then           // start counting erases per window class again
     UITestEraseText(True)
+  else if Verb = 'minimaphover' then         // minimaphover <x> <y>: the pointer over the minimap, window coordinates
+  begin
+    if FEditWindow.Map <> nil then FEditWindow.Map.TestHover(StrToIntDef(A1, 0), StrToIntDef(A2, 0))
+    else FTestResult := 3;
+  end
   else if Verb = 'package' then              // package <0|1> <file>: unloaded / loaded, as Install Packages does
   begin
     Pkg := DesignHost.FindPackage(A2);
@@ -4598,10 +4626,12 @@ begin
       FTodoView.TodoList.ItemFocused := FTodoView.TodoList.Selected;
     end;
   end
-  else if Verb = 'dwell' then                // dwell <offset>: the mouse rests there (the debugger's value,
-  begin                                      // the hint of code insight - an expert's or D7 Studio's own)
+  else if Verb = 'dwell' then                // dwell <offset> [<x> <y>]: the mouse rests there (the debugger's
+  begin                                      // value, the hint of code insight - an expert's or D7 Studio's own;
+                                             // x y: at that client point, a folded line's box with -1 as offset)
     if (Page <> nil) and Assigned(Page.Editor.OnDwellStart) then
-      Page.Editor.OnDwellStart(Page.Editor, StrToIntDef(Arg, 0), 0, 0);
+      Page.Editor.OnDwellStart(Page.Editor, StrToIntDef(A1, 0), StrToIntDef(Copy(A2, 1, Pos(' ', A2 + ' ') - 1), 0),
+        StrToIntDef(Copy(A2, Pos(' ', A2 + ' ') + 1, MaxInt), 0));
   end
   else if Verb = 'dwellend' then             // dwellend: the mouse moved on (the code tip goes)
   begin
@@ -4890,6 +4920,8 @@ begin
       L.Add('line=' + P.Editor.GetLineText(P.Editor.CaretLine));
       { the first line in view (display line) and the horizontal offset in pixels: the scroll bars }
       L.Add(Format('scroll=%d,%d', [P.Editor.ScrollPos.Y, P.Editor.ScrollPos.X]));
+      { the minimap of the file area's window (TSciMinimap.StateText) }
+      if FEditWindow.Map <> nil then L.Add('minimap=' + FEditWindow.Map.StateText) else L.Add('minimap=-');
       L.Add(Format('errorline=%d', [P.Editor.MarkerNext(0, 1 shl MK_ERROR_LINE) + 1]));
       L.Add('link=' + P.Editor.LinkRange);
       L.Add('seltext=' + P.Editor.SelText);
@@ -5484,6 +5516,7 @@ var
   HasProj, Code, Dbg, Paused, Pas: Boolean;
   I, N, Need: Integer;
   AK: TAlignKind;
+  FA: TSciFoldAction;
   S: string;
 begin
   if FClosing then Exit;
@@ -5554,12 +5587,9 @@ begin
   aAddCaretBelow.Enabled := Ed <> nil;
   aExpandSelection.Enabled := Ed <> nil;
   aShrinkSelection.Enabled := (Ed <> nil) and Ed.CanShrinkSelection;
-  aFoldAll.Enabled := (Ed <> nil) and Ed.CanFold;
-  aUnfoldAll.Enabled := aFoldAll.Enabled;
-  aFold.Enabled := aFoldAll.Enabled;
-  aUnfold.Enabled := aFoldAll.Enabled;
-  aFoldToggle.Enabled := aFoldAll.Enabled;
-  aFoldMethods.Enabled := aFoldAll.Enabled and (Ed.Language = slPascal);
+  for FA := Low(TSciFoldAction) to High(TSciFoldAction) do
+    FoldAction(FA).Enabled := (Ed <> nil) and Ed.CanFold(FA);
+  aCodeFolding.Checked := EditorOptions.ShowFolding;
   { the zoom of the view shown (SdZoom) }
   ZV := DocZoomView(ActiveDoc);
   aZoomIn.Enabled := (ZV <> nil) and ZV.CanZoom(1);
@@ -13228,6 +13258,7 @@ end;
 procedure TMainForm.ActEditor(Sender: TObject);
 var
   Ed: TSciEdit;
+  FA: TSciFoldAction;
 begin
   Ed := ActiveEditor;
   if Ed = nil then Exit;
@@ -13241,12 +13272,38 @@ begin
   else if Sender = aAddCaretBelow then Ed.AddCaret(True)
   else if Sender = aExpandSelection then Ed.ExpandSelection
   else if Sender = aShrinkSelection then Ed.ShrinkSelection
-  else if Sender = aFoldAll then Ed.Fold(sfFoldAll)
-  else if Sender = aUnfoldAll then Ed.Fold(sfUnfoldAll)
-  else if Sender = aFold then Ed.Fold(sfFold)
-  else if Sender = aUnfold then Ed.Fold(sfUnfold)
-  else if Sender = aFoldToggle then Ed.Fold(sfToggle)
-  else if Sender = aFoldMethods then Ed.Fold(sfFoldMethods);
+  else
+    for FA := Low(TSciFoldAction) to High(TSciFoldAction) do
+      if Sender = FoldAction(FA) then Ed.Fold(FA);
+end;
+
+{ the action of a folding command (Edit | Folding) }
+function TMainForm.FoldAction(FA: TSciFoldAction): TAction;
+begin
+  case FA of
+    sfFoldAll: Result := aFoldAll;
+    sfUnfoldAll: Result := aUnfoldAll;
+    sfFold: Result := aFold;
+    sfUnfold: Result := aUnfold;
+    sfToggle: Result := aFoldToggle;
+    sfFoldMethods: Result := aFoldMethods;
+    sfFoldClasses: Result := aFoldClasses;
+    sfFoldSections: Result := aFoldSections;
+    sfFoldUnit: Result := aFoldUnit;
+    sfFoldNested: Result := aFoldNested;
+  else
+    Result := aFoldRegions;
+  end;
+end;
+
+{ Edit | Folding | Code Folding: Editor Options' Code folding on or off, kept in the settings and
+  applied to every editor (off: everything folded is shown) }
+procedure TMainForm.ActCodeFolding(Sender: TObject);
+begin
+  EditorOptions.ShowFolding := not EditorOptions.ShowFolding;
+  SaveEditorOptions(Settings);
+  SaveSettings;
+  ApplyEditorOptions;
 end;
 
 { View | Zoom and the zoom bar's buttons: the zoom of the view shown (SdZoom) - the editors' (one for

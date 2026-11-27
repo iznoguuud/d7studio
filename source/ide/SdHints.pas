@@ -87,6 +87,7 @@ type
   private
     FLines: TTipLines;
     FWrap: Integer;              // the width its lines wrap in
+    function TakeLines(const ALines: TTipLines; ASource: TObject; const At: TPoint): TSize;
   protected
     procedure PaintContent(DC: HDC; const R: TRect); override;
   public
@@ -94,6 +95,9 @@ type
       line's): below the line, else above it, else on the side with more room on the work area of
       Line's monitor; at most 120 characters of the code wide (TipMaxChars) - a longer line wraps }
     procedure ShowLines(const ALines: TTipLines; const Line: TRect; ASource: TObject);
+    { ALines beside Anchor (screen): left of it, its middle level with Anchor's, else right of it
+      when the work area of Anchor's monitor has no room on the left; as wide as ShowLines' }
+    procedure ShowLinesBeside(const ALines: TTipLines; const Anchor: TRect; ASource: TObject);
     function DebugText: string;  // the lines' texts, '|' after each, '--|' for a rule (tests)
   end;
 
@@ -864,19 +868,42 @@ end;
 
 { --- TSdCodeTip --- }
 
+{ ALines and ASource taken, wrapped in the width the work area at At allows: the window's size }
+function TSdCodeTip.TakeLines(const ALines: TTipLines; ASource: TObject; const At: TPoint): TSize;
+var
+  WA: TRect;
+begin
+  FLines := ALines;
+  Source := ASource;
+  WA := UIWorkAreaAt(At);
+  FWrap := Max(Min(CodeWidth(TipMaxChars), WA.Right - WA.Left - 2 * TipPadX - 2), 1);
+  Result := LayoutTipLines(TipDC, FLines, 0, 0, FWrap, tpMeasure, 0, 0);
+  Inc(Result.cx, 2 * TipPadX + 2);
+  Inc(Result.cy, 2 * TipPadY + 2);
+end;
+
 procedure TSdCodeTip.ShowLines(const ALines: TTipLines; const Line: TRect; ASource: TObject);
+var
+  R: TRect;
+  S: TSize;
+begin
+  S := TakeLines(ALines, ASource, Line.TopLeft);
+  R := Bounds(Line.Left - TipPadX - 1, Line.Bottom, S.cx, S.cy);
+  UIFitWorkAreaAt(R, Line.TopLeft);
+  UITipOffLine(R, Line);
+  ShowAt(R);
+end;
+
+procedure TSdCodeTip.ShowLinesBeside(const ALines: TTipLines; const Anchor: TRect; ASource: TObject);
 var
   WA, R: TRect;
   S: TSize;
 begin
-  FLines := ALines;
-  Source := ASource;
-  WA := UIWorkAreaAt(Line.TopLeft);
-  FWrap := Max(Min(CodeWidth(TipMaxChars), WA.Right - WA.Left - 2 * TipPadX - 2), 1);
-  S := LayoutTipLines(TipDC, FLines, 0, 0, FWrap, tpMeasure, 0, 0);
-  R := Bounds(Line.Left - TipPadX - 1, Line.Bottom, S.cx + 2 * TipPadX + 2, S.cy + 2 * TipPadY + 2);
-  UIFitWorkAreaAt(R, Line.TopLeft);
-  UITipOffLine(R, Line);
+  S := TakeLines(ALines, ASource, Anchor.TopLeft);
+  WA := UIWorkAreaAt(Anchor.TopLeft);
+  R := Bounds(Anchor.Left - TipPadY - S.cx, (Anchor.Top + Anchor.Bottom - S.cy) div 2, S.cx, S.cy);
+  if R.Left < WA.Left then OffsetRect(R, Anchor.Right + TipPadY - R.Left, 0);
+  UIFitWorkAreaAt(R, Anchor.TopLeft);
   ShowAt(R);
 end;
 

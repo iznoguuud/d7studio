@@ -73,6 +73,7 @@ uses
   SdSciDefs in 'editor\SdSciDefs.pas',
   SdSciEdit in 'editor\SdSciEdit.pas',
   SdSciScroll in 'editor\SdSciScroll.pas',
+  SdSciMinimap in 'editor\SdSciMinimap.pas',
   SdEncoding in 'editor\SdEncoding.pas',
   SdSciLexDefs in 'editor\SdSciLexDefs.pas',
   SdCompBar in 'ide\SdCompBar.pas' {ComponentBar},

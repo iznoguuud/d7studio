@@ -3581,10 +3581,19 @@ var
   W, Expr, Hint: string;
   V: TDbgVar;
   Lines: TTipLines;
+  R: TRect;
 begin
-  if (Position < 0) or (IDE = nil) or not FEditor.Shown then Exit;
+  if (IDE = nil) or not FEditor.Shown then Exit;
   if (CompletionPopup <> nil) and CompletionPopup.Active then Exit;
   if (ParamHint <> nil) and ParamHint.Showing then Exit;
+  { the box at a folded line's end (past the line's end: no Position): the code it hides }
+  if (CodeTip <> nil) and FEditor.FoldPreview(X, Y, Lines, R) then
+  begin
+    HideTips(False);
+    CodeTip.ShowLines(Lines, R, FEditor);
+    Exit;
+  end;
+  if Position < 0 then Exit;
   W := '';
   S := Position;
   E := Position;

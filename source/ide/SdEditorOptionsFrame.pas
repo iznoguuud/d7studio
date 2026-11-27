@@ -88,6 +88,7 @@ type
     eoVisibleGutter: TCheckBox;
     chkLineNumbers: TCheckBox;
     chkFolding: TCheckBox;
+    chkFoldPreview: TCheckBox;
     chkChangeBars: TCheckBox;
     dpGroupBox10: TGroupBox;
     eoBriefCursors: TCheckBox;
@@ -99,6 +100,8 @@ type
     cbHistoryLimit: TComboBox;
     gbScrollBars: TGroupBox;
     chkScrollMarkers: TCheckBox;
+    lbMinimap: TLabel;
+    cbMinimap: TComboBox;
     FontName: TComboBox;
     FontSize: TComboBox;
     FontSample: TPanel;
@@ -197,6 +200,7 @@ type
       State: TOwnerDrawState);
     procedure CompletionSampleClick(Sender: TObject);
     procedure chkKeepHistoryClick(Sender: TObject);
+    procedure chkFoldingClick(Sender: TObject);
   private
     FOpts: TEditorOptions;            // the values being edited
     FFileType: Integer;               // the file type shown on Source Options
@@ -255,6 +259,8 @@ const
   FactoryTypes = ',Borland.EditOptions.Pascal,Borland.EditOptions.C,Borland.EditOptions.C#,' +
     'Borland.EditOptions.HTML,Borland.EditOptions.IDL,Borland.EditOptions.SQL,' +
     'Borland.EditOptions.XML,Borland.EditOptions.Default,';
+  { the values of the Display page's Minimap box, in the order of its items }
+  MinimapItems: array[0..2] of Integer = (MinimapOn, MinimapPreview, MinimapNone);
   { The Color page's sample, after Delphi 7's: each element somewhere - the debugger's lines, a
     line saved since it changed and one changed since, a word selected (the caret after it, its
     occurrences), the identifier I's places, the brackets of a call matched, a stray one, the
@@ -492,8 +498,13 @@ begin
     chkNavigationBar.Checked := FOpts.NavigationBar;
     chkLineNumbers.Checked := FOpts.ShowLineNumbers;
     chkFolding.Checked := FOpts.ShowFolding;
+    chkFoldPreview.Checked := FOpts.FoldPreview;
+    chkFoldingClick(nil);
     chkChangeBars.Checked := FOpts.ShowChangeBars;
     chkScrollMarkers.Checked := FOpts.ScrollBarMarkers;
+    cbMinimap.ItemIndex := 1;                 // a value of no item: Enabled + preview, the default
+    for I := 0 to High(MinimapItems) do
+      if MinimapItems[I] = FOpts.Minimap then cbMinimap.ItemIndex := I;
     SetCombo(FontName, FOpts.FontName);
     SetCombo(FontSize, IntToStr(FOpts.FontSize));
     { Key Mappings }
@@ -558,8 +569,10 @@ begin
   FOpts.NavigationBar := chkNavigationBar.Checked;
   FOpts.ShowLineNumbers := chkLineNumbers.Checked;
   FOpts.ShowFolding := chkFolding.Checked;
+  FOpts.FoldPreview := chkFoldPreview.Checked;
   FOpts.ShowChangeBars := chkChangeBars.Checked;
   FOpts.ScrollBarMarkers := chkScrollMarkers.Checked;
+  if cbMinimap.ItemIndex >= 0 then FOpts.Minimap := MinimapItems[cbMinimap.ItemIndex];
   if FontName.Text <> '' then FOpts.FontName := FontName.Text;
   FOpts.FontSize := StrToIntDef(FontSize.Text, FOpts.FontSize);
   if (FOpts.FontSize < 6) or (FOpts.FontSize > 72) then FOpts.FontSize := 10;
@@ -1326,6 +1339,12 @@ procedure TEditorOptionsFrame.chkKeepHistoryClick(Sender: TObject);
 begin
   lbHistoryLimit.Enabled := chkKeepHistory.Checked;
   cbHistoryLimit.Enabled := chkKeepHistory.Checked;
+end;
+
+{ Fold preview: only with Code folding }
+procedure TEditorOptionsFrame.chkFoldingClick(Sender: TObject);
+begin
+  chkFoldPreview.Enabled := chkFolding.Checked;
 end;
 
 { a row of the list's sample chooses its kind's element (the list's ground: Completion list,

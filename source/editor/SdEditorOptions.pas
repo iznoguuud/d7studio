@@ -68,7 +68,9 @@ type
     ErrorInsight: Boolean;          // D7 Studio's own: a Pascal text's errors marked after a pause (Diagnose)
     { D7 Studio's own }
     ShowLineNumbers, ShowFolding, ShowChangeBars, HighlightBraces, HighlightOccurrences: Boolean;
+    FoldPreview: Boolean;           // the code a folded line hides, in a tip over its box (TSciEdit.FoldPreview)
     WordWrap, ScrollBarMarkers: Boolean;
+    Minimap: Integer;               // the text in miniature beside the vertical scroll bar (SdSciMinimap): MinimapNone ...
     NavigationBar: Boolean;         // the Class and Methods/functions boxes over a Pascal file's code
     { D7 Studio's Highlighting page }
     HighlightIdentifiers, HighlightBlocks, RainbowBrackets, HighlightFindMatches,
@@ -83,6 +85,10 @@ const
   PascalHighlighter = 'Borland.Highlighter.Pascal';
   DefaultKeymapping = 'Default';
   DefaultTypeID = 'Borland.EditOptions.Default';   // Delphi 7's file type of the other files
+  { TEditorOptions.Minimap: none, the map, the map with the tip of the code under the pointer }
+  MinimapNone = 0;
+  MinimapOn = 1;
+  MinimapPreview = 2;
 
 var
   EditorOptions: TEditorOptions;
@@ -249,11 +255,13 @@ begin
   O.ErrorInsight := True;
   O.ShowLineNumbers := True;
   O.ShowFolding := True;
+  O.FoldPreview := True;
   O.ShowChangeBars := True;
   O.HighlightBraces := True;
   O.HighlightOccurrences := False;
   O.WordWrap := False;
   O.ScrollBarMarkers := True;
+  O.Minimap := MinimapPreview;
   O.NavigationBar := True;
   O.HighlightIdentifiers := True;
   O.HighlightBlocks := True;
@@ -404,11 +412,13 @@ begin
     OptInt('Code Complete Delay', O.CodeDelay, 1),
     OptFlag('LineNumbers', O.ShowLineNumbers, -1),
     OptFlag('Folding', O.ShowFolding, -1),
+    OptFlag('FoldPreview', O.FoldPreview, -1),
     OptFlag('ChangeBars', O.ShowChangeBars, -1),
     OptFlag('Braces', O.HighlightBraces, -1),
     OptFlag('Occurrences', O.HighlightOccurrences, -1),
     OptFlag('WordWrap', O.WordWrap, -1),
     OptFlag('ScrollBarMarkers', O.ScrollBarMarkers, -1),
+    OptInt('Minimap', O.Minimap, -1),
     OptFlag('NavigationBar', O.NavigationBar, -1),
     OptFlag('KeepFileHistory', O.KeepHistory, -1),
     OptInt('FileHistoryLimit', O.HistoryLimit, -1),

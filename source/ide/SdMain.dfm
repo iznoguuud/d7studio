@@ -9090,6 +9090,36 @@ object AppBuilder: TMainForm
       Hint = 'Fold the routines'
       OnExecute = ActEditor
     end
+    object aFoldClasses: TAction
+      Caption = 'Fold &Classes'
+      Hint = 'Fold the types: classes, records, interfaces'
+      OnExecute = ActEditor
+    end
+    object aFoldSections: TAction
+      Caption = 'Fold &Sections'
+      Hint = 'Fold the unit'#39's sections: interface, implementation, initialization, finalization'
+      OnExecute = ActEditor
+    end
+    object aFoldUnit: TAction
+      Caption = 'Fold Un&it'
+      Hint = 'Fold the folds that no other fold holds'
+      OnExecute = ActEditor
+    end
+    object aFoldNested: TAction
+      Caption = 'Fold N&ested Routines'
+      Hint = 'Fold the routines declared inside routines'
+      OnExecute = ActEditor
+    end
+    object aFoldRegions: TAction
+      Caption = 'Fold &Regions'
+      Hint = 'Fold the regions'
+      OnExecute = ActEditor
+    end
+    object aCodeFolding: TAction
+      Caption = 'Code F&olding'
+      Hint = 'Turn code folding on or off'
+      OnExecute = ActCodeFolding
+    end
     object aZoomIn: TAction
       Caption = 'Zoom &In'
       Hint = 'Zoom in'
@@ -10955,6 +10985,27 @@ object AppBuilder: TMainForm
         object miFoldMethods: TMenuItem
           Action = aFoldMethods
         end
+        object miFoldClasses: TMenuItem
+          Action = aFoldClasses
+        end
+        object miFoldSections: TMenuItem
+          Action = aFoldSections
+        end
+        object miFoldUnit: TMenuItem
+          Action = aFoldUnit
+        end
+        object miFoldNested: TMenuItem
+          Action = aFoldNested
+        end
+        object miFoldRegions: TMenuItem
+          Action = aFoldRegions
+        end
+        object miFoldSep: TMenuItem
+          Caption = '-'
+        end
+        object miCodeFolding: TMenuItem
+          Action = aCodeFolding
+        end
       end
     end
     object SearchMenu: TMenuItem
@@ -11579,6 +11630,27 @@ object AppBuilder: TMainForm
       end
       object pmEdFoldMethods: TMenuItem
         Action = aFoldMethods
+      end
+      object pmEdFoldClasses: TMenuItem
+        Action = aFoldClasses
+      end
+      object pmEdFoldSections: TMenuItem
+        Action = aFoldSections
+      end
+      object pmEdFoldUnit: TMenuItem
+        Action = aFoldUnit
+      end
+      object pmEdFoldNested: TMenuItem
+        Action = aFoldNested
+      end
+      object pmEdFoldRegions: TMenuItem
+        Action = aFoldRegions
+      end
+      object pmEdFoldSep: TMenuItem
+        Caption = '-'
+      end
+      object pmEdCodeFolding: TMenuItem
+        Action = aCodeFolding
       end
     end
     object pmEdSep2: TMenuItem

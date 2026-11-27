@@ -21,7 +21,13 @@ unit SdPasBlocks;
   blocks still open unclosed, implementation / initialization / finalization all of them; end
   passes an open repeat by, until the blocks that are no repeat; a case inside a record is its
   variant part (the record's end closes both). Brackets still open at begin, end, try, repeat,
-  until, except, finally or a routine's heading stay unpaired. }
+  until, except, finally or a routine's heading stay unpaired.
+
+  The folds are the parts of the text the code editor folds, by lines: the unit's sections (each up
+  to the line before the next one, or before end.), a uses clause over several lines, the types
+  with a body, the routines from their heading, the statement blocks, $REGION ... $ENDREGION,
+  $IF... ... $ENDIF, comments over several lines and runs of lines that are // comments. A region
+  or conditional not closed yet folds nothing. }
 
 {$Q-,R-,B-,H+}
 
@@ -58,6 +64,17 @@ type
   TPasRoutine = record
     Start, Stop: Integer;         // its heading's first word (class ...) to after the body's end and ;
     Body: Integer;                // the body's opening word
+    Line, LastLine: Integer;      // 0-based: its heading's first line, the line of the body's end
+    Nested: Boolean;              // declared inside another routine (before that one's body)
+  end;
+
+  TPasFoldKind = (fkSection, fkUses, fkType, fkRoutine, fkStatement, fkRegion, fkConditional,
+    fkComment);
+
+  TPasFold = record
+    Kind: TPasFoldKind;
+    Line, LastLine: Integer;      // 0-based: its first line (it stays shown), its last line
+    Nested: Boolean;              // fkRoutine: a nested routine
   end;
 
   TPasBlocks = class
@@ -74,6 +91,8 @@ type
     BracketCount: Integer;
     Routines: array of TPasRoutine;
     RoutineCount: Integer;
+    Folds: array of TPasFold;     // in no particular order; each over two lines at least
+    FoldCount: Integer;
     { KeepTokens: the tokens stay for ExpandRange }
     constructor Create(const Text: string; KeepTokens: Boolean = False);
     destructor Destroy; override;
@@ -98,6 +117,42 @@ implementation
 const
   StatementKinds = [bkBegin, bkCase, bkTry, bkAsm, bkRepeat];
   TypeKinds = [bkRecord, bkClass, bkObject, bkInterface];
+  { a block's fold: a type's (True), else a statement block's }
+  BlockFoldKinds: array[Boolean] of TPasFoldKind = (fkStatement, fkType);
+
+{ the line breaks in Len characters at P, counted as the lexer counts them (CR LF, CR, LF) }
+function LineBreaks(P: PChar; Len: Integer): Integer;
+var
+  I: Integer;
+begin
+  Result := 0;
+  I := 0;
+  while I < Len do
+  begin
+    if P[I] = #13 then
+    begin
+      Inc(Result);
+      if (I + 1 < Len) and (P[I + 1] = #10) then Inc(I);
+    end
+    else if P[I] = #10 then
+      Inc(Result);
+    Inc(I);
+  end;
+end;
+
+{ a compiler directive's name in capitals ($REGION 'x': REGION) }
+function DirectiveName(P: PChar; Len: Integer): string;
+var
+  I: Integer;
+begin
+  Result := '';
+  if P[0] = '{' then I := 2 else I := 3;    // after {$ or (*$
+  while (I < Len) and (P[I] in ['A'..'Z', 'a'..'z']) do
+  begin
+    Result := Result + UpCase(P[I]);
+    Inc(I);
+  end;
+end;
 
 constructor TPasBlocks.Create(const Text: string; KeepTokens: Boolean);
 var
@@ -106,6 +161,124 @@ var
   SP, BSP, RSP, I, K: Integer;
   T: PToken;
   InIntf: Boolean;
+  SecLine: Integer;                 // the open section's keyword's line; -1 none
+  SecKw: TKeyword;                  // ... its keyword
+
+  function AddFold(Kind: TPasFoldKind; Line, LastLine: Integer): Integer;
+  begin
+    Result := -1;
+    if (Line < 0) or (LastLine <= Line) then Exit;
+    if FoldCount = Length(Folds) then SetLength(Folds, FoldCount * 2 + 32);
+    Result := FoldCount;
+    Inc(FoldCount);
+    Folds[Result].Kind := Kind;
+    Folds[Result].Line := Line;
+    Folds[Result].LastLine := LastLine;
+    Folds[Result].Nested := False;
+  end;
+
+  { the comments and directives: their folds; then taken out of the tokens, which are the code's
+    from here on }
+  procedure TakeComments;
+  type
+    TLines = array of Integer;
+  var
+    I, K, Line, Last, PrevLast, RunFirst, RunLast, CondSP, RegSP: Integer;
+    CondLines, RegLines: TLines;
+    Name: string;
+    T: PToken;
+
+    { an opening directive's line }
+    procedure Push(var Lines: TLines; var SP: Integer);
+    begin
+      if SP = Length(Lines) then SetLength(Lines, SP * 2 + 8);
+      Lines[SP] := Line;
+      Inc(SP);
+    end;
+
+    { the last opening directive's fold to the closing one's line (none without one) }
+    procedure Pop(var Lines: TLines; var SP: Integer; Kind: TPasFoldKind);
+    begin
+      if SP = 0 then Exit;
+      Dec(SP);
+      AddFold(Kind, Lines[SP], Line);
+    end;
+
+  begin
+    K := 0;
+    PrevLast := -1;
+    RunFirst := -1;
+    RunLast := -2;
+    CondSP := 0;
+    RegSP := 0;
+    for I := 0 to RT.N - 1 do
+    begin
+      T := @RT.T[I];
+      Line := T.Line - 1;
+      if T.Kind <> tkComment then
+      begin
+        PrevLast := Line;
+        if K < I then RT.T[K] := T^;
+        Inc(K);
+        Continue;
+      end;
+      Last := Line + LineBreaks(T.Ptr, T.PLen);
+      if (T.PLen >= 2) and (T.Ptr[0] = '/') and (T.Ptr[1] = '/') then
+      begin
+        { a line that holds only a // comment: lines of them in a row fold }
+        if PrevLast < Line then
+        begin
+          if Line <> RunLast + 1 then
+          begin
+            AddFold(fkComment, RunFirst, RunLast);
+            RunFirst := Line;
+          end;
+          RunLast := Line;
+        end;
+      end
+      else if RT.IsDirective(I) then
+      begin
+        Name := DirectiveName(T.Ptr, T.PLen);
+        if Name = 'REGION' then Push(RegLines, RegSP)
+        else if Name = 'ENDREGION' then Pop(RegLines, RegSP, fkRegion)
+        else if (Name = 'IF') or (Name = 'IFDEF') or (Name = 'IFNDEF') or (Name = 'IFOPT') then Push(CondLines, CondSP)
+        else if (Name = 'ENDIF') or (Name = 'IFEND') then Pop(CondLines, CondSP, fkConditional);
+      end
+      else
+        AddFold(fkComment, Line, Last);
+      PrevLast := Last;
+    end;
+    AddFold(fkComment, RunFirst, RunLast);
+    RT.N := K;
+  end;
+
+  { the section that begins at Line ends at the line before it }
+  procedure CloseSection(Line: Integer);
+  begin
+    if SecLine >= 0 then AddFold(fkSection, SecLine, Line - 1);
+    SecLine := -1;
+  end;
+
+  procedure OpenSection(Tok: Integer);
+  begin
+    CloseSection(RT.T[Tok].Line - 1);
+    SecLine := RT.T[Tok].Line - 1;
+    SecKw := RT.T[Tok].Keyword;
+  end;
+
+  { the uses clause at Tok to its ; (in may come in a program's) }
+  procedure UsesFold(Tok: Integer);
+  var
+    J: Integer;
+  begin
+    J := Tok + 1;
+    while (J < RT.N) and not RT.IsSy(J, sySemicolon) do
+    begin
+      if (RT.T[J].Kind = tkKeyword) and (RT.T[J].Keyword <> kwIn) then Exit;
+      Inc(J);
+    end;
+    if J < RT.N then AddFold(fkUses, RT.T[Tok].Line - 1, RT.T[J].Line - 1);
+  end;
 
   function AddWord(Tok: Integer; Role: TPasWordRole; Kind: TPasBlockKind; Opener: Integer): Integer;
   begin
@@ -150,6 +323,10 @@ var
     Routines[RoutineCount].Start := Words[Opener].Head;
     Routines[RoutineCount].Stop := Stop;
     Routines[RoutineCount].Body := Opener;
+    Routines[RoutineCount].Line := RT.T[RT.FirstAt(Words[Opener].Head)].Line - 1;
+    Routines[RoutineCount].LastLine := RT.T[CloserTok].Line - 1;
+    { a heading still waiting for its body: this routine is declared inside that one }
+    Routines[RoutineCount].Nested := RSP > 0;
     Inc(RoutineCount);
   end;
 
@@ -251,12 +428,15 @@ var
 begin
   inherited Create;
   FLength := Length(Text);
-  RT := TRawToks.Create(Text, False);
+  RT := TRawToks.Create(Text, True);
   try
+    TakeComments;
     SP := 0;
     BSP := 0;
     RSP := 0;
     InIntf := False;
+    SecLine := -1;
+    SecKw := kwNone;
     for I := 0 to RT.N - 1 do
     begin
       T := @RT.T[I];
@@ -266,6 +446,10 @@ begin
           case T.Keyword of
             kwBegin, kwTry, kwRepeat, kwAsm:
               begin
+                { a unit's begin ... end. after its implementation, no routine's body: the
+                  initialization part }
+                if (T.Keyword = kwBegin) and (SP = 0) and (RSP = 0) and (SecKw = kwImplementation) then
+                  CloseSection(T.Line - 1);
                 BSP := 0;
                 case T.Keyword of
                   kwBegin: Open(I, bkBegin);
@@ -289,9 +473,17 @@ begin
                 if not RT.IsSy(I + 1, sySemicolon) then Open(I, bkInterface);
               end
               else if (T.Keyword = kwInterface) and (SP = 0) then
+              begin
                 InIntf := True;                      // the unit's interface section
+                OpenSection(I);
+              end;
             kwExcept, kwFinally: Middle(I);
-            kwEnd: Close(I, False);
+            kwEnd:
+              begin
+                if RT.IsSy(I + 1, syDot) then CloseSection(T.Line - 1);    // the unit's end.
+                Close(I, False);
+              end;
+            kwUses: UsesFold(I);
             kwUntil: Close(I, True);
             kwProcedure, kwFunction, kwConstructor, kwDestructor:
               begin
@@ -310,6 +502,7 @@ begin
               end;
             kwImplementation, kwInitialization, kwFinalization:
               begin
+                OpenSection(I);
                 SP := 0;
                 BSP := 0;
                 RSP := 0;
@@ -329,6 +522,17 @@ begin
             syRBracket: Bracket(I, False, True);
           end;
       end;
+    end;
+    { a section without end. yet: to the last line of code }
+    if (SecLine >= 0) and (RT.N > 0) then CloseSection(RT.T[RT.N - 1].Line);
+    { the types and statement blocks, the routines from their heading }
+    for I := 0 to WordCount - 1 do
+      if (Words[I].Role = wrOpen) and (Words[I].Closer >= 0) then
+        AddFold(BlockFoldKinds[Words[I].Kind in TypeKinds], Words[I].Line, Words[Words[I].Closer].Line);
+    for I := 0 to RoutineCount - 1 do
+    begin
+      K := AddFold(fkRoutine, Routines[I].Line, Routines[I].LastLine);
+      if K >= 0 then Folds[K].Nested := Routines[I].Nested;
     end;
   finally
     if KeepTokens then FToks := RT else RT.Free;

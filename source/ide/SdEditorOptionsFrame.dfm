@@ -395,7 +395,7 @@ object EditorOptionsFrame: TEditorOptionsFrame
       TabVisible = False
       object dpLabel4: TLabel
         Left = 81
-        Top = 233
+        Top = 237
         Width = 59
         Height = 15
         Caption = 'Editor &font:'
@@ -404,7 +404,7 @@ object EditorOptionsFrame: TEditorOptionsFrame
       end
       object dpLabel7: TLabel
         Left = 314
-        Top = 233
+        Top = 237
         Width = 23
         Height = 15
         Caption = '&Size:'
@@ -412,7 +412,7 @@ object EditorOptionsFrame: TEditorOptionsFrame
       end
       object dpLabel16: TLabel
         Left = 9
-        Top = 277
+        Top = 281
         Width = 42
         Height = 15
         Caption = 'Sample:'
@@ -457,7 +457,7 @@ object EditorOptionsFrame: TEditorOptionsFrame
           Width = 75
           Height = 24
           ItemHeight = 0
-          TabOrder = 2
+          TabOrder = 3
         end
         object eoGutterWidth: TComboBox
           Left = 354
@@ -465,7 +465,7 @@ object EditorOptionsFrame: TEditorOptionsFrame
           Width = 75
           Height = 24
           ItemHeight = 0
-          TabOrder = 3
+          TabOrder = 4
         end
         object eoVisibleGutter: TCheckBox
           Left = 9
@@ -482,7 +482,7 @@ object EditorOptionsFrame: TEditorOptionsFrame
           Width = 161
           Height = 19
           Caption = '&Line numbers'
-          TabOrder = 4
+          TabOrder = 5
         end
         object chkFolding: TCheckBox
           Left = 455
@@ -490,15 +490,24 @@ object EditorOptionsFrame: TEditorOptionsFrame
           Width = 161
           Height = 19
           Caption = 'Code fol&ding'
-          TabOrder = 5
+          TabOrder = 6
+          OnClick = chkFoldingClick
         end
-        object chkChangeBars: TCheckBox
+        object chkFoldPreview: TCheckBox
           Left = 455
           Top = 62
           Width = 161
           Height = 19
+          Caption = 'Fold pr&eview'
+          TabOrder = 7
+        end
+        object chkChangeBars: TCheckBox
+          Left = 9
+          Top = 62
+          Width = 161
+          Height = 19
           Caption = 'Modified l&ine indicators'
-          TabOrder = 6
+          TabOrder = 2
         end
       end
       object dpGroupBox10: TGroupBox
@@ -580,23 +589,43 @@ object EditorOptionsFrame: TEditorOptionsFrame
         Left = 9
         Top = 181
         Width = 620
-        Height = 45
+        Height = 49
         Caption = ' Scroll bars '
         TabOrder = 2
+        object lbMinimap: TLabel
+          Left = 383
+          Top = 19
+          Width = 58
+          Height = 15
+          Caption = 'Minim&ap:'
+          FocusControl = cbMinimap
+          Transparent = True
+        end
         object chkScrollMarkers: TCheckBox
           Left = 9
           Top = 18
-          Width = 601
+          Width = 365
           Height = 19
-          Caption =
-            'Mar&kers: changed lines, find and identifier matches, breakpoints' +
-            ', bookmarks, the caret'
+          Caption = 'Mar&kers: changes, matches, breakpoints, bookmarks, the caret'
           TabOrder = 0
+        end
+        object cbMinimap: TComboBox
+          Left = 455
+          Top = 16
+          Width = 155
+          Height = 23
+          Style = csDropDownList
+          ItemHeight = 15
+          TabOrder = 1
+          Items.Strings = (
+            'Enabled'
+            'Enabled + preview'
+            'Disabled')
         end
       end
       object FontName: TComboBox
         Left = 81
-        Top = 253
+        Top = 257
         Width = 217
         Height = 24
         Style = csDropDownList
@@ -606,7 +635,7 @@ object EditorOptionsFrame: TEditorOptionsFrame
       end
       object FontSize: TComboBox
         Left = 314
-        Top = 253
+        Top = 257
         Width = 74
         Height = 24
         ItemHeight = 0
@@ -629,7 +658,7 @@ object EditorOptionsFrame: TEditorOptionsFrame
       end
       object FontSample: TPanel
         Left = 9
-        Top = 300
+        Top = 304
         Width = 620
         Height = 94
         BevelOuter = bvNone

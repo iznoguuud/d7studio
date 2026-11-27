@@ -18,7 +18,10 @@ unit SdSciScroll;
   area beside its border - WM_NCCALCSIZE takes their room from the client area, WM_NCPAINT paints
   them (in one piece each, through a memory bitmap), WM_NCHITTEST names them HTVSCROLL and
   HTHSCROLL, and their presses are handled here, never by Windows' own tracking. The editor
-  tells their state (OnGetInfo) and scrolls (OnScroll). Positions come from the messages. }
+  tells their state (OnGetInfo) and scrolls (OnScroll). Positions come from the messages.
+  The vertical bar lies at the frame's right edge: a strip that another hook takes between the
+  client area and it (the minimap, SdSciMinimap) is that hook's to paint; the horizontal bar runs
+  under the client area, the corner beside it under that strip too. }
 
 interface
 
@@ -74,8 +77,6 @@ type
     FTracking: Boolean;          // TrackMouseEvent asked for WM_NCMOUSELEAVE
     FSized: Boolean;             // a new size: the bars are painted again (WM_SCIBARSIZED posted)
     function Thick: Integer;
-    function ClientOrigin(out Size: TPoint): TPoint;
-    function WindowPoint(LParam: Integer): TPoint;
     function BarRect(Bar: TSciBar): TRect;
     procedure Parts(Bar: TSciBar; out ArrowBack, Track, Thumb, ArrowOn: TRect);
     function PartAt(const P: TPoint; out Bar: TSciBar): TSciBarPart;
@@ -109,14 +110,88 @@ type
   Custom (not clDefault): the thumb in that colour, the track tinted with it }
 function SciScrollColors(Ground, Custom: TColor): TSciScrollColors;
 
+{ the parts of the editor's non-client area (the bars, the minimap) }
+const
+  WM_NCMOUSELEAVE = $02A2;
+
+{ the client area's top left in Wnd's window coordinates - the frame's width at the left, which is
+  its width at the right too - and its size }
+function SciClientOrigin(Wnd: HWND; out Size: TPoint): TPoint;
+{ the screen point of a message (its LParam) in Wnd's window coordinates }
+function SciWindowPoint(Wnd: HWND; LParam: Integer): TPoint;
+{ the client point of a mouse message (its LParam: WM_MOUSEMOVE while the mouse is captured) in Wnd's
+  window coordinates }
+function SciClientPoint(Wnd: HWND; LParam: Integer): TPoint;
+{ the rectangle of a WM_NCCALCSIZE that the client area is made of: a hook takes its room from it }
+function SciNcCalcRect(const Message: TMessage): PRect;
+{ x of the frame's right edge (where the vertical bar ends) in Wnd's window coordinates }
+function SciFrameRight(Wnd: HWND): Integer;
+{ WM_NCMOUSELEAVE asked for when the pointer leaves Wnd's non-client area: True when it will come }
+function SciTrackNcLeave(Wnd: HWND): Boolean;
+
 implementation
 
 const
   TimerId = $5D51;                        // not one of Scintilla's timers
   TME_NONCLIENT = $00000010;
-  WM_NCMOUSELEAVE = $02A2;
   WM_SCIBARSIZED = WM_APP + $1A1;         // the editor has a new size: the bars painted again
   MinThumb = 12;
+
+function SciClientOrigin(Wnd: HWND; out Size: TPoint): TPoint;
+var
+  W, C: TRect;
+  P: TPoint;
+begin
+  GetWindowRect(Wnd, W);
+  Windows.GetClientRect(Wnd, C);
+  P := Point(0, 0);
+  Windows.ClientToScreen(Wnd, P);
+  Result := Point(P.X - W.Left, P.Y - W.Top);
+  Size := Point(C.Right, C.Bottom);
+end;
+
+function SciWindowPoint(Wnd: HWND; LParam: Integer): TPoint;
+var
+  W: TRect;
+begin
+  GetWindowRect(Wnd, W);
+  Result := Point(SmallInt(LoWord(LParam)) - W.Left, SmallInt(HiWord(LParam)) - W.Top);
+end;
+
+function SciClientPoint(Wnd: HWND; LParam: Integer): TPoint;
+var
+  S: TPoint;
+begin
+  Result := SciClientOrigin(Wnd, S);
+  Inc(Result.X, SmallInt(LoWord(LParam)));
+  Inc(Result.Y, SmallInt(HiWord(LParam)));
+end;
+
+function SciNcCalcRect(const Message: TMessage): PRect;
+begin
+  if Message.WParam <> 0 then Result := @PNCCalcSizeParams(Message.LParam)^.rgrc[0]
+  else Result := PRect(Message.LParam);
+end;
+
+function SciFrameRight(Wnd: HWND): Integer;
+var
+  W: TRect;
+  S: TPoint;
+begin
+  GetWindowRect(Wnd, W);
+  Result := W.Right - W.Left - SciClientOrigin(Wnd, S).X;
+end;
+
+function SciTrackNcLeave(Wnd: HWND): Boolean;
+var
+  T: TTrackMouseEvent;
+begin
+  T.cbSize := SizeOf(T);
+  T.dwFlags := TME_LEAVE or TME_NONCLIENT;
+  T.hwndTrack := Wnd;
+  T.dwHoverTime := 0;
+  Result := TrackMouseEvent(T);
+end;
 
 function SciScrollColors(Ground, Custom: TColor): TSciScrollColors;
 var
@@ -182,38 +257,21 @@ begin
   Result := GetSystemMetrics(SM_CXVSCROLL);
 end;
 
-{ the client area's top left in window coordinates, and its size }
-function TSciScrollBars.ClientOrigin(out Size: TPoint): TPoint;
-var
-  W, C: TRect;
-  P: TPoint;
-begin
-  GetWindowRect(FControl.Handle, W);
-  Windows.GetClientRect(FControl.Handle, C);
-  P := Point(0, 0);
-  Windows.ClientToScreen(FControl.Handle, P);
-  Result := Point(P.X - W.Left, P.Y - W.Top);
-  Size := Point(C.Right, C.Bottom);
-end;
-
-{ the screen point of a message (its LParam) in window coordinates }
-function TSciScrollBars.WindowPoint(LParam: Integer): TPoint;
-var
-  W: TRect;
-begin
-  GetWindowRect(FControl.Handle, W);
-  Result := Point(SmallInt(LoWord(LParam)) - W.Left, SmallInt(HiWord(LParam)) - W.Top);
-end;
-
 function TSciScrollBars.BarRect(Bar: TSciBar): TRect;
 var
   O, S: TPoint;
+  X: Integer;
 begin
   Result := Rect(0, 0, 0, 0);
   if not FControl.HandleAllocated or not FInfo[Bar].Visible then Exit;
-  O := ClientOrigin(S);
-  if Bar = sbVert then Result := Rect(O.X + S.X, O.Y, O.X + S.X + Thick, O.Y + S.Y)
-  else Result := Rect(O.X, O.Y + S.Y, O.X + S.X, O.Y + S.Y + GetSystemMetrics(SM_CYHSCROLL));
+  O := SciClientOrigin(FControl.Handle, S);
+  if Bar = sbVert then
+  begin
+    X := SciFrameRight(FControl.Handle);
+    Result := Rect(X - Thick, O.Y, X, O.Y + S.Y);
+  end
+  else
+    Result := Rect(O.X, O.Y + S.Y, O.X + S.X, O.Y + S.Y + GetSystemMetrics(SM_CYHSCROLL));
 end;
 
 procedure TSciScrollBars.Parts(Bar: TSciBar; out ArrowBack, Track, Thumb, ArrowOn: TRect);
@@ -321,10 +379,10 @@ begin
   try
     PaintBar(DC, sbVert);
     PaintBar(DC, sbHorz);
-    { the corner between them }
+    { the corner between them, under a strip between the client area and the vertical bar too }
     V := BarRect(sbVert);
     H := BarRect(sbHorz);
-    if not IsRectEmpty(V) and not IsRectEmpty(H) then UIFill(DC, Rect(V.Left, H.Top, V.Right, H.Bottom), FColors.Track);
+    if not IsRectEmpty(V) and not IsRectEmpty(H) then UIFill(DC, Rect(H.Right, H.Top, V.Right, H.Bottom), FColors.Track);
   finally
     ReleaseDC(FControl.Handle, DC);
   end;
@@ -567,17 +625,14 @@ end;
 
 procedure TSciScrollBars.Hook(var Message: TMessage);
 var
-  S, O: TPoint;
   R: PRect;
   Bar: TSciBar;
-  T: TTrackMouseEvent;
 begin
   case Message.Msg of
     WM_NCCALCSIZE:
       begin
         FOldProc(Message);
-        if TWMNCCalcSize(Message).CalcValidRects then R := @TWMNCCalcSize(Message).CalcSize_Params^.rgrc[0]
-        else R := PRect(Message.LParam);
+        R := SciNcCalcRect(Message);
         if FInfo[sbVert].Visible then R^.Right := R^.Right - Thick;
         if FInfo[sbHorz].Visible then R^.Bottom := R^.Bottom - GetSystemMetrics(SM_CYHSCROLL);
         if R^.Right < R^.Left then R^.Right := R^.Left;
@@ -616,7 +671,7 @@ begin
     WM_NCHITTEST:
       begin
         FOldProc(Message);
-        if PartAt(WindowPoint(Message.LParam), Bar) <> bpNone then
+        if PartAt(SciWindowPoint(FControl.Handle, Message.LParam), Bar) <> bpNone then
           if Bar = sbVert then Message.Result := HTVSCROLL else Message.Result := HTHSCROLL;
         Exit;
       end;
@@ -624,21 +679,14 @@ begin
       if (Message.WParam = HTVSCROLL) or (Message.WParam = HTHSCROLL) then
       begin
         if Assigned(FOnPress) then FOnPress(Self);
-        Press(WindowPoint(Message.LParam));
+        Press(SciWindowPoint(FControl.Handle, Message.LParam));
         Message.Result := 0;
         Exit;
       end;
     WM_NCMOUSEMOVE:
       begin
-        Hover(WindowPoint(Message.LParam), True);
-        if not FTracking then
-        begin
-          T.cbSize := SizeOf(T);
-          T.dwFlags := TME_LEAVE or TME_NONCLIENT;
-          T.hwndTrack := FControl.Handle;
-          T.dwHoverTime := 0;
-          FTracking := TrackMouseEvent(T);
-        end;
+        Hover(SciWindowPoint(FControl.Handle, Message.LParam), True);
+        if not FTracking then FTracking := SciTrackNcLeave(FControl.Handle);
       end;
     WM_NCMOUSELEAVE:
       begin
@@ -648,8 +696,7 @@ begin
     WM_MOUSEMOVE:
       if FDown <> bpNone then
       begin
-        O := ClientOrigin(S);
-        Drag(Point(SmallInt(LoWord(Message.LParam)) + O.X, SmallInt(HiWord(Message.LParam)) + O.Y));
+        Drag(SciClientPoint(FControl.Handle, Message.LParam));
         Exit;
       end;
     WM_LBUTTONUP:
@@ -676,7 +723,7 @@ begin
       if Message.LParam <> -1 then
       begin
         { the bars have no menu (Windows' own "Scroll Here" would scroll Scintilla's bars) }
-        if PartAt(WindowPoint(Message.LParam), Bar) <> bpNone then Exit;
+        if PartAt(SciWindowPoint(FControl.Handle, Message.LParam), Bar) <> bpNone then Exit;
       end;
   end;
   FOldProc(Message);

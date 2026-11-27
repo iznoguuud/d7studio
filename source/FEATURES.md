@@ -116,9 +116,14 @@ modernized RTL/VCL in full is in [MODERNIZATION.md](MODERNIZATION.md).
   bold, italic or underlined. Classic colours them all as identifiers, as Delphi 7 does.
 - **The navigation bar** over the code: a *Class* box and a *Methods/functions* box that follow the
   caret and jump to what you choose (*Editor Options ▸ Display ▸ Navigation bar*).
-- **Code folding** of routines, blocks and `{$REGION}`s, with *Edit ▸ Folding* and RAD Studio's
-  Shift+Ctrl+K keys. **Line numbers** and **change bars** (unsaved and saved changes) in the
-  gutter.
+- **Code folding** as in RAD Studio: the unit's `interface`, `implementation`, `initialization` and
+  `finalization` sections, each routine from its heading (its `var` section and nested routines
+  inside), types, `uses` clauses, statement blocks, `{$REGION}`s, `{$IFDEF}` blocks and comments. A
+  folded block ends in a `...` box; rest the pointer on it to see the hidden code in a tip (*Editor
+  Options ▸ Display ▸ Fold preview*). *Edit ▸
+  Folding* and RAD Studio's Shift+Ctrl+K keys fold all, the methods, the classes, the sections, the
+  nested routines or the regions, and turn folding on or off. **Line numbers** and **change bars** (unsaved and saved
+  changes) in the gutter.
 - **Highlighting** (*Editor Options ▸ Highlighting*): the bracket at the caret and its partner (a
   bracket without one in red); the words of the block at the caret (`begin` ... `end`, `try` ...
   `finally` ... `end`); every place of the name at the caret - code insight tells same-named
@@ -126,6 +131,10 @@ modernized RTL/VCL in full is in [MODERNIZATION.md](MODERNIZATION.md).
   rainbow brackets if you want them.
 - **Markers on the scroll bar** for changed lines, search matches, the places of the name at the
   caret, breakpoints, bookmarks, the execution point and errors.
+- **A minimap** beside the scroll bar: the file in miniature in its colours, the lines in view in a
+  box, the caret's line, the selection, search matches and errors. A click jumps there, dragging the
+  box scrolls, and the pointer over it shows the code around that line in a tip (*Editor Options ▸
+  Display ▸ Scroll bars ▸ Minimap*: *Enabled + preview*, *Enabled* without the tip, or *Disabled*).
 - **Typing aids** (*Editor Options ▸ Typing*): brackets and quotes close themselves; Enter after
   `begin`, `try`, `repeat` or `case` adds the missing `end`, `finally` ... `end` or `until`; the
   next line is indented after `then`, `do`, `else` and section words, and `end` or `until` goes

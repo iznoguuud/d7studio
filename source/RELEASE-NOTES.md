@@ -11,6 +11,33 @@ installing in [README.md](README.md).
 
 ## [Unreleased]
 
+## [1.0.3.4] - 2026-11-27
+
+### Added
+
+- **Code editor**: a minimap between the code and the vertical scroll bar shows the file in miniature in its
+  colours, with the lines in view in a box, the caret's line, the selection, search matches and errors. Click to
+  jump there, drag the box to scroll; the pointer over it shows the code around that line in a tip. *Editor
+  Options ▸ Display ▸ Scroll bars ▸ Minimap* chooses *Enabled + preview* (the default), *Enabled* (no tip) or
+  *Disabled*.
+- **Code editor**: Pascal code folds as in RAD Studio: the unit's `interface`, `implementation`,
+  `initialization` and `finalization` sections, each routine from its heading (its `var` section and nested
+  routines inside), and a `uses` clause over several lines - besides types, statement blocks, `{$REGION}`s,
+  `{$IFDEF}` blocks and comments as before. A folded line ends in a box with `...`; the pointer resting on the
+  box shows the code it hides in a tip, in the editor's colours (*Editor Options ▸ Display ▸ Fold preview*
+  turns it off). RAD Studio's other folding keys come with it: Shift+Ctrl+K C folds the classes, G the
+  sections, N the unit, P the nested routines, R the regions, and O turns code folding on or off; *Edit ▸
+  Folding* and the editor's menu have them too, *Code Folding* checked while it is on.
+
+### Changed
+
+- **Code editor**: *Fold Methods* (Shift+Ctrl+K M) folds each routine from its heading, and *Fold All*
+  (Shift+Ctrl+K F) folds every level, so a block unfolded shows the blocks inside it folded.
+
+### Fixed
+
+- **Code editor**: turning code folding off shows the lines that were folded; they stayed hidden before.
+
 ## [1.0.3.3] - 2026-11-27
 
 ### Changed
@@ -212,7 +239,8 @@ The first release.
   its settings. It also installs Microsoft's WinHelp viewer, which shows Delphi 7's help on
   Windows 10 and 11.
 
-[Unreleased]: https://github.com/iznoguuud/d7studio/compare/v1.0.3.3...HEAD
+[Unreleased]: https://github.com/iznoguuud/d7studio/compare/v1.0.3.4...HEAD
+[1.0.3.4]: https://github.com/iznoguuud/d7studio/compare/v1.0.3.3...v1.0.3.4
 [1.0.3.3]: https://github.com/iznoguuud/d7studio/compare/v1.0.3.2...v1.0.3.3
 [1.0.3.2]: https://github.com/iznoguuud/d7studio/compare/v1.0.3.1...v1.0.3.2
 [1.0.3.1]: https://github.com/iznoguuud/d7studio/compare/v1.0.3.0...v1.0.3.1

@@ -21,7 +21,8 @@ interface
 
 uses
   Windows, Messages, SysUtils, Classes, Graphics, Controls, Forms, SdSciDefs, SdSciLexDefs,
-  SdEncoding, SdFileNames, SdEditorThemes, SdEditorOptions, SdKeymaps, SdSciScroll, SdPasBlocks;
+  SdEncoding, SdFileNames, SdEditorThemes, SdEditorOptions, SdKeymaps, SdSciScroll, SdSciMinimap,
+  SdHints, SdPasBlocks;
 
 const
   WM_SCITRIMUNDO = WM_USER + 401;    // Editor Options | Undo limit: the history is trimmed after the edit
@@ -163,8 +164,10 @@ type
     Element: TEditorElement;
   end;
   TSciNames = array of TSciName;
-  { the folding commands }
-  TSciFoldAction = (sfFoldAll, sfUnfoldAll, sfFold, sfUnfold, sfToggle, sfFoldMethods);
+  { the folding commands: everything, the fold at the caret, and a Pascal text's folds of a kind -
+    the routines, the types, the unit's sections, the top level, the nested routines, the regions }
+  TSciFoldAction = (sfFoldAll, sfUnfoldAll, sfFold, sfUnfold, sfToggle, sfFoldMethods,
+    sfFoldClasses, sfFoldSections, sfFoldUnit, sfFoldNested, sfFoldRegions);
 
   { the kinds of the buffer's block, in the order of ToolsAPI's TOTABlockType (the Open Tools API
     converts with Ord) }
@@ -310,6 +313,10 @@ type
     function NextStyleRun(var P: Integer; ToPos, Style: Integer; Names: Boolean; out S: Integer): Boolean;
     procedure SetStyling(Pos, Len, Style: Integer);
     function Bars: TSciScrollBars;
+    function Map: TSciMinimap;
+    procedure MarksChanged;
+    procedure MapPreview(Line: Integer; var Lines: TTipLines);
+    function StyledRuns(Line, MaxChars: Integer): TTipRuns;
     function SciStr(Msg: Cardinal; W: Cardinal): string;
     { ... and what the window gets: its messages for the editor shown }
     procedure IdleWork;
@@ -324,6 +331,9 @@ type
     procedure Notify(N: PSCNotification);
     procedure ScheduleIdle;
     procedure RebuildBlocks;
+    procedure ApplyFoldLevels;
+    function FoldHeader(Line: Integer): Boolean;
+    procedure ContractLine(Line: Integer);
     procedure PaintRainbow;
     procedure UpdateMatching;
     procedure PaintMatches;
@@ -557,7 +567,15 @@ type
     procedure ShrinkSelection;
     function CanShrinkSelection: Boolean;
     procedure Fold(Action: TSciFoldAction);
-    function CanFold: Boolean;
+    { the folding command can run: folding is on for the language, a Pascal text's kinds (Fold
+      Methods ...) in a Pascal text only }
+    function CanFold(Action: TSciFoldAction = sfFoldAll): Boolean;
+    { Editor Options | Fold preview: the box at the end of a folded line under X, Y (client): the
+      lines it hides as a tip's (without the blank ones at their start and end, their common
+      indentation left out; the first FoldPreviewLines of them) and where the tip shows them - the
+      folded line on the screen, from the column the lines start at (TSdCodeTip.ShowLines). False:
+      no box there, or the option is off }
+    function FoldPreview(X, Y: Integer; out Lines: TTipLines; out At: TRect): Boolean;
     { Editor Options | Zoom: every editor's, Ctrl+wheel or the zoom commands }
     procedure ApplyZoom;
     property OnZoom: TNotifyEvent read FOnZoom write FOnZoom;
@@ -732,6 +750,7 @@ type
     FBorderless: Boolean;
     FWorker: Boolean;           // the hidden window of the editors no window shows
     FBars: TSciScrollBars;      // the scroll bars, drawn by D7 Studio (SdSciScroll)
+    FMap: TSciMinimap;          // the minimap (SdSciMinimap): the file area's window and the worker; nil: none
     FViewKey: string;           // the editors its view settings are for (TSciEdit.ViewKey; '' none)
     FNumberDigits: Integer;     // the digits the line numbers' margin was measured for
     FBarCaret: Integer;         // the caret's display line in the scroll bar's markers
@@ -745,6 +764,8 @@ type
     procedure BarScroll(Bar: TSciBar; Action: TSciScrollAction; Pos: Integer);
     procedure BarPress(Sender: TObject);
     procedure GetMarks(var Marks: TSciScrollMarks; out Count, Caret: Integer);
+    procedure MapStyleTo(ToPos: Integer);
+    procedure MapPreview(Line: Integer; var Lines: TTipLines);
     procedure CNNotify(var Message: TWMNotify); message CN_NOTIFY;
     procedure KeyCommand(var Message: TWMKeyDown);
     procedure WMGetDlgCode(var Message: TWMGetDlgCode); message WM_GETDLGCODE;
@@ -787,6 +808,11 @@ type
     procedure Place;
     { Editor Options | Zoom: the window's zoom, for a file's editor }
     procedure ApplyZoom;
+    { Editor Options | Display | Minimap: the map on the file area's window (SciFileWindow), at its
+      DPI, and its room on the worker too, which measures what that window would; made at its first
+      need }
+    procedure SyncMap;
+    property Map: TSciMinimap read FMap;
     { the editor shown; a window with an editor of its own gives that one also before its window
       is made. Set: that editor shown (its document leaves the window it was in) }
     property Edit: TSciEdit read GetEdit write SetEdit;
@@ -1538,8 +1564,8 @@ begin
   SetLength(FView.Folds, N);
 end;
 
-{ the view the document had: its folds (on the fold levels styled up to them), the selections,
-  the scrolling }
+{ the view the document had: its folds (on the fold levels of the block structure, a Pascal text's,
+  else on those styled up to them), the selections, the scrolling }
 procedure TSciEdit.RestoreView;
 var
   I, Last: Integer;
@@ -1547,11 +1573,14 @@ begin
   if not FView.Saved then Exit;
   if Length(FView.Folds) > 0 then
   begin
-    Last := FView.Folds[High(FView.Folds)] + 1;
-    if Last < LineCount then StyleTo(PosFromLine(Last + 1)) else StyleTo(-1);
-    for I := 0 to High(FView.Folds) do
-      if Sci(SCI_GETFOLDLEVEL, FView.Folds[I]) and SC_FOLDLEVELHEADERFLAG <> 0 then
-        Sci(SCI_FOLDLINE, FView.Folds[I], SC_FOLDACTION_CONTRACT);
+    if FLanguage = slPascal then
+      Blocks
+    else
+    begin
+      Last := FView.Folds[High(FView.Folds)] + 1;
+      if Last < LineCount then StyleTo(PosFromLine(Last + 1)) else StyleTo(-1);
+    end;
+    for I := 0 to High(FView.Folds) do ContractLine(FView.Folds[I]);
   end;
   if FView.Sel <> '' then SciS(SCI_SETSELECTIONSERIALIZED, 0, FView.Sel);
   Sci(SCI_SETSCROLLWIDTH, Max(1, FView.ScrollWidth));
@@ -1569,6 +1598,106 @@ end;
 function TSciEdit.Bars: TSciScrollBars;
 begin
   if FWindow <> nil then Result := FWindow.FBars else Result := nil;
+end;
+
+function TSciEdit.Map: TSciMinimap;
+begin
+  if FWindow <> nil then Result := FWindow.FMap else Result := nil;
+end;
+
+const
+  MapPreviewAround = 6;      // the minimap's tip: the lines above and below the one under the pointer
+  MapPreviewChars = 120;     // ... the columns of a line it shows
+
+{ the minimap's tip for the document line Line (TSciMinimap.OnPreview): the lines shown around it,
+  folded ones left out }
+procedure TSciEdit.MapPreview(Line: Integer; var Lines: TTipLines);
+var
+  Count, D: Integer;
+
+  { the line MapPreviewAround shown lines from Line in the direction Step, or the text's end
+    before them }
+  function Around(Step: Integer): Integer;
+  var
+    N: Integer;
+  begin
+    Result := Line;
+    N := 0;
+    while (N < MapPreviewAround) and (Result + Step >= 0) and (Result + Step < Count) do
+    begin
+      Inc(Result, Step);
+      if Sci(SCI_GETLINEVISIBLE, Result) <> 0 then Inc(N);
+    end;
+  end;
+
+begin
+  Lines := nil;
+  Count := LineCount;
+  if not Ready or (Line < 0) or (Line >= Count) then Exit;
+  for D := Around(-1) to Around(1) do
+    if Sci(SCI_GETLINEVISIBLE, D) <> 0 then AddTipLine(Lines, StyledRuns(D, MapPreviewChars));
+end;
+
+{ a tip's runs of the document line Line, its first MaxChars columns: its styles' colours and bold
+  / italic, in the code font, its tabs as blanks, its text as the IDE's; an empty line a blank (the
+  code font's height). It is cut between characters: never inside a character of UTF-8 or a
+  double-byte code page's }
+function TSciEdit.StyledRuns(Line, MaxChars: Integer): TTipRuns;
+var
+  S, Len, K, Col, Next, TabW, St, RunStyle, CodePage: Integer;
+  Buf, Run: string;
+  Utf8, Cont, Trail, Lead: Boolean;
+  Ch: Char;
+
+  procedure Flush;
+  var
+    F: TFontStyles;
+  begin
+    if Run = '' then Exit;
+    F := [];
+    if Sci(SCI_STYLEGETBOLD, RunStyle) <> 0 then Include(F, fsBold);
+    if Sci(SCI_STYLEGETITALIC, RunStyle) <> 0 then Include(F, fsItalic);
+    AddTipRun(Result, EditorToAnsi(Run, FEncoding), TColor(Sci(SCI_STYLEGETFORE, RunStyle)), F, True);
+    Run := '';
+  end;
+
+begin
+  Result := nil;
+  S := PosFromLine(Line);
+  Len := LineEndPos(Line) - S;
+  if Len > 4 * MaxChars then Len := 4 * MaxChars;   // a character of UTF-8 takes up to 4 bytes
+  CodePage := Sci(SCI_GETCODEPAGE);                 // SC_CP_UTF8, a double-byte code page or 0
+  Utf8 := CodePage = SC_CP_UTF8;
+  TabW := SciTabWidth(Sci);
+  Run := '';
+  RunStyle := -1;
+  Col := 0;
+  Trail := False;
+  SciStyledText(Sci, S, Len, Buf);
+  for K := 0 to Len - 1 do
+  begin
+    Ch := Buf[2 * K + 1];
+    Cont := Utf8 and (Byte(Ch) and $C0 = $80);
+    Lead := not Cont and not Trail;
+    { a double-byte character's second byte (a column of its own: it is drawn two wide) }
+    Trail := Lead and (CodePage <> 0) and not Utf8 and IsDBCSLeadByteEx(CodePage, Byte(Ch));
+    { a character's first byte: a run ends where its style changes (the bytes after it stay with it) }
+    if Lead then
+    begin
+      if Col >= MaxChars then Break;
+      St := Byte(Buf[2 * K + 2]);
+      if St <> RunStyle then
+      begin
+        Flush;
+        RunStyle := St;
+      end;
+    end;
+    Next := SciColumnAfter(Ch, Col, TabW, Cont);
+    if Ch = #9 then Run := Run + StringOfChar(' ', Next - Col) else Run := Run + Ch;
+    Col := Next;
+  end;
+  Flush;
+  if Result = nil then AddTipRun(Result, ' ', ElementFore(EditorOptions.Colors, eePlainText), [], True);
 end;
 
 { a string Scintilla gives (its length first, then its bytes) }
@@ -2162,13 +2291,19 @@ begin
         { the caret's marker in the scroll bar }
         if EditorOptions.ScrollBarMarkers and (Sci(SCI_VISIBLEFROMDOCLINE, CaretLine) <> FWindow.FBarCaret) then
           Bars.Paint;
+        { the minimap: the scrolling, the caret's line, the selections }
+        if Map <> nil then Map.Update;
       end;
     SCN_PAINTED:
-      if Bars <> nil then Bars.Update;    // the lines, the widest line, the size: the bars follow
+      begin
+        if Bars <> nil then Bars.Update;    // the lines, the widest line, the size: the bars follow
+        if Map <> nil then Map.Update;
+      end;
     SCN_MODIFIED:
       begin
         FTextValid := False;
         FText := '';
+        if Map <> nil then Map.Changed;
         if N^.linesAdded <> 0 then SetupLineNumbers(False);    // the other margins stay as they are
         if N^.modificationType and SC_MOD_INSERTTEXT <> 0 then AdjustBlock(N^.position, N^.length, True)
         else if N^.modificationType and SC_MOD_DELETETEXT <> 0 then AdjustBlock(N^.position, N^.length, False);
@@ -3431,6 +3566,11 @@ begin
   BlockMoveEnd;
 end;
 
+const
+  { the folding commands of the key mappings }
+  FoldCommands: array[ecFoldAll..ecFoldRegions] of TSciFoldAction = (sfFoldAll, sfUnfoldAll, sfFold,
+    sfUnfold, sfToggle, sfFoldMethods, sfFoldClasses, sfFoldSections, sfFoldUnit, sfFoldNested, sfFoldRegions);
+
 procedure TSciEdit.ExecCommand(Cmd: TEdCmd; Arg: Integer);
 var
   A, B, P, Len: Integer;
@@ -3601,14 +3741,9 @@ begin
         Sci(SCI_SETMOVEEXTENDSSELECTION, 0);
         Sci(SCI_SETEMPTYSELECTION, CaretPos);
       end;
-    ecFoldAll: Fold(sfFoldAll);
-    ecUnfoldAll: Fold(sfUnfoldAll);
-    ecFold: Fold(sfFold);
-    ecUnfold: Fold(sfUnfold);
-    ecFoldToggle: Fold(sfToggle);
-    ecFoldMethods: Fold(sfFoldMethods);
+    ecFoldAll..ecFoldRegions: Fold(FoldCommands[Cmd]);
   else
-    { the page's (bookmarks) and the IDE's (its menu commands) }
+    { the page's (bookmarks) and the IDE's (its menu commands, Code folding on or off) }
     if Assigned(FOnCommand) then FOnCommand(Self, Cmd, Arg);
   end;
 end;
@@ -3672,7 +3807,15 @@ begin
   end;
   Sci(SCI_SETINDICATORVALUE, 1);      // the value every other fill takes
   FMarksDirty := True;
+  MarksChanged;
+end;
+
+{ the find matches or Error Insight's errors changed: the scroll bar's markers and the minimap,
+  which both show them, painted again }
+procedure TSciEdit.MarksChanged;
+begin
   if EditorOptions.ScrollBarMarkers and (Bars <> nil) then Bars.Paint;
+  if Map <> nil then Map.Changed;
 end;
 
 function TSciEdit.ErrorAt(Pos: Integer; out S, E: Integer): Integer;
@@ -3736,7 +3879,7 @@ procedure TSciEdit.IdleWork;
 begin
   if (FDirectPtr = nil) or FSample then Exit;
   if FBlocksStale and (FLanguage = slPascal) and
-    (EditorOptions.HighlightBlocks or EditorOptions.RainbowBrackets or EditorOptions.IndentGuides) then
+    (EditorOptions.HighlightBlocks or EditorOptions.RainbowBrackets or EditorOptions.IndentGuides or CanFold) then
     RebuildBlocks;
   UpdateMatching;
   if FFindStale then PaintMatches;
@@ -3757,6 +3900,128 @@ begin
   FBlocksStale := False;
   if (FLanguage = slPascal) and (TextLength <= MaxBlocksText) then FBlocks := TPasBlocks.Create(GetText);
   PaintRainbow;
+  ApplyFoldLevels;
+end;
+
+{ a Pascal text's fold levels, made by D7 Studio from the block structure (Lexilla's Pascal lexer
+  folds nothing here, SetupLexer): a line's level counts the folds that hold it below their first
+  line, a fold's first line is a header. Without folding or a block structure the levels are
+  flat (Scintilla then shows what was folded). Only the lines whose level changes are set }
+procedure TSciEdit.ApplyFoldLevels;
+var
+  N, I, D, Lv, Last: Integer;
+  Delta: array of Integer;
+  Head: array of Boolean;
+begin
+  if (FLanguage <> slPascal) or not Ready then Exit;
+  N := LineCount;
+  SetLength(Delta, N + 1);
+  SetLength(Head, N + 1);
+  if CanFold and (FBlocks <> nil) then
+    for I := 0 to FBlocks.FoldCount - 1 do
+      with FBlocks.Folds[I] do
+      begin
+        Last := Min(LastLine, N - 1);
+        if Last <= Line then Continue;
+        Head[Line] := True;
+        Inc(Delta[Line + 1]);
+        Dec(Delta[Last + 1]);
+      end;
+  D := 0;
+  for I := 0 to N - 1 do
+  begin
+    Inc(D, Delta[I]);
+    Lv := SC_FOLDLEVELBASE + Min(D, SC_FOLDLEVELNUMBERMASK - SC_FOLDLEVELBASE);
+    if Head[I] then Lv := Lv or SC_FOLDLEVELHEADERFLAG;
+    if Sci(SCI_GETFOLDLEVEL, I) <> Lv then Sci(SCI_SETFOLDLEVEL, I, Lv);
+  end;
+end;
+
+{ Line begins a fold }
+function TSciEdit.FoldHeader(Line: Integer): Boolean;
+begin
+  Result := Sci(SCI_GETFOLDLEVEL, Line) and SC_FOLDLEVELHEADERFLAG <> 0;
+end;
+
+{ Line folded when it begins a fold that is open }
+procedure TSciEdit.ContractLine(Line: Integer);
+begin
+  if FoldHeader(Line) and (Sci(SCI_GETFOLDEXPANDED, Line) <> 0) then Sci(SCI_FOLDLINE, Line, SC_FOLDACTION_CONTRACT);
+end;
+
+const
+  FoldPreviewLines = 20;     // a folded block's tip: the lines it shows at most ("..." after them)
+  FoldPreviewChars = 120;    // ... the columns of a line
+
+{ Runs without their first N characters - blanks, the indentation a tip leaves out; a line left
+  without text keeps a blank, for its height }
+procedure DropTipColumns(var Runs: TTipRuns; N: Integer);
+var
+  K, D: Integer;
+begin
+  K := 0;
+  while (N > 0) and (K < Length(Runs)) do
+  begin
+    D := Min(N, Length(Runs[K].Text));
+    Delete(Runs[K].Text, 1, D);
+    Dec(N, D);
+    Inc(K);
+  end;
+  for K := 0 to High(Runs) do
+    if Runs[K].Text <> '' then Exit;
+  if Runs <> nil then Runs[0].Text := ' ';
+end;
+
+function TSciEdit.FoldPreview(X, Y: Integer; out Lines: TTipLines; out At: TRect): Boolean;
+var
+  Line, First, Last, Shown, E, Left, Top, Blank, Indent, D: Integer;
+  Runs: TTipRuns;
+
+  function Empty(L: Integer): Boolean;
+  begin
+    Result := Sci(SCI_GETLINEINDENTPOSITION, L) >= LineEndPos(L);
+  end;
+
+begin
+  Result := False;
+  Lines := nil;
+  if not Ready or not CanFold or not EditorOptions.FoldPreview then Exit;
+  Line := LineFromPos(Sci(SCI_POSITIONFROMPOINT, X, Y));
+  if not FoldHeader(Line) or (Sci(SCI_GETFOLDEXPANDED, Line) <> 0) then Exit;
+  { the box: a character after the line's end, its "..." framed (Scintilla's EditView) }
+  E := LineEndPos(Line);
+  Left := Sci(SCI_POINTXFROMPOSITION, 0, E);
+  Top := Sci(SCI_POINTYFROMPOSITION, 0, E);
+  Blank := SciS(SCI_TEXTWIDTH, STYLE_DEFAULT, ' ');
+  if (X <= Left) or (Y < Top) or (Y >= Top + TextHeight) or
+    (X > Left + 2 * Blank + SciS(SCI_TEXTWIDTH, STYLE_FOLDDISPLAYTEXT, '...') + 2) then
+    Exit;
+  { the hidden lines without the blank ones at their start and end }
+  First := Line + 1;
+  Last := Sci(SCI_GETLASTCHILD, Line, -1);
+  while (First <= Last) and Empty(First) do Inc(First);
+  while (Last >= First) and Empty(Last) do Dec(Last);
+  Shown := Min(Last, First + FoldPreviewLines - 1);
+  { the indentation of the lines with text that is common to them }
+  Indent := MaxInt;
+  for D := First to Shown do
+    if not Empty(D) then Indent := Min(Indent, Sci(SCI_GETLINEINDENTATION, D));
+  if Indent = MaxInt then Indent := 0;
+  for D := First to Shown do
+  begin
+    Runs := StyledRuns(D, FoldPreviewChars + Indent);
+    DropTipColumns(Runs, Indent);
+    AddTipLine(Lines, Runs);
+  end;
+  if Shown < Last then
+  begin
+    Runs := nil;
+    AddTipRun(Runs, '...', ThemeFore(eeFolding), [], True);
+    AddTipLine(Lines, Runs);
+  end;
+  At := ScreenTextRect(PosFromLine(Line), PosFromLine(Line));
+  Inc(At.Left, Indent * Blank);
+  Result := Lines <> nil;
 end;
 
 { Highlighting | Rainbow brackets: every pair in the colour of its depth }
@@ -3926,6 +4191,8 @@ begin
       Style := SCE_PAS_IDENTIFIER;
     if Sci(SCI_GETSTYLEINDEXAT, Names[K].Start) <> Style then SetStyling(Names[K].Start, Names[K].Len, Style);
   end;
+  { (a change of styles is no SCN_MODIFIED of the text) }
+  if Map <> nil then Map.Changed;
 end;
 
 procedure TSciEdit.ClearNameKinds;
@@ -4052,7 +4319,14 @@ begin
       end;
     end;
   end;
-  if EditorOptions.ScrollBarMarkers and (Bars <> nil) then Bars.Paint;
+  MarksChanged;
+end;
+
+{ the colour of the find matches' marks - in the scroll bar, in the minimap: the search match's
+  ground a third towards the text (it is pale on the thumb and the map) }
+function FindMarkColor(const C: TEditorColors): TColor;
+begin
+  Result := UIBlend(ElementFore(C, eePlainText), ElementBack(C, eeSearchMatch), 30);
 end;
 
 { the scroll bar's markers (Display | Scroll bar markers): the changed lines at the left, the
@@ -4139,13 +4413,12 @@ begin
   if FDiffView then
   begin
     Markers((1 shl MK_DIFF_REMOVED) or (1 shl MK_DIFF_ADDED), mlLeft);
-    Ranges(IND_FIND, UIBlend(ElementFore(C, eePlainText), ElementBack(C, eeSearchMatch), 30));
+    Ranges(IND_FIND, FindMarkColor(C));
     Exit;
   end;
   if EditorOptions.ShowChangeBars then Markers(HistoryMask, mlLeft);
-  { the search match's colour a third towards the text (it is pale on the thumb), the
-    identifiers in the matching bracket's colour }
-  Ranges(IND_FIND, UIBlend(ElementFore(C, eePlainText), ElementBack(C, eeSearchMatch), 30));
+  { the find matches (FindMarkColor), the identifiers in the matching bracket's colour }
+  Ranges(IND_FIND, FindMarkColor(C));
   Ranges(IND_IDENT, ElementFore(C, eeBraceMatch));
   Ranges(IND_IDENTDECL, ElementFore(C, eeBraceMatch));
   Markers(RightMask, mlRight);
@@ -4701,55 +4974,74 @@ begin
   FExpanded := Point(SelStart, SelEnd);
 end;
 
-function TSciEdit.CanFold: Boolean;
+const
+  PascalFoldActions = [sfFoldMethods, sfFoldClasses, sfFoldSections, sfFoldNested, sfFoldRegions];
+
+function TSciEdit.CanFold(Action: TSciFoldAction): Boolean;
 begin
-  Result := EditorOptions.ShowFolding and SciLanguages[FLanguage].Folds;
+  Result := EditorOptions.ShowFolding and SciLanguages[FLanguage].Folds and
+    (not (Action in PascalFoldActions) or (FLanguage = slPascal));
 end;
 
-{ the folding commands: everything, the fold around the caret, the routines' bodies }
+{ the folding commands: every fold, the fold at the caret, the top level, and a Pascal text's folds
+  of a kind }
 procedure TSciEdit.Fold(Action: TSciFoldAction);
 var
-  Line, K, L: Integer;
+  Line, Lv: Integer;
   Bl: TPasBlocks;
+
+  procedure FoldKind(Kind: TPasFoldKind; NestedOnly: Boolean);
+  var
+    K: Integer;
+  begin
+    for K := 0 to Bl.FoldCount - 1 do
+      if (Bl.Folds[K].Kind = Kind) and (not NestedOnly or Bl.Folds[K].Nested) then ContractLine(Bl.Folds[K].Line);
+  end;
+
 begin
   if not Ready then Exit;
-  if not CanFold then
+  { a Pascal text's fold levels made now if the text changed since; nil: another language, a text
+    too long for a block structure }
+  Bl := Blocks;
+  if not CanFold(Action) or (Action in PascalFoldActions) and (Bl = nil) then
   begin
     MessageBeep(0);
     Exit;
   end;
   case Action of
-    sfFoldAll: Sci(SCI_FOLDALL, SC_FOLDACTION_CONTRACT);
+    { every level: a fold unfolded shows the ones inside it folded }
+    sfFoldAll:
+      for Line := LineCount - 1 downto 0 do ContractLine(Line);
     sfUnfoldAll: Sci(SCI_FOLDALL, SC_FOLDACTION_EXPAND);
     sfFold, sfUnfold, sfToggle:
       begin
         Line := CaretLine;
         { the caret's line when it begins a fold, else the fold it lies in }
-        if (Sci(SCI_GETFOLDLEVEL, Line) and SC_FOLDLEVELHEADERFLAG = 0) or
-          ((Action = sfFold) and (Sci(SCI_GETFOLDEXPANDED, Line) = 0)) then
+        if not FoldHeader(Line) or (Action = sfFold) and (Sci(SCI_GETFOLDEXPANDED, Line) = 0) then
           Line := Sci(SCI_GETFOLDPARENT, Line);
         if Line < 0 then
         begin
           MessageBeep(0);
           Exit;
         end;
-        case Action of
-          sfFold: Sci(SCI_FOLDLINE, Line, SC_FOLDACTION_CONTRACT);
-          sfUnfold: Sci(SCI_FOLDLINE, Line, SC_FOLDACTION_EXPAND);
+        if (Action = sfUnfold) or (Action = sfToggle) and (Sci(SCI_GETFOLDEXPANDED, Line) = 0) then
+          Sci(SCI_FOLDLINE, Line, SC_FOLDACTION_EXPAND)
         else
-          Sci(SCI_FOLDLINE, Line, SC_FOLDACTION_TOGGLE);
-        end;
+          ContractLine(Line);
       end;
-    sfFoldMethods:
+    { the folds no other fold holds - a unit's sections -, the ones inside keeping their state }
+    sfFoldUnit:
+      for Line := 0 to LineCount - 1 do
       begin
-        Bl := Blocks;
-        if Bl = nil then Exit;
-        for K := 0 to Bl.RoutineCount - 1 do
-        begin
-          L := Bl.Words[Bl.Routines[K].Body].Line;
-          if Sci(SCI_GETFOLDLEVEL, L) and SC_FOLDLEVELHEADERFLAG <> 0 then Sci(SCI_FOLDLINE, L, SC_FOLDACTION_CONTRACT);
-        end;
+        Lv := Sci(SCI_GETFOLDLEVEL, Line);
+        if (Lv and SC_FOLDLEVELHEADERFLAG <> 0) and (Lv and SC_FOLDLEVELNUMBERMASK = SC_FOLDLEVELBASE) then
+          ContractLine(Line);
       end;
+    sfFoldMethods: FoldKind(fkRoutine, False);
+    sfFoldClasses: FoldKind(fkType, False);
+    sfFoldSections: FoldKind(fkSection, False);
+    sfFoldNested: FoldKind(fkRoutine, True);
+    sfFoldRegions: FoldKind(fkRegion, False);
   end;
   { a caret in what was folded goes to the first line of the outermost fold that hides it }
   Line := CaretLine;
@@ -5908,7 +6200,11 @@ begin
   if CanFold then
     Sci(SCI_SETMARGINWIDTHN, MARGIN_FOLD, 13)
   else
+  begin
     Sci(SCI_SETMARGINWIDTHN, MARGIN_FOLD, 0);
+    { without the fold margin nothing stays folded }
+    if Sci(SCI_GETALLLINESVISIBLE) = 0 then Sci(SCI_FOLDALL, SC_FOLDACTION_EXPAND);
+  end;
 end;
 
 procedure TSciEdit.DefineImageMarker(Marker: Integer; const RGBA: string);
@@ -6038,7 +6334,10 @@ begin
   FoldMarker(SC_MARKNUM_FOLDEROPENMID, SC_MARK_BOXMINUSCONNECTED);
   FoldMarker(SC_MARKNUM_FOLDERMIDTAIL, SC_MARK_TCORNER);
   Sci(SCI_SETAUTOMATICFOLD, SC_AUTOMATICFOLD_SHOW or SC_AUTOMATICFOLD_CLICK or SC_AUTOMATICFOLD_CHANGE);
-  Sci(SCI_SETFOLDFLAGS, SC_FOLDFLAG_LINEAFTER_CONTRACTED);
+  { a folded line ends in a box with "..." }
+  Sci(SCI_SETFOLDFLAGS, SC_FOLDFLAG_NONE);
+  Sci(SCI_FOLDDISPLAYTEXTSETSTYLE, SC_FOLDDISPLAYTEXT_BOXED);
+  SciS(SCI_SETDEFAULTFOLDDISPLAYTEXT, 0, '...');
   { change bars: an edit reverted to the original is no bar }
   HistoryMarker(SC_MARKNUM_HISTORY_MODIFIED, Modified);
   HistoryMarker(SC_MARKNUM_HISTORY_SAVED, ThemeFore(eeSavedLine));
@@ -6206,7 +6505,8 @@ begin
   end;
   if FLanguage in SciPascal then
     SetProp('lexer.pascal.smart.highlighting', IntToStr(Ord(FLanguage = slPascal)));
-  SetProp('fold', '1');
+  { a Pascal text's folds are D7 Studio's, from its block structure (ApplyFoldLevels) }
+  SetProp('fold', IntToStr(Ord(FLanguage <> slPascal)));
   SetProp('fold.compact', '0');
   SetProp('fold.comment', '1');
   SetProp('fold.preprocessor', '1');
@@ -6280,6 +6580,27 @@ begin
   if Shown and Assigned(FOnViewApplied) then FOnViewApplied(Self);
 end;
 
+{ the minimap's colours: its ground the scroll bars' track, the box of the lines in view the thumb's
+  colours (under the pointer, dragged: theirs too), the tip on the plain text's ground; the caret's
+  line in the colour of its scroll bar marker; the selection's ground and text, as the editor draws
+  it; the find matches and Error Insight's errors in the colours of their scroll bar markers }
+function MapColors(const C: TEditorColors; Bg: TColor; const SC: TSciScrollColors): TSciMapColors;
+begin
+  Result.Ground := SC.Track;
+  Result.View := SC.Thumb;
+  Result.ViewHot := SC.ThumbHot;
+  Result.ViewDown := SC.ThumbDown;
+  Result.Tip := Bg;
+  Result.Caret := SC.ArrowHot;
+  Result.Selection := ElementBack(C, eeSelection);
+  Result.SelectionText := ElementFore(C, eeSelection);
+  SetLength(Result.Tints, 2);
+  Result.Tints[0].Indicator := IND_FIND;
+  Result.Tints[0].Color := FindMarkColor(C);
+  Result.Tints[1].Indicator := IND_ERROR;
+  Result.Tints[1].Color := ErrorMarkColor(C);
+end;
+
 { the window's part of the options for this editor - its language's styles, the encoding's
   character set, its file type's blanks: made again when the window takes an editor they were not
   made for (ViewKey) }
@@ -6287,6 +6608,7 @@ procedure TSciEdit.ApplyView;
 var
   Bg, Fg, Toward: TColor;
   C: TEditorColors;
+  SC: TSciScrollColors;
   Syntax: Boolean;
   Caret, I, Band: Integer;
   Alpha: Byte;
@@ -6350,12 +6672,15 @@ begin
   else Caret := CARETSTYLE_LINE or CARETSTYLE_OVERSTRIKE_BLOCK;
   Sci(SCI_SETCARETSTYLE, Caret);
   { the scroll bars: on the ground of the plain text, the thumb the theme's (Default: a shade of
-    the ground) }
+    the ground); the minimap beside them }
+  SC := SciScrollColors(Bg, ElementFore(C, eeScrollBar));
   if Bars <> nil then
   begin
-    Bars.SetColors(SciScrollColors(Bg, ElementFore(C, eeScrollBar)));
+    Bars.SetColors(SC);
     Bars.Update;
   end;
+  FWindow.SyncMap;
+  if Map <> nil then Map.SetColors(MapColors(C, Bg, SC));
   { Highlighting | Current line: a band translucent under the text - the debugger's and the
     error lines keep their colours under it (an opaque one would take their place). Default: the
     text's colour, 14 / 255 opaque; a colour of the theme is that colour on the plain text's
@@ -6398,6 +6723,8 @@ begin
   Sci(SCI_SETFOLDMARGINCOLOUR, 1, SciColor(ElementBack(C, eeGutter)));
   Sci(SCI_SETFOLDMARGINHICOLOUR, 1, SciColor(ElementBack(C, eeGutter)));
   Sci(SCI_SETELEMENTCOLOUR, SC_ELEMENT_FOLD_LINE, SciColorA(ElementFore(C, eeFolding)));
+  { the box at a folded line's end: its text and frame in the folding marks' colour }
+  StyleSet(STYLE_FOLDDISPLAYTEXT, ElementFore(C, eeFolding), Bg);
   { right margin }
   if EditorOptions.ShowRightMargin and (FLanguage = slPascal) then
   begin
@@ -6657,11 +6984,13 @@ begin
     Value.FDirectFn := FDirectFn;
     Value.FDirectPtr := FDirectPtr;
     { the worker measures what the file area's window would (lines in view, columns) }
+    if FWorker then SyncMap;
     if FWorker and (SciFileWindow <> nil) and ((Width <> SciFileWindow.Width) or (Height <> SciFileWindow.Height)) then
       SetBounds(0, 0, SciFileWindow.Width, SciFileWindow.Height);
     Sci(SCI_SETDOCPOINTER, 0, Value.FDoc);
     Value.Attached;
   end;
+  if FMap <> nil then FMap.Reset;
   if HadFocus then
   begin
     if EditAlive(Old) and Assigned(Old.FOnFocusChange) then Old.FOnFocusChange(Old);
@@ -6681,6 +7010,7 @@ begin
   if Assigned(FDirectFn) then E.Detached(KeepView);
   FEdit := nil;
   if Assigned(FDirectFn) then Sci(SCI_SETDOCPOINTER, 0, 0);
+  if FMap <> nil then FMap.Reset;
   if HadFocus and KeepView and Assigned(E.FOnFocusChange) then E.FOnFocusChange(E);
 end;
 
@@ -6782,6 +7112,30 @@ begin
   if HandleAllocated and (Sci(SCI_GETZOOM) <> EditorOptions.Zoom) then Sci(SCI_SETZOOM, Cardinal(EditorOptions.Zoom));
 end;
 
+procedure TSciWindow.SyncMap;
+var
+  Room: Integer;
+begin
+  Room := 0;
+  if FWorker then
+  begin
+    if (SciFileWindow <> nil) and (SciFileWindow.FMap <> nil) then Room := SciFileWindow.FMap.Room;
+  end
+  else if (Self = SciFileWindow) and (EditorOptions.Minimap <> MinimapNone) then
+    Room := SciMapWidth(GetControlDpi(Self));
+  if (FMap = nil) and (Room > 0) then
+  begin
+    FMap := TSciMinimap.Create(Self);
+    FMap.SciCall := Sci;
+    FMap.OnStyleTo := MapStyleTo;
+    FMap.OnPreview := MapPreview;
+  end;
+  if (FMap = nil) or (FMap.Room = Room) then Exit;
+  FMap.Room := Room;
+  { the worker takes the same room }
+  if (Self = SciFileWindow) and (SciWorker <> nil) then SciWorker.SyncMap;
+end;
+
 { --- the window's messages: for the editor it shows --- }
 
 procedure TSciWindow.BarInfo(Bar: TSciBar; var Info: TSciScrollInfo);
@@ -6807,6 +7161,18 @@ begin
   Count := 0;
   Caret := -1;
   if FEdit <> nil then FEdit.GetMarks(Marks, Count, Caret);
+end;
+
+procedure TSciWindow.MapStyleTo(ToPos: Integer);
+begin
+  if FEdit <> nil then FEdit.StyleTo(ToPos);
+end;
+
+{ the tip's lines - none unless the minimap is Enabled + preview: no tip }
+procedure TSciWindow.MapPreview(Line: Integer; var Lines: TTipLines);
+begin
+  Lines := nil;
+  if (FEdit <> nil) and (EditorOptions.Minimap = MinimapPreview) then FEdit.MapPreview(Line, Lines);
 end;
 
 procedure TSciWindow.CNNotify(var Message: TWMNotify);
@@ -6866,6 +7232,8 @@ begin
     KeyCommand(TWMKeyDown(Message))
   else
     inherited WndProc(Message);
+  { the form moved to a monitor of another scale: the minimap takes the room of its DPI }
+  if (Message.Msg = WM_DPICHANGED_AFTERPARENT) and (FMap <> nil) then SyncMap;
 end;
 
 { The wheel with the zoom key (SdZoom): an editor that takes the editors' zoom (OnZoom) zooms all

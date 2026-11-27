@@ -41,8 +41,9 @@ type
     { the IDE's (its menu commands) }
     ecBlockRead, ecBlockWrite, ecBlockPrint, ecFind, ecReplace, ecSearchAgain, ecIncSearch, ecGotoLine,
     ecSave, ecSaveAll, ecOpen, ecClose, ecWindowList, ecNextWindow, ecExit, ecFindDecl, ecCompletion,
-    { folding (the editor's) }
-    ecFoldAll, ecUnfoldAll, ecFold, ecUnfold, ecFoldToggle, ecFoldMethods);
+    { folding (the editor's; ecFoldingOnOff: the IDE's, Editor Options' Code folding) }
+    ecFoldAll, ecUnfoldAll, ecFold, ecUnfold, ecFoldToggle, ecFoldMethods, ecFoldClasses, ecFoldSections,
+    ecFoldUnit, ecFoldNested, ecFoldRegions, ecFoldingOnOff);
 
   TKeyBinding = record
     Key1, Key2: TShortCut;          // Key2 0: one key
@@ -85,13 +86,16 @@ const
     'SetBookmark', 'GotoBookmark',
     'BlockRead', 'BlockWrite', 'BlockPrint', 'Find', 'Replace', 'SearchAgain', 'IncSearch', 'GotoLine',
     'Save', 'SaveAll', 'Open', 'Close', 'WindowList', 'NextWindow', 'Exit', 'FindDecl', 'Completion',
-    'FoldAll', 'UnfoldAll', 'Fold', 'Unfold', 'FoldToggle', 'FoldMethods');
+    'FoldAll', 'UnfoldAll', 'Fold', 'Unfold', 'FoldToggle', 'FoldMethods', 'FoldClasses', 'FoldSections',
+    'FoldUnit', 'FoldNested', 'FoldRegions', 'FoldingOnOff');
 
-  { the folding chords of every keymapping: RAD Studio's Shift+Ctrl+K A / E / U / T / M, and
-    Shift+Ctrl+K F for Fold All }
-  FoldMap: array[0..5] of string = (
+  { the folding chords of every keymapping: RAD Studio's Shift+Ctrl+K A / E / U / T / M / C / G / N /
+    P / R / O, and Shift+Ctrl+K F for Fold All }
+  FoldMap: array[0..11] of string = (
     'Shift+Ctrl+K A=UnfoldAll', 'Shift+Ctrl+K E=Fold', 'Shift+Ctrl+K U=Unfold',
-    'Shift+Ctrl+K T=FoldToggle', 'Shift+Ctrl+K M=FoldMethods', 'Shift+Ctrl+K F=FoldAll');
+    'Shift+Ctrl+K T=FoldToggle', 'Shift+Ctrl+K M=FoldMethods', 'Shift+Ctrl+K F=FoldAll',
+    'Shift+Ctrl+K C=FoldClasses', 'Shift+Ctrl+K G=FoldSections', 'Shift+Ctrl+K N=FoldUnit',
+    'Shift+Ctrl+K P=FoldNested', 'Shift+Ctrl+K R=FoldRegions', 'Shift+Ctrl+K O=FoldingOnOff');
 
   { Delphi 7's Default keymapping: what its editor has besides the menus' shortcuts - the
     WordStar block chords, the bookmarks by chord, Ctrl+Y, Ctrl+T and Ctrl+N (its LookupKeyBinding finds
