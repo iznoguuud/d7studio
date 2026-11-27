@@ -4,10 +4,10 @@ object ListEditDlg: TListEditDlg
   AutoScroll = False
   BorderIcons = [biSystemMenu]
   Caption = 'OrderedListEditDlg'
-  ClientHeight = 344
+  ClientHeight = 378
   ClientWidth = 448
   Color = clWindow
-  Constraints.MinHeight = 307
+  Constraints.MinHeight = 341
   Constraints.MinWidth = 405
   Font.Charset = DEFAULT_CHARSET
   Font.Color = clWindowText
@@ -21,7 +21,7 @@ object ListEditDlg: TListEditDlg
   TextHeight = 15
   DesignSize = (
     448
-    344)
+    378)
   object InvalidPathLbl: TLabel
     Left = 12
     Top = 197
@@ -41,6 +41,27 @@ object ListEditDlg: TListEditDlg
     Style = lbOwnerDrawFixed
     OnDrawItem = ListDrawItem
     OnClick = ListClick
+  end
+  object TextMemo: TMemo
+    Left = 12
+    Top = 12
+    Width = 374
+    Height = 176
+    Anchors = [akLeft, akTop, akRight, akBottom]
+    ScrollBars = ssBoth
+    TabOrder = 10
+    Visible = False
+    WordWrap = False
+  end
+  object chkText: TCheckBox
+    Left = 266
+    Top = 195
+    Width = 120
+    Height = 19
+    Anchors = [akRight, akBottom]
+    Caption = 'Edit as &text'
+    TabOrder = 11
+    OnClick = TextModeClick
   end
   object UpButton: TBitBtn
     Left = 398
@@ -71,7 +92,7 @@ object ListEditDlg: TListEditDlg
     TabOrder = 3
   end
   object ReplaceButton: TButton
-    Left = 14
+    Left = 11
     Top = 255
     Width = 88
     Height = 26
@@ -80,7 +101,7 @@ object ListEditDlg: TListEditDlg
     TabOrder = 4
   end
   object AddButton: TButton
-    Left = 111
+    Left = 107
     Top = 255
     Width = 88
     Height = 26
@@ -89,7 +110,7 @@ object ListEditDlg: TListEditDlg
     TabOrder = 5
   end
   object DeleteButton: TButton
-    Left = 208
+    Left = 203
     Top = 255
     Width = 88
     Height = 26
@@ -115,7 +136,26 @@ object ListEditDlg: TListEditDlg
     Anchors = [akRight, akBottom]
     TabOrder = 8
   end
+  object RelativeButton: TButton
+    Left = 11
+    Top = 289
+    Width = 138
+    Height = 26
+    Action = aRelative
+    Anchors = [akRight, akBottom]
+    TabOrder = 12
+  end
+  object AbsoluteButton: TButton
+    Left = 157
+    Top = 289
+    Width = 134
+    Height = 26
+    Action = aAbsolute
+    Anchors = [akRight, akBottom]
+    TabOrder = 13
+  end
   object Actions: TActionList
+    OnUpdate = ActionsUpdate
     Left = 12
     Top = 253
     object aReplace: TAction
@@ -142,6 +182,18 @@ object ListEditDlg: TListEditDlg
       OnExecute = aDeleteInvalidExecute
       OnUpdate = aDeleteInvalidUpdate
     end
+    object aRelative: TAction
+      Caption = 'Make Re&lative'
+      Hint = 'The selected folder relative to the project''s folder, or $(DELPHI)\...'
+      OnExecute = aRelativeExecute
+      OnUpdate = aRelativeUpdate
+    end
+    object aAbsolute: TAction
+      Caption = 'Make A&bsolute'
+      Hint = 'The selected folder as a full name ($(DELPHI) kept)'
+      OnExecute = aRelativeExecute
+      OnUpdate = aRelativeUpdate
+    end
     object aUp: TAction
       OnExecute = aMoveExecute
       OnUpdate = aMoveUpdate
@@ -153,7 +205,7 @@ object ListEditDlg: TListEditDlg
   end
   object pnlFooter: TPanel
     Left = 0
-    Top = 293
+    Top = 327
     Width = 448
     Height = 51
     Anchors = [akLeft, akRight, akBottom]

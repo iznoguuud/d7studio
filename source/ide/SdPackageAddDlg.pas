@@ -104,6 +104,7 @@ end;
 procedure TPackageAddDlg.FormCreate(Sender: TObject);
 begin
   UIPrepareForm(Self);
+  PathBox(auEditFileName, False);
 end;
 
 { the dialogs whose pages were taken in go first, with their controls: Import's OnDestroy reads

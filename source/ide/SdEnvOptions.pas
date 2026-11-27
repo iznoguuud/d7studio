@@ -25,6 +25,7 @@ type
   TTransferTool = record
     Title, Path, WorkingDir, Params: string;
   end;
+  TTransferTools = array of TTransferTool;
 
   { the colours of the Object Inspector (Environment Options | Object Inspector | Colors) }
   TOIColor = (ocBackground, ocGutter, ocCategory, ocName, ocValue, ocNonDefault, ocReference,
@@ -138,11 +139,16 @@ procedure AddPathList(List: TStrings; const Paths: string; const BaseDir: string
 procedure GetTransferTools(List: TStrings);
 function ReadTransferTool(Index: Integer; var Tool: TTransferTool): Boolean;
 procedure WriteTransferTools(const Tools: array of TTransferTool);
+{ Tool Options' Export and Import: tools in a file of their own, in the settings' [Transfer] format.
+  ImportTransferTools adds the file's tools to Tools, each one Tools does not hold already, and returns
+  how many it added (-1: the file holds no tools) }
+procedure ExportTransferTools(const FileName: string; const Tools: array of TTransferTool);
+function ImportTransferTools(const FileName: string; var Tools: TTransferTools): Integer;
 
 implementation
 
 uses
-  SdSettings, SdDelphiDir, SdProject;
+  IniFiles, SdSettings, SdDelphiDir, SdProject;
 
 const
   Sec = 'Environment';
@@ -247,17 +253,39 @@ end;
 const
   TransferSec = 'Transfer';
 
-function ReadTransferTool(Index: Integer; var Tool: TTransferTool): Boolean;
+function ReadToolFrom(Ini: TCustomIniFile; Index: Integer; var Tool: TTransferTool): Boolean;
 var
   S: string;
 begin
-  Result :=(Index >= 0) and (Index < Settings.ReadInteger(TransferSec, 'Count', 0));
+  Result := (Index >= 0) and (Index < Ini.ReadInteger(TransferSec, 'Count', 0));
   if not Result then Exit;
   S := IntToStr(Index);
-  Tool.Title := Settings.ReadString(TransferSec, 'Title' + S, '');
-  Tool.Path := Settings.ReadString(TransferSec, 'Path' + S, '');
-  Tool.WorkingDir := Settings.ReadString(TransferSec, 'WorkingDir' + S, '');
-  Tool.Params := Settings.ReadString(TransferSec, 'Params' + S, '');
+  Tool.Title := Ini.ReadString(TransferSec, 'Title' + S, '');
+  Tool.Path := Ini.ReadString(TransferSec, 'Path' + S, '');
+  Tool.WorkingDir := Ini.ReadString(TransferSec, 'WorkingDir' + S, '');
+  Tool.Params := Ini.ReadString(TransferSec, 'Params' + S, '');
+end;
+
+procedure WriteToolsTo(Ini: TCustomIniFile; const Tools: array of TTransferTool);
+var
+  I: Integer;
+  S: string;
+begin
+  Ini.EraseSection(TransferSec);
+  Ini.WriteInteger(TransferSec, 'Count', Length(Tools));
+  for I := 0 to High(Tools) do
+  begin
+    S := IntToStr(I);
+    Ini.WriteString(TransferSec, 'Title' + S, Tools[I].Title);
+    Ini.WriteString(TransferSec, 'Path' + S, Tools[I].Path);
+    Ini.WriteString(TransferSec, 'WorkingDir' + S, Tools[I].WorkingDir);
+    Ini.WriteString(TransferSec, 'Params' + S, Tools[I].Params);
+  end;
+end;
+
+function ReadTransferTool(Index: Integer; var Tool: TTransferTool): Boolean;
+begin
+  Result := ReadToolFrom(Settings, Index, Tool);
 end;
 
 procedure GetTransferTools(List: TStrings);
@@ -275,19 +303,56 @@ begin
 end;
 
 procedure WriteTransferTools(const Tools: array of TTransferTool);
-var
-  I: Integer;
-  S: string;
 begin
-  Settings.EraseSection(TransferSec);
-  Settings.WriteInteger(TransferSec, 'Count', Length(Tools));
-  for I := 0 to High(Tools) do
-  begin
-    S := IntToStr(I);
-    Settings.WriteString(TransferSec, 'Title' + S, Tools[I].Title);
-    Settings.WriteString(TransferSec, 'Path' + S, Tools[I].Path);
-    Settings.WriteString(TransferSec, 'WorkingDir' + S, Tools[I].WorkingDir);
-    Settings.WriteString(TransferSec, 'Params' + S, Tools[I].Params);
+  WriteToolsTo(Settings, Tools);
+end;
+
+procedure ExportTransferTools(const FileName: string; const Tools: array of TTransferTool);
+var
+  Ini: TMemIniFile;
+begin
+  Ini := TMemIniFile.Create(FileName);
+  try
+    Ini.Clear;
+    WriteToolsTo(Ini, Tools);
+    Ini.UpdateFile;
+  finally
+    Ini.Free;
+  end;
+end;
+
+function SameTool(const A, B: TTransferTool): Boolean;
+begin
+  Result := (A.Title = B.Title) and SameText(A.Path, B.Path) and SameText(A.WorkingDir, B.WorkingDir) and
+    (A.Params = B.Params);
+end;
+
+function ImportTransferTools(const FileName: string; var Tools: TTransferTools): Integer;
+var
+  Ini: TMemIniFile;
+  T: TTransferTool;
+  I, J: Integer;
+  Held: Boolean;
+begin
+  Result := -1;
+  Ini := TMemIniFile.Create(FileName);
+  try
+    I := 0;
+    while ReadToolFrom(Ini, I, T) do
+    begin
+      if Result < 0 then Result := 0;
+      Inc(I);
+      if (T.Title = '') or (T.Path = '') then Continue;
+      Held := False;
+      for J := 0 to High(Tools) do
+        if SameTool(Tools[J], T) then Held := True;
+      if Held then Continue;
+      SetLength(Tools, Length(Tools) + 1);
+      Tools[High(Tools)] := T;
+      Inc(Result);
+    end;
+  finally
+    Ini.Free;
   end;
 end;
 

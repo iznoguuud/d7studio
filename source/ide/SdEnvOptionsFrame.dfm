@@ -343,12 +343,11 @@ object EnvOptionsFrame: TEnvOptionsFrame
         object cbShowNonVisualComponents: TCheckBox
           Left = 9
           Top = 128
-          Width = 290
+          Width = 261
           Height = 22
           TabStop = False
           Caption = 'Show non-&visual components'
           TabOrder = 5
-          Visible = False
         end
       end
       object GridOptions: TGroupBox

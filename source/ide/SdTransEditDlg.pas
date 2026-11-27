@@ -20,7 +20,10 @@ uses
   ActnList, SdEnvOptions;
 
 type
-  TTransEditDlg = class(TForm)
+  { the form and its controls keep Delphi 7's names, the class does not: an expert that enhances Delphi's
+    dialog by its class name finds controls and handlers this one lays out otherwise - its buttons in the
+    band at the foot, no Help button, Macros an action - and fails }
+  TToolPropertiesDlg = class(TForm)
     xLabel1: TLabel;
     xLabel2: TLabel;
     xLabel3: TLabel;
@@ -58,7 +61,7 @@ type
   end;
 
 var
-  TransEditDlg: TTransEditDlg;
+  TransEditDlg: TToolPropertiesDlg;
 
 implementation
 
@@ -77,7 +80,7 @@ const
     ('$PROMPT', 'Prompt for the parameters'), ('$SAVE', 'Save the current file'),
     ('$SAVEALL', 'Save all files'));
 
-procedure TTransEditDlg.FormCreate(Sender: TObject);
+procedure TToolPropertiesDlg.FormCreate(Sender: TObject);
 var
   I: Integer;
 begin
@@ -88,10 +91,12 @@ begin
   FFullHeight := ClientHeight;
   FFooterTop := pnlFooter.Top;
   ShowMacros(False);
+  PathBox(edProgram, False);
+  PathBox(edWorkingDir, True);
 end;
 
 { Delphi's list: the macro and what it stands for, in two columns }
-procedure TTransEditDlg.MacroDrawItem(Control: TWinControl; Index: Integer; Rect: TRect; State: TOwnerDrawState);
+procedure TToolPropertiesDlg.MacroDrawItem(Control: TWinControl; Index: Integer; Rect: TRect; State: TOwnerDrawState);
 var
   C: TCanvas;
   X: Integer;
@@ -106,7 +111,7 @@ end;
 
 { the list and its button are below the fields: the dialog grows to show them, the band of the
   buttons below them; without them the band is as far below the Macros button as below the list }
-procedure TTransEditDlg.ShowMacros(Show: Boolean);
+procedure TToolPropertiesDlg.ShowMacros(Show: Boolean);
 begin
   MacroLabel.Visible := Show;
   MacroList.Visible := Show;
@@ -125,24 +130,24 @@ begin
   end;
 end;
 
-procedure TTransEditDlg.aMacrosExecute(Sender: TObject);
+procedure TToolPropertiesDlg.aMacrosExecute(Sender: TObject);
 begin
   ShowMacros(not MacroList.Visible);
 end;
 
-procedure TTransEditDlg.aInsertMacroExecute(Sender: TObject);
+procedure TToolPropertiesDlg.aInsertMacroExecute(Sender: TObject);
 begin
   if MacroList.ItemIndex < 0 then Exit;
   edParameters.SelText := Macros[MacroList.ItemIndex][0];
   edParameters.SetFocus;
 end;
 
-procedure TTransEditDlg.aInsertMacroUpdate(Sender: TObject);
+procedure TToolPropertiesDlg.aInsertMacroUpdate(Sender: TObject);
 begin
   aInsertMacro.Enabled := MacroList.ItemIndex >= 0;
 end;
 
-procedure TTransEditDlg.aBrowseExecute(Sender: TObject);
+procedure TToolPropertiesDlg.aBrowseExecute(Sender: TObject);
 begin
   if not BrowseFile(edProgram, 'Select Transfer Item',
     'Programs (*.exe;*.com;*.bat;*.cmd)|*.exe;*.com;*.bat;*.cmd|Any file (*.*)|*.*') then Exit;
@@ -150,7 +155,7 @@ begin
   if edTitle.Text = '' then edTitle.Text := ChangeFileExt(ExtractFileName(edProgram.Text), '');
 end;
 
-procedure TTransEditDlg.aOKExecute(Sender: TObject);
+procedure TToolPropertiesDlg.aOKExecute(Sender: TObject);
 const
   Msg = 'A tool needs a title and a program.';
 begin
@@ -158,11 +163,11 @@ begin
     DialogValid(Self, Trim(edProgram.Text) <> '', Msg, edProgram) then ModalResult := mrOk;
 end;
 
-class function TTransEditDlg.Execute(AOwner: TComponent; const ACaption: string; var Tool: TTransferTool): Boolean;
+class function TToolPropertiesDlg.Execute(AOwner: TComponent; const ACaption: string; var Tool: TTransferTool): Boolean;
 var
-  D: TTransEditDlg;
+  D: TToolPropertiesDlg;
 begin
-  D := TTransEditDlg.Create(AOwner);
+  D := TToolPropertiesDlg.Create(AOwner);
   try
     if ACaption <> '' then D.Caption := ACaption;
     D.edTitle.Text := Tool.Title;

@@ -52,7 +52,8 @@ modernized RTL/VCL in full is in [MODERNIZATION.md](MODERNIZATION.md).
 - **Tabs in any order.** Drag a group's tabs, or the file tabs, into the order you want.
 - **File tabs** have a close box, a middle click closes them too, and the tab of a modified file
   ends in `*`. The project's desktop keeps their order, and Delphi 7 reopens the files in that order
-  too. A button at the end of the row lists the open files.
+  too. A button at the end of the row lists the open files; or the tabs go into as many rows as they need (*Tools ▸
+  Editor Options ▸ Display ▸ Multi-line file tabs*).
 - **Back where you left off.** D7 Studio opens the project that was open when it closed (or the
   files named on its command line), and no new Project1 is made. Its start-up screen shows what it
   is loading.
@@ -65,8 +66,8 @@ modernized RTL/VCL in full is in [MODERNIZATION.md](MODERNIZATION.md).
 - **The status bar** also shows Error Insight's count of errors (click it for the list), the
   file's encoding and, when it is not 100 %, the zoom of what the page shows.
 - **A tool bar on every page.** Above the code, the form, the diagram and a resource's editor, a bar
-  holds what that view needs: the navigation boxes over Pascal code, the Diagram's buttons, a
-  resource editor's commands - after the zoom bar, which comes first.
+  holds what that view needs: the navigation boxes over Pascal code, the Diagram's buttons, a resource editor's
+  commands - after the zoom bar, which comes first.
 - **Zoom everywhere, one way.** The code editor, the form designer, the Diagram tab and the image,
   text and hex editors of resources zoom with the zoom bar - *Zoom Out*, *Zoom In*, *Reset Zoom*,
   and *Zoom to Fit* for the form, the diagram and images -, with *View ▸ Zoom* (Ctrl+Num +, Ctrl+Num -,
@@ -96,6 +97,15 @@ modernized RTL/VCL in full is in [MODERNIZATION.md](MODERNIZATION.md).
   the foot, below a thin line, all buttons of one size. *Tools ▸ Environment Options ▸ Preferences ▸
   User interface ▸ Dialogs* makes the body gray instead; the dialogs opened afterwards follow it.
 - **Open and Save dialogs** take file names with characters the system code page lacks.
+- **Boxes of file and folder names** - in Tool Properties, Run Parameters, Install Component, New
+  Component, Import Type Library, the directories of Project and Environment Options - complete the
+  name as you type and take a file or folder dragged onto them from Explorer.
+- **The search path editor** (the *...* of a search path) has *Edit as text*, one folder per line,
+  takes folders dragged onto it from Explorer, and makes the selected folder relative (to
+  `$(DELPHI)` or the project's folder) or absolute.
+- **Install Packages** has *Show in Folder*: Explorer opens with the package selected.
+- **Tools ▸ Configure Tools** exports the tools to a file and imports them from one, adding those
+  the list does not have.
 - **Auto close on successful compile** (*Tools ▸ Environment Options ▸ Preferences*, under *Show
   compiler progress*) closes the Compiling dialog after a compile without errors.
 
@@ -114,6 +124,9 @@ modernized RTL/VCL in full is in [MODERNIZATION.md](MODERNIZATION.md).
 - **Names coloured by kind**: types, routines, properties, fields, variables, local variables,
   parameters, constants and units each have a colour of their own in Light and Dark, and can be
   bold, italic or underlined. Classic colours them all as identifiers, as Delphi 7 does.
+- **Flow control and your own identifiers stand out**: `Exit`, `Break`, `Continue`, `Halt`, `Abort`, `raise` and
+  `goto` in a colour of their own, and the identifiers you list (*Editor Options ▸ Highlighting ▸ Custom identifiers*)
+  in another - elements of the colour themes like the rest.
 - **The navigation bar** over the code: a *Class* box and a *Methods/functions* box that follow the
   caret and jump to what you choose (*Editor Options ▸ Display ▸ Navigation bar*).
 - **Code folding** as in RAD Studio: the unit's `interface`, `implementation`, `initialization` and
@@ -142,9 +155,11 @@ modernized RTL/VCL in full is in [MODERNIZATION.md](MODERNIZATION.md).
 - **Multiple carets**: *Select Next Occurrence* (Shift+Alt+.), *Select All Occurrences*
   (Shift+Alt+;), *Add Caret Above* / *Below* (Ctrl+Alt+Up / Down), and Ctrl+Alt+click.
 - **Line and selection commands**: *Duplicate* (Shift+Ctrl+D), *Move Up* / *Move Down*
-  (Shift+Ctrl+Alt+Up / Down) and *Join* (Shift+Ctrl+J) lines; *Toggle Comment* (Ctrl+/) in every
-  language that has comments; *Expand* / *Shrink Selection* (Shift+Alt+= / Shift+Alt+-) by the
-  code's structure.
+  (Shift+Ctrl+Alt+Up / Down) and *Join* (Shift+Ctrl+J) lines; *Upper Case*, *Lower Case*, *Toggle Case*, *Sort
+  Lines* and *Surround With* `begin ... end`, `try ... finally`, `try ... except` (*Edit ▸ Line*); *Toggle Comment* (Ctrl+/) in every language that has comments; *Expand* / *Shrink
+  Selection* (Shift+Alt+= / Shift+Alt+-) by the code's structure.
+- **A button by the selection** opens a menu of what applies to it: cut, copy, comment, indent, duplicate, move,
+  case, sort, surround, format (*Editor Options ▸ Display ▸ Selection button*).
 - **Word wrap** (*Editor Options ▸ Display ▸ Word wrap*) and **zoom** (the zoom bar, *View ▸ Zoom*,
   the wheel with the zoom key): one zoom for every file, kept.
 - **Back and Forward remember every jump**: also a switch to another file, and a line reached from
@@ -213,7 +228,7 @@ modernized RTL/VCL in full is in [MODERNIZATION.md](MODERNIZATION.md).
   on it as at 100 %: select, move, size and drop components. The form's sizes and positions stay as
   they are. Each form has its own zoom.
 - **The designer's commands above the form**: *Scale...*, *Tab Order...*, *Creation Order...*, *Flip
-  Children*, *Lock Controls*, *Bring to Front*, *Send to Back*, *Align...*, *Size...*, *Align to Grid* and
+  Children*, *Hide Non-Visual Components* (the non-visual components' tiles off every form), *Lock Controls*, *Bring to Front*, *Send to Back*, *Align...*, *Size...*, *Align to Grid* and
   the ten alignments - edges, centers, center in window, space equally - on the bar at the top of the
   design view, each enabled when it applies to the selection. Delphi 7 has the
   alignments in a separate floating Alignment Palette and the others in its menus only.
@@ -279,6 +294,8 @@ modernized RTL/VCL in full is in [MODERNIZATION.md](MODERNIZATION.md).
 
 - **Local Variables** opens objects and records as a tree, and the debug views keep what you opened
   and selected from one stop to the next.
+- **Copy from the CPU view**: its menu copies the selected lines, a number of lines from the selected one -
+  decoding code and reading memory beyond what the pane shows -, or the whole pane, or opens them in an editor page.
 - **The Watch List** opens a value with members, as Local Variables does; Delphi 7's cannot. A
   watch moved to another group keeps its group and its *Break When Changed* breakpoint.
 - **A font for the debugger views** (*Tools ▸ Environment Options ▸ Preferences ▸ User interface ▸

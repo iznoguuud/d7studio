@@ -72,9 +72,13 @@ type
     WordWrap, ScrollBarMarkers: Boolean;
     Minimap: Integer;               // the text in miniature beside the vertical scroll bar (SdSciMinimap): MinimapNone ...
     NavigationBar: Boolean;         // the Class and Methods/functions boxes over a Pascal file's code
+    MultiLineTabs: Boolean;         // the file tabs in as many rows as they need (off: one row and its list button)
+    SelectionButton: Boolean;       // a button by the selection that opens the menu of its commands (TSciEdit.SelectionButton)
     { D7 Studio's Highlighting page }
     HighlightIdentifiers, HighlightBlocks, RainbowBrackets, HighlightFindMatches,
       HighlightCurrentLine, IndentGuides: Boolean;
+    HighlightFlowControl: Boolean;  // Exit, Break, Continue, Halt, Abort, raise, goto in Flow control's colour
+    CustomIdentifiers: string;      // the identifiers in Custom identifier's colour, separated by blanks or commas
     { D7 Studio's Typing page }
     AutoClosePairs, BlockCompletion, SmartIndent, CaretClick: Boolean;
     Zoom: Integer;                  // Scintilla's zoom of every editor, in points (0: none)
@@ -138,6 +142,10 @@ function FreeUserThemeName(const O: TEditorOptions; const Base: string): string;
 function AddUserTheme(var O: TEditorOptions; const Base: string; const C: TEditorColors): Integer;
 { the user's theme Index goes; when it was in use, Light or Dark (the one of its ground) is }
 procedure DeleteUserTheme(var O: TEditorOptions; Index: Integer);
+{ a theme of the user's in Section of Ini (a theme file's too): its elements' colours, the others Default -
+  Flow control and Custom identifier, which themes of before them lack, Light's or Dark's by its ground (Default
+  would be Identifier's: the words would not stand out) }
+procedure ReadUserTheme(Ini: TCustomIniFile; const Section: string; var C: TEditorColors);
 { a theme file: the theme's name and colours (raises EInOutError when it cannot be written); and
   back - False when the file has no theme (its name: the file's when it names none) }
 procedure ExportTheme(const FileName: string; const T: TEditorTheme);
@@ -263,12 +271,16 @@ begin
   O.ScrollBarMarkers := True;
   O.Minimap := MinimapPreview;
   O.NavigationBar := True;
+  O.MultiLineTabs := False;
+  O.SelectionButton := True;
   O.HighlightIdentifiers := True;
   O.HighlightBlocks := True;
   O.RainbowBrackets := False;
   O.HighlightFindMatches := True;
   O.HighlightCurrentLine := True;
   O.IndentGuides := True;
+  O.HighlightFlowControl := True;
+  O.CustomIdentifiers := '';
   O.AutoClosePairs := True;
   O.BlockCompletion := True;
   O.SmartIndent := True;
@@ -420,6 +432,8 @@ begin
     OptFlag('ScrollBarMarkers', O.ScrollBarMarkers, -1),
     OptInt('Minimap', O.Minimap, -1),
     OptFlag('NavigationBar', O.NavigationBar, -1),
+    OptFlag('MultiLineTabs', O.MultiLineTabs, -1),
+    OptFlag('SelectionButton', O.SelectionButton, -1),
     OptFlag('KeepFileHistory', O.KeepHistory, -1),
     OptInt('FileHistoryLimit', O.HistoryLimit, -1),
     OptFlag('ErrorInsight', O.ErrorInsight, -1),
@@ -429,6 +443,8 @@ begin
     OptFlag('FindMatches', O.HighlightFindMatches, -1),
     OptFlag('CurrentLine', O.HighlightCurrentLine, -1),
     OptFlag('IndentGuides', O.IndentGuides, -1),
+    OptFlag('FlowControl', O.HighlightFlowControl, -1),
+    OptStr('CustomIdentifiers', O.CustomIdentifiers, -1),
     OptFlag('AutoClosePairs', O.AutoClosePairs, -1),
     OptFlag('BlockCompletion', O.BlockCompletion, -1),
     OptFlag('SmartIndent', O.SmartIndent, -1),
@@ -569,8 +585,7 @@ begin
         Key := Trim(Ini.ReadString(Secs[I], ThemeNameKey, ''));
         if SameText(Key, Name) then Name := Key;
         if (Name = '') or IsBuiltinTheme(Name) or (UserThemeIndex(O, Name) >= 0) then Continue;
-        DefaultColors(C);
-        ReadThemeColors(Ini, Secs[I], C);
+        ReadUserTheme(Ini, Secs[I], C);
         AddUserTheme(O, Name, C);
       end;
   finally
@@ -776,8 +791,7 @@ begin
     if not Result then Exit;
     T.Name := Trim(Ini.ReadString(ThemeFileSection, ThemeNameKey, ''));
     if T.Name = '' then T.Name := ChangeFileExt(ExtractFileName(FileName), '');
-    DefaultColors(T.Colors);
-    ReadThemeColors(Ini, ThemeFileSection, T.Colors);
+    ReadUserTheme(Ini, ThemeFileSection, T.Colors);
   finally
     L.Free;
     Ini.Free;
@@ -963,6 +977,17 @@ end;
 function EditorIsDark(const C: TEditorColors): Boolean;
 begin
   Result := UIIsDark(ElementBack(C, eePlainText));
+end;
+
+procedure ReadUserTheme(Ini: TCustomIniFile; const Section: string; var C: TEditorColors);
+var
+  Present: TEditorElements;
+  E: TEditorElement;
+begin
+  DefaultColors(C);
+  Present := ReadThemeColors(Ini, Section, C);
+  for E := eeFlowControl to eeCustomIdent do
+    if not (E in Present) then C[E] := LightDark[EditorIsDark(C)][E];
 end;
 
 initialization

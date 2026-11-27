@@ -103,7 +103,7 @@ procedure EditWindowFontChanged;
 implementation
 
 uses
-  ToolsAPI, SdSciDefs, SdEditorOptions, SdOtaCore;
+  TypInfo, ToolsAPI, SdSciDefs, SdEditorOptions, SdOtaCore;
 
 {$R *.dfm}
 
@@ -270,22 +270,53 @@ procedure CreateEditWindow(Main: TCustomForm; EditorMenu, BackMenu, ForwardMenu,
 var
   Tabs: TXTabControl;
 
-  { Menu becomes the window's component. Its old owner's field of it - which RemoveComponent
-    sets to nil - keeps it. }
+  { Menu becomes the window's component. RemoveComponent tells the old owner's components that it
+    is gone, and they let go of it: its owner's field of it and every published property of those
+    components that held it (Back's and Forward's DropdownMenu, a control's PopupMenu) are set to it
+    again afterwards }
   procedure Take(Menu: TPopupMenu);
   var
     Field: ^TComponent;
+    Holders, Props: TList;       // a component that held the menu, and its property (PPropInfo)
+    List: PPropList;
+    I, J, N: Integer;
+    C: TComponent;
   begin
     if Menu = nil then Exit;
     Field := nil;
-    if Menu.Owner <> nil then
-    begin
-      MenusOwner := Menu.Owner;
-      Field := Menu.Owner.FieldAddress(Menu.Name);
-      Menu.Owner.RemoveComponent(Menu);
+    Holders := TList.Create;
+    Props := TList.Create;
+    try
+      if Menu.Owner <> nil then
+      begin
+        MenusOwner := Menu.Owner;
+        Field := Menu.Owner.FieldAddress(Menu.Name);
+        for I := 0 to Menu.Owner.ComponentCount - 1 do
+        begin
+          C := Menu.Owner.Components[I];
+          N := GetPropList(C, List);
+          try
+            for J := 0 to N - 1 do
+              if (List^[J]^.PropType^^.Kind = tkClass) and Assigned(List^[J]^.SetProc) and
+                (GetObjectProp(C, List^[J]) = Menu) then
+              begin
+                Holders.Add(C);
+                Props.Add(List^[J]);
+              end;
+          finally
+            if N > 0 then FreeMem(List);
+          end;
+        end;
+        Menu.Owner.RemoveComponent(Menu);
+      end;
+      TheWindow.InsertComponent(Menu);
+      if Field <> nil then Field^ := Menu;
+      for I := 0 to Holders.Count - 1 do
+        SetObjectProp(TComponent(Holders[I]), PPropInfo(Props[I]), Menu);
+    finally
+      Props.Free;
+      Holders.Free;
     end;
-    TheWindow.InsertComponent(Menu);
-    if Field <> nil then Field^ := Menu;
     SetLength(TakenMenus, Length(TakenMenus) + 1);
     TakenMenus[High(TakenMenus)] := Menu;
   end;

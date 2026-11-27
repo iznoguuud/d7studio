@@ -90,7 +90,7 @@ they open on and again when moved (`WM_DPICHANGED`).
 - Embedded forms follow their host: a form put on a panel of another form at run time (a docked
   window, a wizard's page) is scaled from its own DPI to the host's, and again when it moves to a
   host on a monitor with another scale.
-- ModernDemo (`demos\modern` in the project's sources): a program that shows all this - and Unicode, the dialogs, the look and the
+- ModernDemo (`d7studio\demos\modern` in the project's sources): a program that shows all this - and Unicode, the dialogs, the look and the
   Windows API -, with what to know when writing for every DPI (its `README.md`).
 - `Graphics`: canvases keep a font's exact pixel height.
 - `StdCtrls`, `ComCtrls`, `Grids`, `ExtCtrls`, `CheckLst`, `ActnMan`, `DBCtrls`, `DBGrids`,

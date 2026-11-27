@@ -111,6 +111,7 @@ procedure TImportTypeLibDlg.FormCreate(Sender: TObject);
 begin
   UIPrepareForm(Self);
   FAdded := TStringList.Create;
+  PathBox(UnitDirName, True);
 end;
 
 procedure TImportTypeLibDlg.FormDestroy(Sender: TObject);

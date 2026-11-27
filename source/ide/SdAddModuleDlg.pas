@@ -47,6 +47,7 @@ const
 procedure TAddModuleDlg.FormCreate(Sender: TObject);
 begin
   UIPrepareForm(Self);
+  PathBox(ModuleNameCombo, False);
 end;
 
 procedure TAddModuleDlg.BrowseButtonClick(Sender: TObject);

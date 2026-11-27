@@ -395,7 +395,7 @@ object EditorOptionsFrame: TEditorOptionsFrame
       TabVisible = False
       object dpLabel4: TLabel
         Left = 81
-        Top = 237
+        Top = 258
         Width = 59
         Height = 15
         Caption = 'Editor &font:'
@@ -404,7 +404,7 @@ object EditorOptionsFrame: TEditorOptionsFrame
       end
       object dpLabel7: TLabel
         Left = 314
-        Top = 237
+        Top = 258
         Width = 23
         Height = 15
         Caption = '&Size:'
@@ -412,7 +412,7 @@ object EditorOptionsFrame: TEditorOptionsFrame
       end
       object dpLabel16: TLabel
         Left = 9
-        Top = 281
+        Top = 302
         Width = 42
         Height = 15
         Caption = 'Sample:'
@@ -420,7 +420,7 @@ object EditorOptionsFrame: TEditorOptionsFrame
       end
       object dpGroupBox11: TGroupBox
         Left = 9
-        Top = 86
+        Top = 107
         Width = 620
         Height = 89
         Caption = ' Margin and gutter '
@@ -514,7 +514,7 @@ object EditorOptionsFrame: TEditorOptionsFrame
         Left = 9
         Top = 9
         Width = 620
-        Height = 71
+        Height = 92
         Caption = ' Display and file options '
         TabOrder = 0
         object eoBriefCursors: TCheckBox
@@ -569,6 +569,22 @@ object EditorOptionsFrame: TEditorOptionsFrame
           Caption = '&Navigation bar'
           TabOrder = 2
         end
+        object chkMultiLineTabs: TCheckBox
+          Left = 9
+          Top = 61
+          Width = 175
+          Height = 19
+          Caption = 'Multi-line file &tabs'
+          TabOrder = 6
+        end
+        object chkSelectionButton: TCheckBox
+          Left = 214
+          Top = 61
+          Width = 161
+          Height = 19
+          Caption = 'Selection &button'
+          TabOrder = 7
+        end
         object cbHistoryLimit: TComboBox
           Left = 302
           Top = 38
@@ -587,7 +603,7 @@ object EditorOptionsFrame: TEditorOptionsFrame
       end
       object gbScrollBars: TGroupBox
         Left = 9
-        Top = 181
+        Top = 202
         Width = 620
         Height = 49
         Caption = ' Scroll bars '
@@ -625,7 +641,7 @@ object EditorOptionsFrame: TEditorOptionsFrame
       end
       object FontName: TComboBox
         Left = 81
-        Top = 257
+        Top = 278
         Width = 217
         Height = 24
         Style = csDropDownList
@@ -635,7 +651,7 @@ object EditorOptionsFrame: TEditorOptionsFrame
       end
       object FontSize: TComboBox
         Left = 314
-        Top = 257
+        Top = 278
         Width = 74
         Height = 24
         ItemHeight = 0
@@ -658,9 +674,9 @@ object EditorOptionsFrame: TEditorOptionsFrame
       end
       object FontSample: TPanel
         Left = 9
-        Top = 304
+        Top = 325
         Width = 620
-        Height = 94
+        Height = 79
         BevelOuter = bvNone
         Caption = 'AaBbYyZz'
         ParentColor = True
@@ -669,7 +685,7 @@ object EditorOptionsFrame: TEditorOptionsFrame
           Left = 0
           Top = 0
           Width = 620
-          Height = 94
+          Height = 79
           Align = alClient
           Brush.Style = bsClear
           Pen.Color = clBtnShadow
@@ -1023,7 +1039,7 @@ object EditorOptionsFrame: TEditorOptionsFrame
       TabVisible = False
       object lblHighlightNote: TLabel
         Left = 9
-        Top = 234
+        Top = 313
         Width = 620
         Height = 45
         AutoSize = False
@@ -1113,6 +1129,42 @@ object EditorOptionsFrame: TEditorOptionsFrame
           Width = 592
           Height = 19
           Caption = 'Indentation &guides, the one of the block at the caret highlighted'
+          TabOrder = 1
+        end
+      end
+      object gbWords: TGroupBox
+        Left = 9
+        Top = 231
+        Width = 620
+        Height = 73
+        Caption = ' Words '
+        TabOrder = 2
+        object lblCustomIdents: TLabel
+          Left = 9
+          Top = 44
+          Width = 108
+          Height = 15
+          Caption = 'C&ustom identifiers:'
+          FocusControl = edCustomIdents
+        end
+        object chkFlowControl: TCheckBox
+          Left = 9
+          Top = 18
+          Width = 592
+          Height = 19
+          Caption = 'F&low control: Exit, Break, Continue, Halt, Abort, raise and goto'
+          TabOrder = 0
+        end
+        object edCustomIdents: TEdit
+          Left = 123
+          Top = 41
+          Width = 488
+          Height = 23
+          Hint =
+            'Identifiers in the colour of Custom identifier (Color page), sep' +
+            'arated by blanks or commas'
+          ParentShowHint = False
+          ShowHint = True
           TabOrder = 1
         end
       end

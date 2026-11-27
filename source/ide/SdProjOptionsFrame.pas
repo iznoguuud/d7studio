@@ -187,6 +187,7 @@ type
     AddButton: TButton;
     RemoveButton: TButton;
     ButtonComponents: TButton;
+    ButtonShowFolder: TButton;
     EditButton: TButton;
     pkGroupBox2: TGroupBox;
     EditPackages: TEdit;
@@ -213,6 +214,7 @@ type
     aPkgRemove: TAction;
     aPkgEdit: TAction;
     aPkgComponents: TAction;
+    aPkgFolder: TAction;
     aRuntimeAdd: TAction;
     aKeyAdd: TAction;
     aKeyDelete: TAction;
@@ -231,6 +233,7 @@ type
     procedure aPkgRemoveExecute(Sender: TObject);
     procedure aPkgEditExecute(Sender: TObject);
     procedure aPkgComponentsExecute(Sender: TObject);
+    procedure aPkgFolderExecute(Sender: TObject);
     procedure PkgSelectedUpdate(Sender: TObject);
     procedure aRuntimeAddExecute(Sender: TObject);
     procedure RuntimeUpdate(Sender: TObject);
@@ -340,6 +343,11 @@ begin
   { the version keys' grid flat: its frame one line (its title cells have no raised edges, as
     the .dfm leaves the fixed lines out) }
   UIFlatBorder(ValueGrid);
+  PathBox(ddOutputDir, True);
+  PathBox(ddUnitOutput, True);
+  PathBox(ddDPLOutputDir, True);
+  PathBox(ddDCPOutputDir, True);
+  PathBox(AppHelpFile, False);
 end;
 
 destructor TProjOptionsFrame.Destroy;
@@ -685,12 +693,21 @@ begin
   PackageClick(nil);
 end;
 
+{ the package chosen in the design packages' list; nil when none is }
+function SelectedPackage(List: TCheckListBox): TPackageEntry;
+begin
+  if List.ItemIndex >= 0 then Result := TPackageEntry(List.Items.Objects[List.ItemIndex])
+  else Result := nil;
+end;
+
 procedure TProjOptionsFrame.PackageClick(Sender: TObject);
+var
+  E: TPackageEntry;
 begin
   LabelPackageFile.Canvas.Font := LabelPackageFile.Font;       // measured as it is shown
-  if DesignPackageList.ItemIndex >= 0 then
-    LabelPackageFile.Caption := MinimizeName(TPackageEntry(DesignPackageList.Items.Objects[DesignPackageList.ItemIndex]).FileName,
-      LabelPackageFile.Canvas, LabelPackageFile.Width)
+  E := SelectedPackage(DesignPackageList);
+  if E <> nil then
+    LabelPackageFile.Caption := MinimizeName(E.FileName, LabelPackageFile.Canvas, LabelPackageFile.Width)
   else
     LabelPackageFile.Caption := '';
 end;
@@ -701,8 +718,8 @@ var
   E: TPackageEntry;
   Err: string;
 begin
-  if DesignPackageList.ItemIndex < 0 then Exit;
-  E := TPackageEntry(DesignPackageList.Items.Objects[DesignPackageList.ItemIndex]);
+  E := SelectedPackage(DesignPackageList);
+  if E = nil then Exit;
   Screen.Cursor := crHourGlass;
   try
     if not DesignHost.EnablePackage(E, DesignPackageList.Checked[DesignPackageList.ItemIndex], Err) then
@@ -727,12 +744,18 @@ end;
   time the application goes idle (every mouse move) }
 procedure TProjOptionsFrame.PkgSelectedUpdate(Sender: TObject);
 var
-  Enable: Boolean;
+  E: TPackageEntry;
 begin
-  Enable := DesignPackageList.ItemIndex >= 0;
-  if Enable and (Sender = aPkgComponents) then
-    Enable := TPackageEntry(DesignPackageList.Items.Objects[DesignPackageList.ItemIndex]).Loaded;
-  TAction(Sender).Enabled := Enable;
+  E := SelectedPackage(DesignPackageList);
+  TAction(Sender).Enabled := (E <> nil) and ((Sender <> aPkgComponents) or E.Loaded);
+end;
+
+procedure TProjOptionsFrame.aPkgFolderExecute(Sender: TObject);
+var
+  E: TPackageEntry;
+begin
+  E := SelectedPackage(DesignPackageList);
+  if E <> nil then ShowInExplorer(ExpandDelphiMacros(E.FileName));
 end;
 
 procedure TProjOptionsFrame.aPkgAddExecute(Sender: TObject);
@@ -764,7 +787,8 @@ var
   E: TPackageEntry;
   Err: string;
 begin
-  E := TPackageEntry(DesignPackageList.Items.Objects[DesignPackageList.ItemIndex]);
+  E := SelectedPackage(DesignPackageList);
+  if E = nil then Exit;
   if MessageBox(GetParentForm(Self).Handle, PChar(Format('Remove %s?', [PackageCaption(E)])), PChar(FTitle),
     MB_YESNO or MB_ICONQUESTION) <> IDYES then Exit;
   Screen.Cursor := crHourGlass;
@@ -792,8 +816,8 @@ var
   L: TStringList;
   I: Integer;
 begin
-  if DesignPackageList.ItemIndex < 0 then Exit;
-  E := TPackageEntry(DesignPackageList.Items.Objects[DesignPackageList.ItemIndex]);
+  E := SelectedPackage(DesignPackageList);
+  if E = nil then Exit;
   Base := PackageBaseName(E.FileName);
   Found := '';
   L := TStringList.Create;
@@ -827,7 +851,8 @@ var
   L: TStringList;
   I, Index: Integer;
 begin
-  E := TPackageEntry(DesignPackageList.Items.Objects[DesignPackageList.ItemIndex]);
+  E := SelectedPackage(DesignPackageList);
+  if E = nil then Exit;
   L := TStringList.Create;
   try
     DesignHost.GetPackageComponents(E, L);

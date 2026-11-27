@@ -119,6 +119,7 @@ end;
 procedure TNewCompDlg.FormCreate(Sender: TObject);
 begin
   UIPrepareForm(Self);
+  PathBox(EditFileName, False);
 end;
 
 { as in Delphi: the class name follows the ancestor (TButton -> TButton1), the unit file name the

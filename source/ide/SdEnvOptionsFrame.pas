@@ -305,6 +305,9 @@ begin
   UIPrepareFrame(Self);
   { the frame of the palette's components (its header and list) one flat line, not the sunken edge }
   UIFlatBorder(ToolListPanel);
+  PathBox(ecRepositoryDir, True);
+  PathBox(ecDLLOutput, True);
+  PathBox(ecDCPOutput, True);
 end;
 
 { a double click on an override edits it (the Edit command) }
@@ -395,6 +398,7 @@ begin
   ecSnapSpacing.Text := IntToStr(DesignEnv.SnapSpacing);
   ecSnapMargin.Text := IntToStr(DesignEnv.SnapMargin);
   cbShowComponentCaptions.Checked := DesignEnv.ShowCaptions;
+  cbShowNonVisualComponents.Checked := DesignEnv.ShowNonVisual;
   cbShowDesignerHints.Checked := E.ShowDesignerHints;
   cbShowExtendedControlHints.Checked := E.ShowExtendedHints;
   cbShowFormPositioner.Checked := DesignEnv.ShowPositioner;
@@ -506,6 +510,7 @@ begin
   if DesignEnv.SnapSpacing < 0 then DesignEnv.SnapSpacing := 0;
   if DesignEnv.SnapMargin < 0 then DesignEnv.SnapMargin := 0;
   DesignEnv.ShowCaptions := cbShowComponentCaptions.Checked;
+  DesignEnv.ShowNonVisual := cbShowNonVisualComponents.Checked;
   E.ShowDesignerHints := cbShowDesignerHints.Checked;
   E.ShowExtendedHints := cbShowExtendedControlHints.Checked;
   DesignEnv.ShowPositioner := cbShowFormPositioner.Checked;

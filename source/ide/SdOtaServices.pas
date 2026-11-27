@@ -747,7 +747,7 @@ const
     completion list's ground in the editor theme: no field) in EnvKinds; where it is: EnvField.
     RootDir and BinDir are D7 Studio's names of before, the Object Inspector's colours and
     InsightBGColor later Delphis' - none of them in Delphi 7's list: they answer as they are. }
-  EnvNames: array[0..72] of string = ('LibraryPath', 'BrowsingPath', 'PackageDPLOutput', 'PackageDCPOutput',
+  EnvNames: array[0..73] of string = ('LibraryPath', 'BrowsingPath', 'PackageDPLOutput', 'PackageDCPOutput',
     'RepositoryDir', 'AutoSaveEditorFiles', 'AutoSaveDesktop', 'AutoDragDocking', 'WarnOnPackageRebuild',
     'MinimizeOnRun', 'ShowCompilerProgress', 'ShowDesignerHints', 'ShowExtendedControlHints',
     'DFMAsText', 'AutoCreateForms', 'ObjInspShowInstanceList', 'ObjInspShowClassnames', 'ObjInspShowStatusBar',
@@ -757,14 +757,14 @@ const
     'ObjInspReadonlyColor', 'DisplayGrid', 'SnapToGrid', 'ShowComponentCaptions', 'GridSizeX', 'GridSizeY',
     'ShowModExp', 'ModuleExplorerHighlightIncomplete', 'ModuleExplorerDeclarationSyntax',
     'ClassCompletionBooleanProperties', 'SafeCallMapping', 'IgnoreSpecialFlags', 'IgnorePreDeclId',
-    'IgnoreReserved', 'IgnoreHidden', 'IgnoreCanCreate', 'InsertMode', 'CursorInTabs', 'GroupUndo',
-    'CursorAfterEOF', 'UndoAfterSave', 'PersistentBlocks', 'OverwriteBlocks', 'DoubleClickLine',
+    'IgnoreReserved', 'IgnoreHidden', 'IgnoreCanCreate', 'ShowNonVisualComponents', 'InsertMode', 'CursorInTabs',
+    'GroupUndo', 'CursorAfterEOF', 'UndoAfterSave', 'PersistentBlocks', 'OverwriteBlocks', 'DoubleClickLine',
     'FindTextAtCursor', 'CutCopyEnabled', 'UndoLimit', 'BRIEFCursors', 'CreateBackup', 'VisibleRightMargin',
     'RightMargin', 'VisibleGutter', 'GutterWidth', 'EditorFont', 'FontSize', 'BRIEFRegEx',
     'EditorOptionsSortPagesMenu', 'PreserveLineEnds', 'FindAutoCompletes', 'CodeCompletion', 'CodeParameters',
     'CodeCompleteDelay', 'InsightBGColor');
-  EnvKinds = 'pppppbbbbbbbbbbbbbbbbbbbcccccccbbbiibbbbibbbbbbbbbbbbbbbibbbibisibbbbbbdt';
-  EnvEditorFirst = 46;          // EnvNames from here on are editor options (SaveEditorOptions)
+  EnvKinds = 'pppppbbbbbbbbbbbbbbbbbbbcccccccbbbiibbbbibbbbbbbbbbbbbbbbibbbibisibbbbbbdt';
+  EnvEditorFirst = 47;          // EnvNames from here on are editor options (SaveEditorOptions)
 
 { where D7 Studio keeps EnvNames[I] }
 function EnvField(I: Integer): Pointer;
@@ -813,32 +813,33 @@ begin
     40: Result := @EnvOptions.TLSafeCall;
     41: Result := @EnvOptions.TLIgnoreFlags;
     42..45: Result := @EnvOptions.TLFlags[I - 42];
-    46: Result := @EditorOptions.InsertMode;
-    47: Result := @EditorOptions.CursorThroughTabs;
-    48: Result := @EditorOptions.GroupUndo;
-    49: Result := @EditorOptions.CursorBeyondEOF;
-    50: Result := @EditorOptions.UndoAfterSave;
-    51: Result := @EditorOptions.PersistentBlocks;
-    52: Result := @EditorOptions.OverwriteBlocks;
-    53: Result := @EditorOptions.DoubleClickLine;
-    54: Result := @EditorOptions.FindTextAtCursor;
-    55: Result := @EditorOptions.ForceCutCopy;
-    56: Result := @EditorOptions.UndoLimit;
-    57: Result := @EditorOptions.BriefCursors;
-    58: Result := @EditorOptions.CreateBackup;
-    59: Result := @EditorOptions.ShowRightMargin;
-    60: Result := @EditorOptions.RightMargin;
-    61: Result := @EditorOptions.VisibleGutter;
-    62: Result := @EditorOptions.GutterWidth;
-    63: Result := @EditorOptions.FontName;
-    64: Result := @EditorOptions.FontSize;
-    65: Result := @EditorOptions.BriefRegExp;
-    66: Result := @EditorOptions.SortPagesMenu;
-    67: Result := @EditorOptions.PreserveLineEnds;
-    68: Result := @EditorOptions.FindAutoComplete;
-    69: Result := @EditorOptions.AutoComplete;
-    70: Result := @EditorOptions.AutoParameters;
-    71: Result := @EditorOptions.CodeDelay;
+    46: Result := @DesignEnv.ShowNonVisual;
+    47: Result := @EditorOptions.InsertMode;
+    48: Result := @EditorOptions.CursorThroughTabs;
+    49: Result := @EditorOptions.GroupUndo;
+    50: Result := @EditorOptions.CursorBeyondEOF;
+    51: Result := @EditorOptions.UndoAfterSave;
+    52: Result := @EditorOptions.PersistentBlocks;
+    53: Result := @EditorOptions.OverwriteBlocks;
+    54: Result := @EditorOptions.DoubleClickLine;
+    55: Result := @EditorOptions.FindTextAtCursor;
+    56: Result := @EditorOptions.ForceCutCopy;
+    57: Result := @EditorOptions.UndoLimit;
+    58: Result := @EditorOptions.BriefCursors;
+    59: Result := @EditorOptions.CreateBackup;
+    60: Result := @EditorOptions.ShowRightMargin;
+    61: Result := @EditorOptions.RightMargin;
+    62: Result := @EditorOptions.VisibleGutter;
+    63: Result := @EditorOptions.GutterWidth;
+    64: Result := @EditorOptions.FontName;
+    65: Result := @EditorOptions.FontSize;
+    66: Result := @EditorOptions.BriefRegExp;
+    67: Result := @EditorOptions.SortPagesMenu;
+    68: Result := @EditorOptions.PreserveLineEnds;
+    69: Result := @EditorOptions.FindAutoComplete;
+    70: Result := @EditorOptions.AutoComplete;
+    71: Result := @EditorOptions.AutoParameters;
+    72: Result := @EditorOptions.CodeDelay;
   else
     Result := nil;
   end;

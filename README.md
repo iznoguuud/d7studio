@@ -41,7 +41,7 @@ checks its SHA-256 and starts it. Uninstalling D7 Studio gives Delphi 7 its own 
 |---|---|
 | [source/README.md](source/README.md) | Installing D7 Studio, what Setup changes, the modernized RTL/VCL in your programs, the IDE |
 | [source/FEATURES.md](source/FEATURES.md) | What D7 Studio's IDE has that Delphi 7's IDE does not, area by area |
-| [source/RELEASE-NOTES.md](source/RELEASE-NOTES.md) | The release notes: what changed in each version - the IDE, its experts, the modernized RTL/VCL and Setup |
+| [RELEASE-NOTES.md](RELEASE-NOTES.md) | The release notes: what changed in each version - the IDE, its experts, the modernized RTL/VCL and Setup |
 | [patch/MODERNIZATION.md](patch/MODERNIZATION.md) | The modernized RTL/VCL: its features and what a developer should know |
 | [patch/README.md](patch/README.md) | How the patch is made: compiled from source, no decompilation, none of Borland's files in it |
 | [source/THIRD-PARTY-NOTICES.md](source/THIRD-PARTY-NOTICES.md) | The icons: made from JetBrains' IntelliJ Platform icons (Apache License 2.0) - the licence, the notice and what was changed |
@@ -54,8 +54,8 @@ Setup installs the first four, the notices and the license into Delphi 7's `Bin`
 - `source\` - D7 Studio's sources: the IDE (`ide`, `editor`, `designer`, `codeinsight`,
   `debugger`), `migrate`, which carries an existing Delphi 7 configuration over, and the two
   experts (`experts\aiharness`, `experts\git`, with the code they share in `experts\kit`);
-  `README.md`, `FEATURES.md` and `RELEASE-NOTES.md` (the release notes) with a copy of
-  `patch\MODERNIZATION.md` beside them, as Setup installs the four into Delphi 7's `Bin`.
+  `README.md` and `FEATURES.md` with a copy of `patch\MODERNIZATION.md` beside them, as Setup
+  installs them into Delphi 7's `Bin` with the release notes, `RELEASE-NOTES.md` at the root.
 - `patch\` - the modernized RTL/VCL as Setup installs it: for each of Delphi 7 Update 1's files
   that it replaces, the difference from Borland's file (`Delta\`); the new units whole (`New\`);
   `manifest.txt` with every file's SHA-256; `patch.ps1`, which applies the patch to an installed

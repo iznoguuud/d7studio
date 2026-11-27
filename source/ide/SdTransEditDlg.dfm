@@ -1,4 +1,4 @@
-object TransEditDlg: TTransEditDlg
+object TransEditDlg: TToolPropertiesDlg
   Left = 200
   Top = 120
   ActiveControl = edTitle

@@ -216,6 +216,13 @@ type
     aMoveLinesUp: TAction;
     aMoveLinesDown: TAction;
     aJoinLines: TAction;
+    aUpperCase: TAction;
+    aLowerCase: TAction;
+    aToggleCase: TAction;
+    aSortLines: TAction;
+    aSurroundBegin: TAction;
+    aSurroundFinally: TAction;
+    aSurroundExcept: TAction;
     aSelectNextOccurrence: TAction;
     aSelectAllOccurrences: TAction;
     aAddCaretAbove: TAction;
@@ -242,6 +249,7 @@ type
     EditFrontCommand: TAction;
     EditBackCommand: TAction;
     EditLockControlsCommand: TAction;
+    aHideNonVisual: TAction;
     SearchFindCommand: TAction;
     SearchFileFindCommand: TAction;
     SearchReplaceCommand: TAction;
@@ -477,6 +485,7 @@ type
     EditFlipChildrenAllItem: TMenuItem;
     EditFlipChildrenSelectedItem: TMenuItem;
     EditLockControlsItem: TMenuItem;
+    miHideNonVisual: TMenuItem;
     N9: TMenuItem;
     miToggleComment: TMenuItem;
     miIndent: TMenuItem;
@@ -488,6 +497,16 @@ type
     miMoveLinesUp: TMenuItem;
     miMoveLinesDown: TMenuItem;
     miJoinLines: TMenuItem;
+    miLineCaseSep: TMenuItem;
+    miUpperCase: TMenuItem;
+    miLowerCase: TMenuItem;
+    miToggleCase: TMenuItem;
+    miLineSortSep: TMenuItem;
+    miSortLines: TMenuItem;
+    miSurroundMenu: TMenuItem;
+    miSurroundBegin: TMenuItem;
+    miSurroundFinally: TMenuItem;
+    miSurroundExcept: TMenuItem;
     miCaretsMenu: TMenuItem;
     miSelectNextOccurrence: TMenuItem;
     miSelectAllOccurrences: TMenuItem;
@@ -651,6 +670,28 @@ type
     ProcessMenu: TPopupMenu;
     DesktopsMenu: TPopupMenu;
     FlipChildrenPopup: TPopupMenu;
+    SelectionPopup: TPopupMenu;
+    selCut: TMenuItem;
+    selCopy: TMenuItem;
+    selSep1: TMenuItem;
+    selToggleComment: TMenuItem;
+    selIndent: TMenuItem;
+    selUnindent: TMenuItem;
+    selSep2: TMenuItem;
+    selDuplicate: TMenuItem;
+    selMoveUp: TMenuItem;
+    selMoveDown: TMenuItem;
+    selSep3: TMenuItem;
+    selUpperCase: TMenuItem;
+    selLowerCase: TMenuItem;
+    selToggleCase: TMenuItem;
+    selSortLines: TMenuItem;
+    selSurround: TMenuItem;
+    selSurroundBegin: TMenuItem;
+    selSurroundFinally: TMenuItem;
+    selSurroundExcept: TMenuItem;
+    selSep4: TMenuItem;
+    selFormatSource: TMenuItem;
     FlipChildrenAllItem: TMenuItem;
     FlipChildrenSelectedItem: TMenuItem;
     miProcess: TMenuItem;
@@ -714,6 +755,7 @@ type
     tbDsnSep3: TToolButton;
     tbDsnFlip: TToolButton;
     tbDsnSep4: TToolButton;
+    tbDsnNonVisual: TToolButton;
     tbDsnLock: TToolButton;
     tbDsnSep5: TToolButton;
     aRecordMacro: TAction;
@@ -963,6 +1005,8 @@ type
     procedure ActResources(Sender: TObject);
     procedure ActRun(Sender: TObject);
     procedure ActDebugInsp(Sender: TObject);
+    { the CPU view's menu: Copy, Copy Lines, Copy All (the clipboard), Open in Editor, Go to Address }
+    procedure ActCpu(Sender: TObject);
     procedure ActRevert(Sender: TObject);
     procedure ActInspView(Sender: TObject);
     procedure ActRepository(Sender: TObject);
@@ -1359,6 +1403,15 @@ type
     { Doc's tab to place ToIndex (a dragged tab's place, the desktop's order); FDocs and FPages follow }
     procedure MoveDoc(Doc: TWinControl; ToIndex: Integer);
     procedure UpdatePageTab(Page: TWinControl);
+    { the row above the pages as high as the file tabs' rows, the buttons beside them as one row;
+      Editor Options | Multi-line file tabs on the tabs (their titles again: a new window has the
+      code page's only) }
+    procedure FitTabRow;
+    procedure TabsResized(Sender: TObject);
+    procedure ApplyMultiLineTabs;
+    { Edit | Hide Non-Visual Components: Environment Options' Show non-visual components the other way
+      round, for every form at once }
+    procedure ToggleNonVisual;
     procedure ForgetDesigner(Page: TEditorPage);
     procedure FreePage(Page: TWinControl);
     function DocModified(Doc: TWinControl): Boolean;
@@ -2935,6 +2988,9 @@ begin
   FilesBar.Align := alRight;
   FilesBar.Visible := True;
   FPageTabs.TabStop := False;
+  FPageTabs.MultiLine := EditorOptions.MultiLineTabs;
+  FPageTabs.RaggedRight := True;         // in rows: each tab as wide as its title, not stretched
+  FPageTabs.OnResize := TabsResized;
   FPageTabs.OnChange := TabsChange;
   FPageTabs.OnMouseDown := TabsMouseDown;
   FPageTabs.OnClose := TabsClose;
@@ -2944,6 +3000,7 @@ begin
     editor control as experts find it (SdOtaEditWindow: the edit window's Editor) }
   FEditWindow := TEditControl.CreateShared(Self);
   FEditWindow.Borderless := True;       // the page's views have the frame, around the page bar too
+  FEditWindow.SelectionMenu := SelectionPopup;
   FEditWindow.Visible := False;
   FEditWindow.Parent := CenterPanel;
   SciFileWindow := FEditWindow;
@@ -3111,7 +3168,7 @@ begin
   FCpuView := TSdCpuView.Create(Self);
   FCpuView.Parent := DockSite;
   FCpuView.OnSourceText := SourceLineText;
-  FCpuView.OnGotoAddress := CpuGotoAddress;
+  WireViewMenu(FCpuView.CpuPopup, FCpuView.MenuActions, ActCpu);
   FCpuView.OnBreakpointAt := CpuBreakpointAt;
   FpuList.DoubleBuffered := True;                 // refilled at every stop
   FDebugInsp := TSdInspectorView.Create(Self);
@@ -3213,7 +3270,7 @@ begin
   FBottomPanels[BT_TODO].PopupMenu := FTodoView.TodoPopup;
   AddDockItems([FProjView.ProjPopup, FCodeExp.ExpPopup, FObjTree.ObjTreePopup, FInspector.InspPopup, FCompBar.CompPopup, FWatchView.WatchPopup, FDebugInsp.DebugInspPopup,
     MsgHintsPopup, FBrowser.BrowserPopup, FTypeLibView.TypeLibPopup, FResView.ResPopup, MsgPopup, FBreakView.BreakPopup,
-    FBreakView.BreakItemPopup, StackPopup, LocalsPopup, LogPopup, FTodoView.TodoPopup, DockPopup]);
+    FBreakView.BreakItemPopup, StackPopup, LocalsPopup, LogPopup, FTodoView.TodoPopup, FCpuView.CpuPopup, DockPopup]);
   { a view without a menu of its own - an expert's, made later too - has the dock's commands alone
     on its caption, its tab and its auto-hide tab (TSdDock.CaptionMenu) }
   FDock.CaptionMenu := DockPopup;
@@ -3893,6 +3950,7 @@ begin
   FWatchView.aWatchHeaders.Checked := FWatchView.ShowHeaders;
   if TComponent(Sender).Owner is TSdPackageView then SenderPackageView(Sender).aPkgStatusBar.Checked := FPkgStatus;
   FResView.aResStatusBar.Checked := FResPanel.ShowStatus;
+  FCpuView.UpdateCommands;
   if Sender = FWatchView.WatchPopup then WatchGroupMenu;
   aLogClear.Enabled := EventLogList.Items.Count > 0;
   aLogSave.Enabled := EventLogList.Items.Count > 0;
@@ -4337,6 +4395,34 @@ begin
   FTestTip.ActivateHintData(R, Info.HintStr, Info.HintData);
 end;
 
+{ the test channel's drop: Files ('|' between them) as Explorer drops them on Wnd - a file list of this process
+  (HDROP, its names in UTF-16) in a posted WM_DROPFILES, which the window's DragFinish frees }
+procedure TestDropFiles(Wnd: HWND; const Files: string);
+var
+  L: TStringList;
+  W: WideString;
+  I: Integer;
+  H: HGLOBAL;
+  P: PDropFiles;
+begin
+  L := TStringList.Create;
+  try
+    L.Text := StringReplace(Files, '|', #13#10, [rfReplaceAll]);
+    for I := 0 to L.Count - 1 do
+      if Trim(L[I]) <> '' then W := W + WidePath(Trim(L[I])) + WideChar(0);
+  finally
+    L.Free;
+  end;
+  H := GlobalAlloc(GMEM_MOVEABLE or GMEM_ZEROINIT, SizeOf(TDropFiles) + (Length(W) + 1) * SizeOf(WideChar));
+  if H = 0 then Exit;
+  P := GlobalLock(H);
+  P^.pFiles := SizeOf(TDropFiles);
+  P^.fWide := True;
+  Move(PWideChar(W)^, (PChar(P) + SizeOf(TDropFiles))^, Length(W) * SizeOf(WideChar));
+  GlobalUnlock(H);
+  if not PostMessage(Wnd, WM_DROPFILES, H, 0) then GlobalFree(H);
+end;
+
 procedure TMainForm.TestCommand(const Cmd: string);
 var
   Verb, Arg, A1, A2: string;
@@ -4626,6 +4712,8 @@ begin
       FTodoView.TodoList.ItemFocused := FTodoView.TodoList.Selected;
     end;
   end
+  else if Verb = 'drop' then                 // drop <hwnd> <file>|<file>...: the files dropped on that window
+    TestDropFiles(HWND(StrToIntDef(A1, 0)), A2)     // as from Explorer (WM_DROPFILES)
   else if Verb = 'dwell' then                // dwell <offset> [<x> <y>]: the mouse rests there (the debugger's
   begin                                      // value, the hint of code insight - an expert's or D7 Studio's own;
                                              // x y: at that client point, a folded line's box with -1 as offset)
@@ -5157,6 +5245,7 @@ begin
       OptFlag('ShowGrid', ShowGrid),
       OptFlag('SnapToGrid', SnapToGrid),
       OptFlag('ShowCaptions', ShowCaptions),
+      OptFlag('ShowNonVisual', ShowNonVisual),
       OptFlag('ShowPositioner', ShowPositioner),
       OptFlag('PositionerSnap', PositionerSnap),
       OptInt('GridX', GridX),
@@ -5581,6 +5670,13 @@ begin
   aMoveLinesUp.Enabled := aDuplicateLine.Enabled;
   aMoveLinesDown.Enabled := aDuplicateLine.Enabled;
   aJoinLines.Enabled := aDuplicateLine.Enabled;
+  aUpperCase.Enabled := aDuplicateLine.Enabled;
+  aLowerCase.Enabled := aDuplicateLine.Enabled;
+  aToggleCase.Enabled := aDuplicateLine.Enabled;
+  aSortLines.Enabled := aDuplicateLine.Enabled;
+  aSurroundBegin.Enabled := aDuplicateLine.Enabled and Ed.CanSurround;
+  aSurroundFinally.Enabled := aSurroundBegin.Enabled;
+  aSurroundExcept.Enabled := aSurroundBegin.Enabled;
   aSelectNextOccurrence.Enabled := Ed <> nil;
   aSelectAllOccurrences.Enabled := Ed <> nil;
   aAddCaretAbove.Enabled := Ed <> nil;
@@ -5600,6 +5696,8 @@ begin
   aFormatSource.Enabled :=(Ed <> nil) and not Ed.ReadOnly and P.CanFormat;
   EditLockControlsCommand.Enabled := D <> nil;
   EditLockControlsCommand.Checked := (D <> nil) and D.Locked;
+  aHideNonVisual.Enabled := D <> nil;
+  aHideNonVisual.Checked := not DesignEnv.ShowNonVisual;
   SearchFindCommand.Enabled := Ed <> nil;
   SearchReplaceCommand.Enabled := Ed <> nil;
   SearchAgainCommand.Enabled := (Ed <> nil) and (FFind.FindText <> '');
@@ -6563,8 +6661,40 @@ begin
     D.RevertToInherited;
 end;
 
-procedure TMainForm.ActDebugInsp(Sender: TObject);
+procedure TMainForm.ActCpu(Sender: TObject);
 var
+  L: TListBox;
+  S: string;
+  N: Integer;
+begin
+  L := FCpuView.CommandPane;
+  if Sender = FCpuView.aCpuGotoAddress then
+  begin
+    CpuGotoAddress(Sender);
+    Exit;
+  end;
+  if Sender = FCpuView.aCpuCopy then S := FCpuView.PaneText(L, True)
+  else if Sender = FCpuView.aCpuCopyAll then S := FCpuView.PaneText(L, False)
+  else if Sender = FCpuView.aCpuCopyLines then
+  begin
+    S := IntToStr(FCpuView.LineCount(L));
+    if not InputDialog(Self, 'Copy Lines', '&Number of lines:', S) then Exit;
+    N := StrToIntDef(Trim(S), 0);
+    if (N <= 0) or (N > 100000) then Exit;
+    FCpuView.SetLineCount(L, N);
+    S := FCpuView.LinesText(L, N);
+  end
+  else
+  begin
+    { Open in Editor: the selected lines, else every line of the pane }
+    S := FCpuView.PaneText(L, L.SelCount > 1);
+    if S <> '' then NewUntitledPage(UniqueUnitName('Cpu', '', '.txt') + '.txt', S);
+    Exit;
+  end;
+  if S <> '' then Clipboard.AsText := S;
+end;
+
+procedure TMainForm.ActDebugInsp(Sender: TObject);var
   V: TDbgVar;
   S, Err: string;
 begin
@@ -7719,15 +7849,6 @@ var
   Idx: Integer;
   P: TEditorPage;
   Caption: string;
-
-  { the row as high as the tabs are, the buttons of its bars as well }
-  procedure FitRow;
-  begin
-    FTabRow.Height := FPageTabs.RowHeight;
-    HistoryBar.ButtonHeight := FTabRow.Height;
-    FilesBar.ButtonHeight := FTabRow.Height;
-  end;
-
 begin
   Idx := FDocs.IndexOf(Page);
   if Idx < 0 then Exit;
@@ -7751,19 +7872,43 @@ begin
       { as high as the tab control makes its tabs (it has one now); the buttons fill it. A tool
         button is never lower than its image and frame: when the tabs are lower (a small UI
         font), they are raised to the buttons (FitRowHeight) - else the row cut the buttons off }
-      FitRow;
+      FitTabRow;
       FPageTabs.FitRowHeight(HiWord(SendMessage(HistoryBar.Handle, TB_GETBUTTONSIZE, 0, 0)));
-      if FTabRow.Height <> FPageTabs.RowHeight then FitRow;
+      FitTabRow;
       FTabRow.Visible := True;
     end;
   end
   else
     FPageTabs.Tabs[Idx] := Caption;
+  if FPageTabs.MultiLine then FitTabRow;        // a tab more or a longer title: maybe a row more
   if P = nil then Exit;
   { a name outside the code page: the tab gets the real one }
   if NeedsUnicode(P.FileName) then FPageTabs.SetTabTextW(Idx, P.TabCaptionW);
   { its form shown as text (View as Text) is named after it (Save As) }
   if P.FormTextPage <> nil then UpdatePageTab(P.FormTextPage);
+end;
+
+procedure TMainForm.FitTabRow;
+begin
+  if FTabRow.Height <> FPageTabs.StripHeight then FTabRow.Height := FPageTabs.StripHeight;
+  HistoryBar.ButtonHeight := FPageTabs.RowHeight;
+  FilesBar.ButtonHeight := FPageTabs.RowHeight;
+end;
+
+{ the tabs went into more or fewer rows }
+procedure TMainForm.TabsResized(Sender: TObject);
+begin
+  if FPageTabs.MultiLine and FTabRow.Visible then FitTabRow;
+end;
+
+procedure TMainForm.ApplyMultiLineTabs;
+var
+  I: Integer;
+begin
+  if FPageTabs.MultiLine = EditorOptions.MultiLineTabs then Exit;
+  FPageTabs.MultiLine := EditorOptions.MultiLineTabs;
+  for I := 0 to FDocs.Count - 1 do UpdatePageTab(TWinControl(FDocs[I]));
+  if FTabRow.Visible then FitTabRow;
 end;
 
 function TMainForm.ActiveEditor: TSciEdit;
@@ -8523,6 +8668,7 @@ begin
   begin
     FDocs.Delete(Idx);
     FPageTabs.Tabs.Delete(Idx);
+    if FPageTabs.MultiLine then FitTabRow;
   end;
   Page.Free;
 end;
@@ -8602,6 +8748,7 @@ begin
   StructTimer.Enabled := False;
   StructTimer.Enabled := True;
   ApplyHistoryOptions;
+  ApplyMultiLineTabs;                         // Display | Multi-line file tabs
   for I := 0 to FPages.Count - 1 do
   begin
     Pages[I].Editor.ApplyOptions;
@@ -13266,6 +13413,13 @@ begin
   else if Sender = aMoveLinesUp then Ed.MoveLines(True)
   else if Sender = aMoveLinesDown then Ed.MoveLines(False)
   else if Sender = aJoinLines then Ed.JoinLines
+  else if Sender = aUpperCase then Ed.ChangeCase(0)
+  else if Sender = aLowerCase then Ed.ChangeCase(1)
+  else if Sender = aToggleCase then Ed.ChangeCase(2)
+  else if Sender = aSortLines then Ed.SortLines
+  else if Sender = aSurroundBegin then Ed.Surround(ssBeginEnd)
+  else if Sender = aSurroundFinally then Ed.Surround(ssTryFinally)
+  else if Sender = aSurroundExcept then Ed.Surround(ssTryExcept)
   else if Sender = aSelectNextOccurrence then Ed.SelectNextOccurrence
   else if Sender = aSelectAllOccurrences then Ed.SelectAllOccurrences
   else if Sender = aAddCaretAbove then Ed.AddCaret(False)
@@ -13327,6 +13481,15 @@ begin
   UpdateStatus;
 end;
 
+procedure TMainForm.ToggleNonVisual;
+var
+  I: Integer;
+begin
+  DesignEnv.ShowNonVisual := not DesignEnv.ShowNonVisual;
+  for I := 0 to FPages.Count - 1 do
+    if Pages[I].Designer <> nil then Pages[I].Designer.UpdateHelpers;
+end;
+
 procedure TMainForm.ActDesign(Sender: TObject);
 var
   D: TFormDesigner;
@@ -13337,6 +13500,7 @@ begin
   else if Sender = EditFrontCommand then D.BringSelectedToFront
   else if Sender = EditBackCommand then D.SendSelectedToBack
   else if Sender = EditLockControlsCommand then D.Locked := not D.Locked
+  else if Sender = aHideNonVisual then ToggleNonVisual
   else if (Sender = EditFlipChildrenAllCommand) or (Sender = EditFlipChildrenSelectedCommand) then FlipDesignChildren(D, Sender = EditFlipChildrenAllCommand)
   else if Sender = EditAlignCommand then AlignSelection(D)
   else if Sender = EditSizeCommand then SizeSelection(D)

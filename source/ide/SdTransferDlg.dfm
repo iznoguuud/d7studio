@@ -96,6 +96,22 @@ object TransferDlg: TTransferDlg
     Action = aEdit
     TabOrder = 5
   end
+  object ExportButton: TButton
+    Left = 246
+    Top = 252
+    Width = 88
+    Height = 26
+    Action = aExport
+    TabOrder = 6
+  end
+  object ImportButton: TButton
+    Left = 246
+    Top = 288
+    Width = 88
+    Height = 26
+    Action = aImport
+    TabOrder = 7
+  end
   object Actions: TActionList
     Left = 12
     Top = 259
@@ -120,7 +136,18 @@ object TransferDlg: TTransferDlg
     object aDown: TAction
       OnExecute = aMoveExecute
       OnUpdate = aMoveUpdate
+    end    object aExport: TAction
+      Caption = 'E&xport...'
+      Hint = 'Save the tools to a file'
+      OnExecute = aExportExecute
+      OnUpdate = aExportUpdate
     end
+    object aImport: TAction
+      Caption = '&Import...'
+      Hint = 'Add the tools of a file to the list'
+      OnExecute = aImportExecute
+    end
+
   end
   object pnlFooter: TPanel
     Left = 0
@@ -130,7 +157,7 @@ object TransferDlg: TTransferDlg
     BevelOuter = bvNone
     Color = clBtnFace
     ParentBackground = False
-    TabOrder = 6
+    TabOrder = 8
     object lnFooter: TShape
       Left = 0
       Top = 0

@@ -80,6 +80,7 @@ type
     SnapLines: Boolean;
     SnapDistance, SnapSpacing, SnapMargin: Integer;
     ShowCaptions: Boolean;            // the names under the non-visual components
+    ShowNonVisual: Boolean;           // Show non-visual components: their tiles on the form
     ShowHints, ExtendedHints: Boolean; // Show designer hints, Show extended control hints
     ShowPositioner: Boolean;          // Show form positioner
     PositionerSnap: Boolean;          // the positioner snaps a dragged form to edges and centre lines
@@ -349,6 +350,7 @@ type
     procedure IconMouse(Icon: TObject; Msg: Cardinal; const ScreenPt: TPoint; Shift: TShiftState);
     procedure HandleDrag(Handle: TObject; Msg: Cardinal; const ScreenPt: TPoint);
     function IsNonVisual(C: TComponent): Boolean;
+    function TileShown(C: TComponent): Boolean;
     function GetSelection(Index: Integer): TPersistent;
     function NewModule(const AName: string): TComponent;
     function SplitModule(const DfmText: string; Module: TComponent; var ModuleText: string): string;
@@ -1248,6 +1250,7 @@ begin
   SnapSpacing := DefSnapSpacing;
   SnapMargin := DefSnapMargin;
   ShowCaptions := True;
+  ShowNonVisual := True;
   ShowPositioner := True;
   PositionerSnap := True;
 end;
@@ -3660,6 +3663,14 @@ begin
     not (C is TControl) and not C.HasParent and (C.Owner = FRoot);
 end;
 
+{ a non-visual component whose tile is on the form: none while Show non-visual components is off -
+  such a component is chosen in the Object TreeView or the Object Inspector, and no handles, drag,
+  rubber band or arrow key reaches it }
+function TFormDesigner.TileShown(C: TComponent): Boolean;
+begin
+  Result := DesignEnv.ShowNonVisual and IsNonVisual(C);
+end;
+
 { ---------------------------------------------------------------- helper windows }
 
 procedure TFormDesigner.ClearHelpers;
@@ -3821,7 +3832,7 @@ begin
   for I := 0 to FRoot.ComponentCount - 1 do
   begin
     C := FRoot.Components[I];
-    if not IsNonVisual(C) then Continue;
+    if not TileShown(C) then Continue;
     if IIdx < FIcons.Count then
       Icon := TCompIcon(FIcons[IIdx])
     else
@@ -3887,7 +3898,7 @@ begin
   begin
     P := TPersistent(FSelection[I]);
     if (P is TControl) and (P <> FForm) then Inc(N)
-    else if (P is TComponent) and IsNonVisual(TComponent(P)) then Inc(N);
+    else if (P is TComponent) and TileShown(TComponent(P)) then Inc(N);
   end;
   Single := N = 1;
   for I := 0 to FSelection.Count - 1 do
@@ -3901,7 +3912,7 @@ begin
       else
         for K := 0 to 3 do PlaceHandle(2 * K, P, R, False);     // the corners
     end
-    else if (P is TComponent) and IsNonVisual(TComponent(P)) then
+    else if (P is TComponent) and TileShown(TComponent(P)) then
     begin
       At := DesignPos(TComponent(P));
       R := Bounds(At.X, At.Y, IconSize, IconSize);
@@ -4203,7 +4214,7 @@ begin
     for I := 0 to FSelection.Count - 1 do
       if (TObject(FSelection[I]) is TControl) and (FSelection[I] <> FForm) then FDragged.Add(FSelection[I]);
     for I := 0 to FSelection.Count - 1 do
-      if (TObject(FSelection[I]) is TComponent) and IsNonVisual(TComponent(FSelection[I])) then
+      if (TObject(FSelection[I]) is TComponent) and TileShown(TComponent(FSelection[I])) then
         FDragged.Add(FSelection[I]);
   end;
   SetLength(FDragFrom, FDragged.Count);
@@ -4846,7 +4857,7 @@ begin
     end;
     if FDragContainer = FForm then
       for I := 0 to FRoot.ComponentCount - 1 do
-        if IsNonVisual(FRoot.Components[I]) then
+        if TileShown(FRoot.Components[I]) then
         begin
           At := DesignPos(FRoot.Components[I]);
           CR := Bounds(At.X, At.Y, IconSize, IconSize);
@@ -5654,7 +5665,7 @@ begin
                 C.SetBounds(C.Left + DX, C.Top + DY, C.Width, C.Height);
               Any := True;
             end
-            else if (P is TComponent) and IsNonVisual(TComponent(P)) and (ssCtrl in Shift) then
+            else if (P is TComponent) and TileShown(TComponent(P)) and (ssCtrl in Shift) then
             begin
               At := DesignPos(TComponent(P));
               SetDesignPos(TComponent(P), At.X + DX, At.Y + DY);

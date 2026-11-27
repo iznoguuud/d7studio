@@ -66,6 +66,7 @@ type
     function ZoomBar: TWinControl; virtual;
     function HistoryBar: TWinControl; virtual;
     function DesignerBar: TWinControl; virtual;
+    function CodeBar: TWinControl; virtual;        // a bar of the code view's commands (none: nil)
     { a page's History tab is made: its menus (the main form's) }
     procedure HistoryViewMade(View: TSdHistoryView); virtual;
     { what Page's bar holds changed (Editor Options | Navigation bar, another kind of file): the
@@ -674,6 +675,11 @@ begin
 end;
 
 function TIDEServices.DesignerBar: TWinControl;
+begin
+  Result := nil;
+end;
+
+function TIDEServices.CodeBar: TWinControl;
 begin
   Result := nil;
 end;
@@ -2594,7 +2600,7 @@ begin
   else
   begin
     if NavigationWanted then Nav := IDE.NavigationBar else Nav := nil;
-    FPageBar.Arrange([IDE.ZoomBar, Nav], Nav);
+    FPageBar.Arrange([IDE.ZoomBar, IDE.CodeBar, Nav], Nav);
   end;
 end;
 

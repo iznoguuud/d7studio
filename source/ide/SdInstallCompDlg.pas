@@ -86,6 +86,8 @@ const
 procedure TInstallCompDlg.FormCreate(Sender: TObject);
 begin
   UIPrepareForm(Self);
+  PathBox(UnitEdit, False);
+  PathBox(edPackageN, False);
 end;
 
 function TInstallCompDlg.IsNew: Boolean;

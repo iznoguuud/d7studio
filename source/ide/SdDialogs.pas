@@ -230,6 +230,8 @@ function BrowseFolder(Box: TControl; const ACaption, BaseDir: string): Boolean; 
   it: macros expanded, a relative name from Base (a BaseFolder) }
 function BaseFolder(const BaseDir: string): string;
 function FullOptionPath(const Value, Base: string): string;
+{ ... and back: a name below Base relative to it, as Delphi gives it; any other as it is }
+function OptionPath(const Path, Base: string): string;
 { "Browse..." of a file: the IDE's Open dialog (Mode bfSave, bfSaveNoPrompt: its Save dialog) -
   TSdFileDialog, so names outside the code page come back usable. Value in: the name proposed
   ('' none; macros expanded, a relative name from BaseDir); the dialog starts in its folder, else
@@ -240,6 +242,13 @@ function BrowseFile(const ACaption, Filter: string; var Value: string; Mode: TBr
 { ... of the text of Box (an edit or a combo box): its text proposed, the file chosen written back }
 function BrowseFile(Box: TControl; const ACaption, Filter: string; Mode: TBrowseFileMode = bfOpen;
   const DefaultExt: string = ''; const InitialDir: string = ''; const BaseDir: string = ''): Boolean; overload;
+{ Box (an edit or a combo box) holds a file's name (Folder: a folder's): Windows completes the name as it is
+  typed, and a file or folder dropped from Explorer on it becomes its text (the first one dropped) }
+procedure PathBox(Box: TControl; Folder: Boolean);
+{ the files and folders dropped from Explorer on Control go to OnDrop (full, usable names) }
+type
+  TFilesDropEvent = procedure(Control: TControl; Files: TStrings) of object;
+procedure AcceptFileDrops(Control: TWinControl; OnDrop: TFilesDropEvent);
 { several existing files at once: Files gets them (full, usable names) }
 function BrowseFiles(const ACaption, Filter: string; Files: TStrings; const InitialDir: string = ''): Boolean;
 { "..." of a ';' separated option in Box (an edit or a combo box): Delphi's ordered list editor
@@ -313,7 +322,7 @@ function ResPropsDialog(AOwner: TComponent; const ACaption: string; TypeEditable
 implementation
 
 uses
-  {$WARN UNIT_PLATFORM OFF} FileCtrl, {$WARN UNIT_PLATFORM ON}
+  Messages, ShellAPI, ShLwApi, {$WARN UNIT_PLATFORM OFF} FileCtrl, {$WARN UNIT_PLATFORM ON}
   Dialogs, ComCtrls, SdFileNames,
   SdFindDlg, SdReplaceDlg, SdFindInFilesDlg, SdListDlg,
   SdInstallCompDlg, SdAboutDlg, SdCompileDlg, SdVarEntryDlg, SdListEditDlg, SdUI,
@@ -323,6 +332,18 @@ uses
   SdAddCodeTemplateDlg, SdExceptRangeDlg, SdCustomizeDlg, SdAddModuleDlg, SdAttachDlg,
   SdRepositoryDlg, SdCompTemplateDlg, SdTodoFilterDlg, SdTableOptionsDlg,
   SdNewImageDlg, SdImageSizeDlg, SdImageTextDlg, SdColorEditDlg;
+
+type
+  { the drop of files on a control (AcceptFileDrops: to OnDrop; PathBox: its text) and Windows' completion
+    of names in it (Complete: SHAutoComplete's flags, 0 none), given again when its window is made again }
+  TFileDropHook = class(TUIWindowHook)
+  private
+    FComplete: DWORD;
+    FOnDrop: TFilesDropEvent;
+    procedure Prepare;
+  protected
+    procedure Hook(var Message: TMessage); override;
+  end;
 
 function AlignDialog(AOwner: TComponent; var H, V: Integer): Boolean;
 begin
@@ -460,7 +481,7 @@ const
     (Name: 'size'; FormClass: TSizeDlg), (Name: 'scale'; FormClass: TScaleDlg),
     (Name: 'taborder'; FormClass: TTabOrderDlg), (Name: 'windowlist'; FormClass: TWindowListDlg),
     (Name: 'desktop'; FormClass: TDesktopDlg), (Name: 'desktopdelete'; FormClass: TDesktopDeleteDlg),
-    (Name: 'transfer'; FormClass: TTransferDlg), (Name: 'transedit'; FormClass: TTransEditDlg),
+    (Name: 'transfer'; FormClass: TTransferDlg), (Name: 'transedit'; FormClass: TToolPropertiesDlg),
     (Name: 'finderror'; FormClass: TFindErrorDlg), (Name: 'browsesymbol'; FormClass: TBrowseSymbolDlg),
     (Name: 'compinfo'; FormClass: TCompInfoDlg), (Name: 'newcomp'; FormClass: TNewCompDlg),
     (Name: 'complist'; FormClass: TCompListDlg), (Name: 'sourcebp'; FormClass: TSourceBPDlg),
@@ -690,6 +711,68 @@ begin
   S := Trim(TBoxText(Box).Text);
   Result := BrowseFile(ACaption, Filter, S, Mode, DefaultExt, InitialDir, BaseDir);
   if Result then TBoxText(Box).Text := S;
+end;
+
+procedure TFileDropHook.Prepare;
+var
+  Edit: HWND;
+begin
+  if not FControl.HandleAllocated then Exit;
+  DragAcceptFiles(FControl.Handle, True);
+  if FComplete = 0 then Exit;
+  { a combo box's own edit window (none: a drop-down list, nothing to complete) }
+  Edit := FControl.Handle;
+  if FControl is TCustomComboBox then Edit := GetWindow(Edit, GW_CHILD);
+  if Edit <> 0 then SHAutoComplete(Edit, FComplete);
+end;
+
+procedure TFileDropHook.Hook(var Message: TMessage);
+var
+  L: TStringList;
+begin
+  if Message.Msg = WM_DROPFILES then
+  begin
+    L := TStringList.Create;
+    try
+      DroppedFiles(HDROP(Message.WParam), L);
+      DragFinish(HDROP(Message.WParam));
+      if Assigned(FOnDrop) then FOnDrop(FControl, L)
+      else if L.Count > 0 then TBoxText(FControl).Text := L[0];
+    finally
+      L.Free;
+    end;
+    Message.Result := 0;
+    Exit;
+  end;
+  FOldProc(Message);
+  if Message.Msg = WM_CREATE then Prepare;
+end;
+
+function FileDropHook(Control: TWinControl): TFileDropHook;
+begin
+  Result := TFileDropHook(UIFindHook(Control, TFileDropHook));
+  if Result = nil then Result := TFileDropHook.Create(Control, True);
+end;
+
+procedure PathBox(Box: TControl; Folder: Boolean);
+const
+  Kinds: array[Boolean] of DWORD = (SHACF_FILESYS_ONLY, SHACF_FILESYS_ONLY or SHACF_FILESYS_DIRS);
+var
+  H: TFileDropHook;
+begin
+  if not (Box is TWinControl) then Exit;
+  H := FileDropHook(TWinControl(Box));
+  H.FComplete := Kinds[Folder] or SHACF_AUTOSUGGEST_FORCE_ON;
+  H.Prepare;
+end;
+
+procedure AcceptFileDrops(Control: TWinControl; OnDrop: TFilesDropEvent);
+var
+  H: TFileDropHook;
+begin
+  H := FileDropHook(Control);
+  H.FOnDrop := OnDrop;
+  H.Prepare;
 end;
 
 function BrowseFiles(const ACaption, Filter: string; Files: TStrings; const InitialDir: string): Boolean;

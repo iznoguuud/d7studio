@@ -206,6 +206,9 @@ begin
   FFormCount := Screen.FormCount;
   for I := 0 to Screen.FormCount - 1 do
   begin
+    { not a form being designed that has a menu of that name (the IDE's own main form opened in its
+      designer): the submenu would be saved into its form file }
+    if csDesigning in Screen.Forms[I].ComponentState then Continue;
     M := Screen.Forms[I].FindComponent('EditorLocalMenu');
     if not (M is TPopupMenu) then Continue;
     Menu := TPopupMenu(M);

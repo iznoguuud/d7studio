@@ -98,6 +98,8 @@ function ForceDirectoriesU(const Path: string): Boolean;
 function TempFolder: string;
 { the folder Dir (with its backslash) and everything in it deleted, as far as it can be }
 procedure RemoveTree(const Dir: string);
+{ an Explorer window on the folder of FileName with the file selected (a folder: the folder itself) }
+procedure ShowInExplorer(const FileName: string);
 { the files of a drop (WM_DROPFILES) and of the command line, as usable names }
 procedure DroppedFiles(Drop: HDROP; L: TStrings);
 { the names an Open/Save dialog returned in its buffer (one; with MultiSelect the folder, #0, the
@@ -558,6 +560,15 @@ var
 begin
   SetString(Result, Buf, GetTempPath(MAX_PATH, Buf));
   Result := IncludeTrailingPathDelimiter(Result);
+end;
+
+procedure ShowInExplorer(const FileName: string);
+var
+  Args: string;
+begin
+  if DirectoryExists(FileName) then Args := '"' + FileName + '"'
+  else Args := '/select,"' + FileName + '"';
+  ShellExecute(0, 'open', 'explorer.exe', PChar(Args), nil, SW_SHOWNORMAL);
 end;
 
 procedure RemoveTree(const Dir: string);

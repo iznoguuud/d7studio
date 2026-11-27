@@ -6,10 +6,51 @@ one *Help ▸ About* shows and the setup's file name carries.
 
 Each version lists its changes under *Added*, *Changed*, *Fixed* and *Removed*; every item begins
 with the part it concerns. What D7 Studio's IDE has that Delphi 7's does not is in
-[FEATURES.md](FEATURES.md), the modernized RTL/VCL in [MODERNIZATION.md](MODERNIZATION.md), and
-installing in [README.md](README.md).
+[FEATURES.md](source/FEATURES.md), the modernized RTL/VCL in [MODERNIZATION.md](source/MODERNIZATION.md), and
+installing in [README.md](source/README.md).
 
 ## [Unreleased]
+
+## [1.0.4.0] - 2026-11-27
+
+### Added
+
+- **Code editor**: flow-control words - `Exit`, `Break`, `Continue`, `Halt`, `Abort`, `raise` and `goto` - stand
+  out in a colour of their own (red and bold in Light), and identifiers you list in *Editor Options ▸
+  Highlighting ▸ Custom identifiers* in another (purple in Light). Both are elements of the colour themes (*Flow
+  control*, *Custom identifier*); themes made earlier get Light's or Dark's colours for them.
+- **Code editor**: *Edit ▸ Line* has *Upper Case*, *Lower Case* and *Toggle Case* (the selection, else the word at
+  the caret), *Sort Lines* (again: in reverse order) and *Surround With* ▸ *begin ... end*, *try ... finally*, *try
+  ... except*.
+- **Code editor**: a small button after the selected text opens a menu of what applies to a selection: cut and copy,
+  comment, indent, duplicate and move the lines, change their case, sort them, surround them, format them (*Editor
+  Options ▸ Display ▸ Selection button*, on).
+- **IDE**: the file tabs can go into several rows instead of one row with a list button (*Editor Options ▸ Display ▸
+  Multi-line file tabs*).
+- **Debugger**: the CPU view has a menu: *Copy* (Ctrl+C) the selected lines - several can be selected now -,
+  *Copy Lines...* a number of lines from the selected one (also code and memory beyond what the pane shows), *Copy
+  All*, *Open in Editor*, and *Go to Address...* (Ctrl+G).
+- **Form designer**: *Hide Non-Visual Components* on the designer's tool bar and in the *Edit* menu hides or shows
+  the non-visual components' tiles on every form; it is Delphi 7's *Environment Options ▸ Designer ▸ Show
+  non-visual components* the other way round, which now works.
+- **IDE**: boxes that take a file or folder name - in Tool Properties, Run Parameters, Install Component, New
+  Component, Import Type Library and the directories of Project and Environment Options - complete the name as you
+  type and take a file or folder dropped on them from Explorer.
+- **IDE**: the search path editor (the *...* of a search path) has *Edit as text*, takes folders dropped on it from
+  Explorer, and has *Make Relative* (to `$(DELPHI)` or the project's folder) and *Make Absolute* for the selected
+  folder.
+- **IDE**: *Component ▸ Install Packages* has *Show in Folder*, which opens Explorer with the package selected.
+- **IDE**: *Tools ▸ Configure Tools* has *Export...* and *Import...*: the tools saved to a file, and the tools of
+  such a file added to the list - those it has already left out.
+
+### Fixed
+
+- **IDE**: the drop-down arrows of *Back* and *Forward*, before the file tabs, open the list of places again; they
+  opened nothing.
+- **IDE**: a file tab scrolled under the file tabs' scroll arrows no longer shows around them.
+- **Code editor**: its menu no longer ends in an empty *Git* submenu, before the Git expert's own.
+- **IDE**: with GExperts' dialog enhancements turned on, *Tools ▸ Configure Tools ▸ Add / Edit* no longer raises an
+  access violation.
 
 ## [1.0.3.4] - 2026-11-27
 
@@ -239,7 +280,8 @@ The first release.
   its settings. It also installs Microsoft's WinHelp viewer, which shows Delphi 7's help on
   Windows 10 and 11.
 
-[Unreleased]: https://github.com/iznoguuud/d7studio/compare/v1.0.3.4...HEAD
+[Unreleased]: https://github.com/iznoguuud/d7studio/compare/v1.0.4.0...HEAD
+[1.0.4.0]: https://github.com/iznoguuud/d7studio/compare/v1.0.3.4...v1.0.4.0
 [1.0.3.4]: https://github.com/iznoguuud/d7studio/compare/v1.0.3.3...v1.0.3.4
 [1.0.3.3]: https://github.com/iznoguuud/d7studio/compare/v1.0.3.2...v1.0.3.3
 [1.0.3.2]: https://github.com/iznoguuud/d7studio/compare/v1.0.3.1...v1.0.3.2

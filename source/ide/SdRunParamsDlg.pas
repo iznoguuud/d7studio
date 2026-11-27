@@ -204,6 +204,8 @@ begin
   if UILayoutPass then
     Exit;
   FVars := TSdVarLists.Create(lvSystemVars, lvUserVars, aVarOverride, aVarNew, aVarEdit, aVarDelete);
+  PathBox(HostAppInput, False);
+  PathBox(CWDInput, True);
 end;
 
 { a double click on an override edits it (the Edit command) }

@@ -1340,6 +1340,14 @@ object ProjOptionsFrame: TProjOptionsFrame
           Action = aPkgComponents
           TabOrder = 5
         end
+        object ButtonShowFolder: TButton
+          Left = 8
+          Top = 234
+          Width = 110
+          Height = 26
+          Action = aPkgFolder
+          TabOrder = 6
+        end
         object EditButton: TButton
           Left = 427
           Top = 234
@@ -1480,6 +1488,12 @@ object ProjOptionsFrame: TProjOptionsFrame
     object aPkgComponents: TAction
       Caption = '&Components'
       OnExecute = aPkgComponentsExecute
+      OnUpdate = PkgSelectedUpdate
+    end
+    object aPkgFolder: TAction
+      Caption = 'Show in &Folder'
+      Hint = 'The package''s folder in Explorer, the package selected'
+      OnExecute = aPkgFolderExecute
       OnUpdate = PkgSelectedUpdate
     end
     object aRuntimeAdd: TAction

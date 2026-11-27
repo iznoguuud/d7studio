@@ -12,7 +12,8 @@ unit SdListEditDlg;
 { D7 Studio - Delphi 7's ordered list editor (built on its
   Creation Order dialog): the entries of a ';' separated option - search paths, conditional
   defines, unit aliases - in their order. Paths that do not exist are greyed and can be deleted
-  in one go; a path can be chosen with "...". }
+  in one go; a path can be chosen with "...", dropped from Explorer, made relative to the project's folder (or
+  $(DELPHI)) or absolute. *Edit as text* shows the entries one a line in a text box, to edit many at once. }
 
 interface
 
@@ -32,7 +33,13 @@ type
     DeleteButton: TButton;
     BrowseButton: TButton;
     DeleteInvalidBtn: TButton;
+    TextMemo: TMemo;
+    chkText: TCheckBox;
+    RelativeButton: TButton;
+    AbsoluteButton: TButton;
     Actions: TActionList;
+    aRelative: TAction;
+    aAbsolute: TAction;
     aReplace: TAction;
     aAdd: TAction;
     aDelete: TAction;
@@ -58,11 +65,18 @@ type
     procedure aMoveUpdate(Sender: TObject);
     procedure ListClick(Sender: TObject);
     procedure ListDrawItem(Control: TWinControl; Index: Integer; Rect: TRect; State: TOwnerDrawState);
+    procedure aRelativeExecute(Sender: TObject);
+    procedure aRelativeUpdate(Sender: TObject);
+    procedure ActionsUpdate(Action: TBasicAction; var Handled: Boolean);
+    procedure TextModeClick(Sender: TObject);
   private
     FPaths: Boolean;
     FBaseDir: string;
     FChecked: TStringList;       // the entries looked at (sorted), Objects: non-nil for a folder that exists
     function Valid(const S: string): Boolean;
+    { the text box's lines (not blank) into the list }
+    procedure TakeText;
+    procedure FilesDropped(Control: TControl; Files: TStrings);
   public
     destructor Destroy; override;
     { Paths: the entries are folders (relative ones from BaseDir; $(DELPHI) ... expanded) }
@@ -76,7 +90,7 @@ var
 implementation
 
 uses
-  SdUI, SdDialogs, SdIcons;
+  SdUI, SdDialogs, SdIcons, SdProject, SdDelphiDir;
 
 {$R *.dfm}
 
@@ -86,6 +100,7 @@ begin
   if UILayoutPass then Exit;
   IconButton(UpButton, iiMoveUp);
   IconButton(DownButton, iiMoveDown);
+  UIFlatBorder(TextMemo);
   FChecked := TStringList.Create;
   FChecked.Sorted := True;
 end;
@@ -124,6 +139,90 @@ begin
   C.FillRect(Rect);
   if not (odSelected in State) and not Valid(CreationList.Items[Index]) then C.Font.Color := clGrayText;
   C.TextOut(Rect.Left + 2, UIListTextTop(C.Handle, Rect), CreationList.Items[Index]);
+end;
+
+{ Edit as text: the list's entries one a line in the text box, and back; the list's commands wait
+  meanwhile (ActionsUpdate) }
+procedure TListEditDlg.TextModeClick(Sender: TObject);
+begin
+  if chkText.Checked then TextMemo.Lines.Assign(CreationList.Items) else TakeText;
+  TextMemo.Visible := chkText.Checked;
+  CreationList.Visible := not chkText.Checked;
+  ElementEdit.Enabled := not chkText.Checked;
+  if TextMemo.Visible and TextMemo.CanFocus then TextMemo.SetFocus;
+end;
+
+procedure TListEditDlg.TakeText;
+var
+  I: Integer;
+begin
+  CreationList.Items.BeginUpdate;
+  try
+    CreationList.Items.Clear;
+    for I := 0 to TextMemo.Lines.Count - 1 do
+      if Trim(TextMemo.Lines[I]) <> '' then CreationList.Items.Add(Trim(TextMemo.Lines[I]));
+  finally
+    CreationList.Items.EndUpdate;
+  end;
+  if CreationList.Items.Count > 0 then CreationList.ItemIndex := 0;
+  ListClick(nil);
+end;
+
+procedure TListEditDlg.ActionsUpdate(Action: TBasicAction; var Handled: Boolean);
+begin
+  Handled := chkText.Checked;
+  if Handled and (Action is TCustomAction) then TCustomAction(Action).Enabled := False;
+end;
+
+{ dropped folders (a file: its folder) as entries, relative to the project's folder as "..." gives
+  them; at the end of the text in Edit as text }
+procedure TListEditDlg.FilesDropped(Control: TControl; Files: TStrings);
+var
+  I: Integer;
+  S: string;
+begin
+  for I := 0 to Files.Count - 1 do
+  begin
+    S := Files[I];
+    if not DirectoryExists(S) then S := ExtractFileDir(S);
+    S := OptionPath(S, FBaseDir);
+    if chkText.Checked then TextMemo.Lines.Add(S)
+    else if CreationList.Items.IndexOf(S) < 0 then CreationList.ItemIndex := CreationList.Items.Add(S);
+  end;
+  ListClick(nil);
+end;
+
+procedure TListEditDlg.aRelativeUpdate(Sender: TObject);
+begin
+  TAction(Sender).Enabled := FPaths and (CreationList.ItemIndex >= 0);
+end;
+
+{ Make Relative: a folder under Delphi's as $(DELPHI)\..., else relative to the project's folder (on its
+  drive); Make Absolute: the full name - an entry of $(...) stays as it is, a relative one without a
+  folder to be relative to too }
+procedure TListEditDlg.aRelativeExecute(Sender: TObject);
+var
+  S, Full: string;
+  I: Integer;
+begin
+  I := CreationList.ItemIndex;
+  S := CreationList.Items[I];
+  if Copy(S, 1, 2) = '$(' then Exit;
+  if not IsAbsolutePath(S) and (FBaseDir = '') then Exit;
+  Full := ExcludeTrailingPathDelimiter(ExpandFileName(FullOptionPath(S, FBaseDir)));
+  if Sender = aAbsolute then S := Full
+  else
+  begin
+    S := CollapseDelphiMacros(Full);
+    if (S = Full) and (FBaseDir <> '') and SameText(ExtractFileDrive(Full), ExtractFileDrive(FBaseDir)) then
+    begin
+      S := ExcludeTrailingPathDelimiter(ExtractRelativePath(FBaseDir, IncludeTrailingPathDelimiter(Full)));
+      if S = '' then S := '.';
+    end;
+  end;
+  CreationList.Items[I] := S;
+  CreationList.ItemIndex := I;
+  ListClick(nil);
 end;
 
 procedure TListEditDlg.ListClick(Sender: TObject);
@@ -217,6 +316,20 @@ begin
     D.InvalidPathLbl.Visible := Paths;
     D.BrowseButton.Visible := Paths;
     D.DeleteInvalidBtn.Visible := Paths;
+    D.RelativeButton.Visible := Paths;
+    D.AbsoluteButton.Visible := Paths;
+    if Paths then
+    begin
+      PathBox(D.ElementEdit, True);
+      AcceptFileDrops(D.CreationList, D.FilesDropped);
+      AcceptFileDrops(D.TextMemo, D.FilesDropped);
+    end
+    else
+    begin
+      { no row of Make Relative / Absolute: the dialog a row lower }
+      D.Constraints.MinHeight := D.Constraints.MinHeight - (D.RelativeButton.Top - D.ReplaceButton.Top);
+      D.ClientHeight := D.ClientHeight - (D.RelativeButton.Top - D.ReplaceButton.Top);
+    end;
     { split at ';' only (DelimitedText of Delphi 7 also splits at blanks: "Program Files") }
     L.Text := StringReplace(Value, ';', #13#10, [rfReplaceAll]);
     for I := 0 to L.Count - 1 do
@@ -229,6 +342,7 @@ begin
     Result := D.ShowModal = mrOk;
     if Result then
     begin
+      if D.chkText.Checked then D.TakeText;
       L.Assign(D.CreationList.Items);
       Value := '';
       for I := 0 to L.Count - 1 do

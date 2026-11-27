@@ -99,7 +99,11 @@ type
     { Edit | Align to Grid, also on the designer's page bar }
     iiAlignGrid,
     { Edit | Flip Children | Selected (All is iiFlipHorz) }
-    iiFlipSelected);
+    iiFlipSelected,
+    { Edit | Line: Upper, Lower and Toggle Case, Sort Lines, Surround With - also on the code view's
+      page bar -; the button by the selection that opens its menu; Edit | Hide Non-Visual Components,
+      also on the designer's page bar }
+    iiUpperCase, iiLowerCase, iiToggleCase, iiSortLines, iiSurround, iiSelectionMenu, iiHideNonVisual);
 
 const
   { the icons that also come at 32 x 32 (ICONS32, in this order): File | New | Other's items.

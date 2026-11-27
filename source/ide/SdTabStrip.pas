@@ -132,7 +132,9 @@ type
     UIDrawTab's. A click on a tab's close box calls OnClose instead of choosing the tab. A tab
     pressed (and so chosen) and dragged along the row changes places with a neighbour the moment
     the pointer reaches it, in the direction the pointer moves (TabReorderStep, as the dock's tabs;
-    OnMove after each step); Esc or another window taking the mouse puts it back where it was. }
+    OnMove after each step; in rows - MultiLine, Editor Options' Multi-line file tabs - it changes
+    places with the tab the pointer is over); Esc or another window taking the mouse puts it back
+    where it was. }
   TSdFileTabs = class(TTabControl)
   private
     FCloser: TSdPressBoxes;
@@ -161,7 +163,13 @@ type
   public
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
-    function RowHeight: Integer;                  // the height of the tabs
+    function RowHeight: Integer;                  // the height of the tabs (in rows: the first row's)
+    function StripHeight: Integer;                // ... of every row of them
+    { a tab's place as it is drawn: the control's, the first row from the control's top }
+    function TabBand(Index: Integer): TRect;
+    { the left edge of Windows' scroll arrows of the row (an up-down control while the tabs do not fit
+      one row), client coordinates; -1: none }
+    function ArrowsLeft: Integer;
     { the tabs made higher (TabHeight) when RowHeight is less than MinHeight: what lies beside
       them in the row (Back / Forward, the open files' drop-down) is as high as the row }
     procedure FitRowHeight(MinHeight: Integer);
@@ -591,14 +599,55 @@ begin
   SendMessage(Handle, TCM_SETMINTABWIDTH, 0, 0);
 end;
 
-{ the row of tabs: as high as the control makes its items }
+{ the row of tabs: as high as the control makes its items - the first row's bottom }
 function TSdFileTabs.RowHeight: Integer;
 var
+  I: Integer;
   R: TRect;
 begin
   Result := UIDockTabHeight;
-  if HandleAllocated and (Tabs.Count > 0) and
-    (SendMessage(Handle, TCM_GETITEMRECT, 0, Integer(@R)) <> 0) then Result := R.Bottom;
+  if not HandleAllocated then Exit;
+  for I := 0 to Tabs.Count - 1 do
+  begin
+    R := TabBand(I);
+    if R.Top = 0 then
+    begin
+      Result := R.Bottom;
+      Exit;
+    end;
+  end;
+end;
+
+function TSdFileTabs.StripHeight: Integer;
+var
+  I: Integer;
+begin
+  Result := RowHeight;
+  if MultiLine and HandleAllocated then
+    for I := 0 to Tabs.Count - 1 do
+      if TabRect(I).Bottom > Result then Result := TabRect(I).Bottom;
+end;
+
+function TSdFileTabs.ArrowsLeft: Integer;
+var
+  W: HWND;
+  R: TRect;
+begin
+  Result := -1;
+  if not HandleAllocated then Exit;
+  W := FindWindowEx(Handle, 0, 'msctls_updown32', nil);
+  if (W = 0) or not IsWindowVisible(W) then Exit;
+  GetWindowRect(W, R);
+  MapWindowPoints(0, Handle, R, 2);
+  Result := R.Left;
+end;
+
+{ the first row lies a few pixels below the control's top (the room of a chosen tab, which the tabs
+  drawn here do not take): a tab whose top is less than its height away from it is in that row }
+function TSdFileTabs.TabBand(Index: Integer): TRect;
+begin
+  Result := TabRect(Index);
+  if Result.Top < Result.Bottom - Result.Top then Result.Top := 0;
 end;
 
 { with a small UI font (Tahoma 8) the tabs were 20 px and the tool buttons beside them 22 px
@@ -681,10 +730,7 @@ begin
   Result := (Index >= 0) and (Index < Tabs.Count) and HandleAllocated;
   if Result then
   begin
-    R := TabRect(Index);
-    R.Top := 0;
-    R.Bottom := RowHeight;
-    R := UITabCloseRect(R);
+    R := UITabCloseRect(TabBand(Index));
   end;
 end;
 
@@ -696,7 +742,7 @@ begin
   FHotTab := Value;
   if HandleAllocated then
   begin
-    R := Rect(0, 0, ClientWidth, RowHeight);
+    R := Rect(0, 0, ClientWidth, StripHeight);
     InvalidateRect(Handle, @R, False);
   end;
 end;
@@ -713,21 +759,28 @@ end;
   on it. Painted into the VCL's buffer (DoubleBuffered: no flicker). }
 procedure TSdFileTabs.PaintWindow(DC: HDC);
 var
-  I, Row: Integer;
+  I, Arrows: Integer;
   R: TRect;
   S: TUIButtonState;
+  Saved: Integer;
 begin
-  Row := RowHeight;
   UIFill(DC, Rect(0, 0, ClientWidth, ClientHeight), clBtnFace);
-  for I := 0 to Tabs.Count - 1 do
-  begin
-    R := TabRect(I);
-    R.Top := 0;
-    R.Bottom := Row;
-    if I = TabIndex then S := bsChecked
-    else if I = FHotTab then S := bsHot
-    else S := bsNormal;
-    UIDrawTab(DC, R, TabTextW(I), S, tsTop, True, FCloser.State(I));
+  { the scroll arrows lie a little below the row's top: a tab under them would show above and below
+    them - none is drawn from their left edge on, the face colour stays there }
+  Saved := SaveDC(DC);
+  Arrows := ArrowsLeft;
+  if Arrows >= 0 then ExcludeClipRect(DC, Arrows, 0, ClientWidth, StripHeight);
+  try
+    for I := 0 to Tabs.Count - 1 do
+    begin
+      R := TabBand(I);
+      if I = TabIndex then S := bsChecked
+      else if I = FHotTab then S := bsHot
+      else S := bsNormal;
+      UIDrawTab(DC, R, TabTextW(I), S, tsTop, True, FCloser.State(I));
+    end;
+  finally
+    RestoreDC(DC, Saved);
   end;
 end;
 
@@ -814,10 +867,10 @@ begin
 end;
 
 { a dragged tab follows the pointer at once: it changes places with the neighbour the pointer
-  reaches, in the direction the pointer moves (TabReorderStep) }
+  reaches, in the direction the pointer moves (TabReorderStep); in rows with the tab under the pointer }
 procedure TSdFileTabs.WMMouseMove(var Message: TWMMouseMove);
 var
-  X, Dir, Guard: Integer;
+  X, Dir, Guard, Under: Integer;
   R: TRect;
 begin
   inherited;
@@ -836,17 +889,23 @@ begin
         FDragging := True;
         MouseCapture := True;
       end;
-      for Guard := 1 to Tabs.Count do
+      if MultiLine then
       begin
-        if FPress < 0 then Break;
-        R := TabRect(FPress);
-        case TabReorderStep(X, Dir, R.Left, R.Right, FPress > 0, FPress + 1 < Tabs.Count) of
-          1: DragTo(FPress + 1);
-          -1: DragTo(FPress - 1);
-        else
-          Break;
+        Under := IndexOfTabAt(X, Message.YPos);
+        if (Under >= 0) and (Under <> FPress) then DragTo(Under);
+      end
+      else
+        for Guard := 1 to Tabs.Count do
+        begin
+          if FPress < 0 then Break;
+          R := TabRect(FPress);
+          case TabReorderStep(X, Dir, R.Left, R.Right, FPress > 0, FPress + 1 < Tabs.Count) of
+            1: DragTo(FPress + 1);
+            -1: DragTo(FPress - 1);
+          else
+            Break;
+          end;
         end;
-      end;
     end;
   SetHotTab(IndexOfTabAt(Message.XPos, Message.YPos));
 end;

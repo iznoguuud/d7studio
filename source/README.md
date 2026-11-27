@@ -54,7 +54,7 @@ Setup changes Delphi 7's own folder:
   Borland's, so Delphi 7's other packages load with them.
 - **D7 Studio** goes into `Bin`: `D7Studio.exe` with its map, Scintilla (`Scintilla.dll`,
   `Lexilla.dll`), `migrate.exe`, this file,
-  [FEATURES.md](FEATURES.md), [RELEASE-NOTES.md](RELEASE-NOTES.md) (what changed in each version),
+  [FEATURES.md](FEATURES.md), [RELEASE-NOTES.md](../RELEASE-NOTES.md) (what changed in each version),
   [MODERNIZATION.md](MODERNIZATION.md), [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) (the
   licence of the IntelliJ Platform icons that D7 Studio's icons are made of) and `LICENSE.txt`,
   D7 Studio's license (MIT), which Setup also shows before it installs anything.
@@ -246,7 +246,9 @@ IDE, area by area: what is new and what works better.
   values.
 - **Code editor** (Scintilla): navigation bar, code completion and code parameters, matching and
   typing aids, a minimap beside the scroll bar, browse history, bookmarks, macros, code templates, a
-  source formatter, and file encodings. Code insight works on Pascal sources. C/C++, C#, resource scripts, IDL, XML,
+  source formatter, and file encodings; flow-control words and identifiers of your own list in colours of
+  their own; case, sort and surround commands in Edit ▸ Line and in a menu that a button by the selection
+  opens; file tabs in one row or several. Code insight works on Pascal sources. C/C++, C#, resource scripts, IDL, XML,
   HTML, INI-style files (`.ini`, `.dof`, `.dsk` ...), SQL, batch files and make files (`.bpg`)
   are highlighted in the theme's colours, can be folded and have Toggle Comment. Other files are
   plain text.
@@ -255,7 +257,9 @@ IDE, area by area: what is new and what works better.
   - a moment after you stop typing or scrolling. A name it does not know keeps the identifier
   colour. Light and Dark colour the kinds; Classic, like Delphi 7, does not. Each kind can also be
   bold, italic or underlined (Tools ▸ Editor Options ▸ Color), as can the kinds of the completion
-  list.
+  list. `Exit`, `Break`, `Continue`, `Halt`, `Abort`, `raise` and `goto` have a colour of their own (*Flow
+  control*, Tools ▸ Editor Options ▸ Highlighting), and so do the identifiers you list there (*Custom
+  identifiers*).
 - **Error Insight** (Tools ▸ Editor Options ▸ Code Insight, on by default): a second after you stop
   typing, the errors of the unit shown are underlined with a wavy line, in Delphi 7's compiler's
   words - syntax errors, undeclared identifiers and members, routines and methods declared without

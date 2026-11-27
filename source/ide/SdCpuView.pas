@@ -12,12 +12,15 @@ unit SdCpuView;
 { D7 Studio - Delphi 7's CPU window as a view (View | Debug Windows | CPU): the disassembly (each source
   line above its code, the execution point marked), the
   registers (changed ones in red), the flags, a memory dump and the machine stack of a stopped
-  process; empty while it runs. Ctrl+G in the disassembly or the dump: Goto Address. }
+  process; empty while it runs. Its menu: Copy (Ctrl+C) the selected lines, Copy Lines from the
+  selected one - the code decoded and the memory read on beyond what a pane holds -, Copy All, Open in
+  Editor; Go to Address (Ctrl+G) in the disassembly, or the dump while it has the keyboard. }
 
 interface
 
 uses
-  Windows, Messages, SysUtils, Classes, Graphics, Controls, Forms, StdCtrls, SdUI, SdDbgEngine;
+  Windows, Messages, SysUtils, Classes, Graphics, Controls, Forms, StdCtrls, Menus, ActnList, SdUI,
+  SdDbgEngine;
 
 type
   { the text of a source line (the IDE's: an open page, else the file) }
@@ -33,8 +36,23 @@ type
     FlagsList: TListBox;
     DumpList: TListBox;
     StackList: TListBox;
+    MenuActions: TActionList;
+    aCpuCopy: TAction;
+    aCpuCopyLines: TAction;
+    aCpuCopyAll: TAction;
+    aCpuOpenText: TAction;
+    aCpuGotoAddress: TAction;
+    CpuPopup: TPopupMenu;
+    pmCpuCopy: TMenuItem;
+    pmCpuCopyLines: TMenuItem;
+    pmCpuCopyAll: TMenuItem;
+    pmCpuOpenText: TMenuItem;
+    pmCpuSep: TMenuItem;
+    pmCpuGotoAddress: TMenuItem;
     procedure DrawItem(Control: TWinControl; Index: Integer; Rect: TRect; State: TOwnerDrawState);
     procedure ListKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
+    procedure ListContextPopup(Sender: TObject; MousePos: TPoint; var Handled: Boolean);
+    procedure MenuActionsUpdate(Action: TBasicAction; var Handled: Boolean);
   private
     FDbg: TDebugger;
     FFrames: array[0..4] of TRect;  // the flat borders around the panes
@@ -44,8 +62,16 @@ type
     FOld, FCur: TDbgRegisters;
     FHasOld: Boolean;
     FOnSourceText: TSourceTextFunc;
-    FOnGotoAddress: TNotifyEvent;
     FOnBreakpointAt: TBreakpointAtFunc;
+    FLineCounts: array[0..4] of Integer;   // Copy Lines' count of each pane, the last one asked
+    function Pane(Index: Integer): TListBox;     // 0 the disassembly, the registers, the flags, the dump, 4 the stack
+    function PaneIndex(Pane: TListBox): Integer;
+    { the lines of the panes as they show them: the instructions, each source line above its first one
+      (Objects SourceMark; an instruction's its address); Count lines of 8 bytes of memory from Addr;
+      Count dwords of the stack from Addr (Objects 1 at ESP) }
+    procedure AddDisasmLines(Lines: TStrings; const Instrs: TDbgInstrArray);
+    procedure AddDumpLines(Lines: TStrings; Addr: Cardinal; Count: Integer);
+    procedure AddStackLines(Lines: TStrings; Addr: Cardinal; Count: Integer);
     procedure FillDisasm(Addr: Cardinal);
     procedure FillRegs;
     procedure FillDump;
@@ -66,8 +92,18 @@ type
     function SelectedAddress: Cardinal;     // the disassembly line's (0: none)
     procedure FontChanged(F: TFont);
     procedure BreakpointsChanged;           // the disassembly shows them again
+    { the menu's commands: the pane they are about - the one with the keyboard (a right click gives it
+      the keyboard), else the disassembly -; its lines as text, the selected ones or all; Count lines
+      from its selected one (the disassembly: instructions decoded from it, its source lines too; the
+      dump and the stack: the memory read from its address on); Copy Lines' count of the pane; the
+      commands' enabled states }
+    function CommandPane: TListBox;
+    function PaneText(Pane: TListBox; SelectedOnly: Boolean): string;
+    function LinesText(Pane: TListBox; Count: Integer): string;
+    function LineCount(Pane: TListBox): Integer;
+    procedure SetLineCount(Pane: TListBox; Count: Integer);
+    procedure UpdateCommands;
     property OnSourceText: TSourceTextFunc read FOnSourceText write FOnSourceText;
-    property OnGotoAddress: TNotifyEvent read FOnGotoAddress write FOnGotoAddress;   // Ctrl+G
     property OnBreakpointAt: TBreakpointAtFunc read FOnBreakpointAt write FOnBreakpointAt;
   end;
 
@@ -125,6 +161,13 @@ begin
   Prepare(FlagsList);
   Prepare(DumpList);
   Prepare(StackList);
+  { Copy Lines' first counts: 30 instructions, 5 lines of memory, 30 dwords of the stack, every register
+    and flag }
+  FLineCounts[0] := 30;
+  FLineCounts[1] := 16;
+  FLineCounts[2] := 9;
+  FLineCounts[3] := 5;
+  FLineCounts[4] := 30;
 end;
 
 { Paint fills the whole view: nothing to erase first }
@@ -278,9 +321,9 @@ const
   Count = 160;
 var
   Instrs: TDbgInstrArray;
-  Start, A: Cardinal;
-  Try_, I, K, Line, Sel: Integer;
-  Bytes, FileName, Src: string;
+  Start: Cardinal;
+  Try_, K, Line, Sel: Integer;
+  FileName: string;
   Exact: Boolean;
 begin
   DisasmList.Items.BeginUpdate;
@@ -299,24 +342,10 @@ begin
     if Start = Addr then Start := FDbg.DecodeStart(Addr, Before);
     FStart := Start;
     if not FDbg.DecodeAt(Start, Count, Instrs) then Exit;
-    Sel := -1;
-    for I := 0 to High(Instrs) do
-    begin
-      A := Instrs[I].Addr;
-      if FDbg.SourceLineAt(A, FileName, Line, Exact) and Exact then
-      begin
-        Src := '';
-        if Assigned(FOnSourceText) then Src := FOnSourceText(FileName, Line);
-        DisasmList.Items.AddObject(Format('%s.%d: %s', [ExtractFileName(FileName), Line, Trim(Src)]), TObject(SourceMark));
-      end;
-      Bytes := '';
-      for K := 0 to Instrs[I].Len - 1 do
-        if K < 7 then Bytes := Bytes + IntToHex(Instrs[I].Bytes[K], 2);
-      if Instrs[I].Len > 7 then Bytes := Bytes + '..';
-      K := DisasmList.Items.AddObject(Format('%.8X %-16s %s', [A, Bytes, Instrs[I].Text]), TObject(A));
-      if A = Addr then Sel := K;
-    end;
+    AddDisasmLines(DisasmList.Items, Instrs);
+    Sel := DisasmList.Items.IndexOfObject(TObject(Addr));
     DisasmList.ItemIndex := Sel;
+    if Sel >= 0 then DisasmList.Selected[Sel] := True;
     { the execution point in the upper third of the pane }
     K := DisasmList.ClientHeight div DisasmList.ItemHeight div 3;
     if Sel > K then DisasmList.TopIndex := Sel - K;
@@ -325,8 +354,31 @@ begin
   end;
 end;
 
-procedure TSdCpuView.FillRegs;
+procedure TSdCpuView.AddDisasmLines(Lines: TStrings; const Instrs: TDbgInstrArray);
 var
+  I, K, Line: Integer;
+  A: Cardinal;
+  Bytes, FileName, Src: string;
+  Exact: Boolean;
+begin
+  for I := 0 to High(Instrs) do
+  begin
+    A := Instrs[I].Addr;
+    if FDbg.SourceLineAt(A, FileName, Line, Exact) and Exact then
+    begin
+      Src := '';
+      if Assigned(FOnSourceText) then Src := FOnSourceText(FileName, Line);
+      Lines.AddObject(Format('%s.%d: %s', [ExtractFileName(FileName), Line, Trim(Src)]), TObject(SourceMark));
+    end;
+    Bytes := '';
+    for K := 0 to Instrs[I].Len - 1 do
+      if K < 7 then Bytes := Bytes + IntToHex(Instrs[I].Bytes[K], 2);
+    if Instrs[I].Len > 7 then Bytes := Bytes + '..';
+    Lines.AddObject(Format('%.8X %-16s %s', [A, Bytes, Instrs[I].Text]), TObject(A));
+  end;
+end;
+
+procedure TSdCpuView.FillRegs;var
   I, Bit: Integer;
 begin
   RegsList.Items.BeginUpdate;
@@ -361,63 +413,79 @@ end;
 { 8 bytes a line, hexadecimal and as characters; a byte of a page that cannot be read is ?? (a
   read that ran into such a page left the whole dump at one line of ????????) }
 procedure TSdCpuView.FillDump;
-var
-  Buf: array[0..255] of Byte;
-  Readable: array[0..255] of Boolean;
-  I, K, B: Integer;
-  Hex, Chars: string;
 begin
   DumpList.Items.BeginUpdate;
   try
     DumpList.Items.Clear;
-    if FDbg = nil then Exit;
-    FDbg.ReadMemoryPaged(FDumpAddr, Buf, SizeOf(Buf), Readable);
-    for I := 0 to SizeOf(Buf) div 8 - 1 do
-    begin
-      Hex := '';
-      Chars := '';
-      for K := 0 to 7 do
-      begin
-        B := I * 8 + K;
-        if not Readable[B] then
-        begin
-          Hex := Hex + '?? ';
-          Chars := Chars + '?';
-        end
-        else
-        begin
-          Hex := Hex + IntToHex(Buf[B], 2) + ' ';
-          if Buf[B] in [32..126] then Chars := Chars + Chr(Buf[B]) else Chars := Chars + '.';
-        end;
-      end;
-      DumpList.Items.Add(Format('%.8X %s %s', [FDumpAddr + Cardinal(I * 8), Hex, Chars]));
-    end;
+    if FDbg <> nil then AddDumpLines(DumpList.Items, FDumpAddr, 32);
   finally
     DumpList.Items.EndUpdate;
+  end;
+end;
+
+procedure TSdCpuView.AddDumpLines(Lines: TStrings; Addr: Cardinal; Count: Integer);
+var
+  Buf: array of Byte;
+  Readable: array of Boolean;
+  I, K, B: Integer;
+  Hex, Chars: string;
+begin
+  if (FDbg = nil) or (Count <= 0) then Exit;
+  SetLength(Buf, Count * 8);
+  SetLength(Readable, Count * 8);
+  FDbg.ReadMemoryPaged(Addr, Buf[0], Length(Buf), Readable);
+  for I := 0 to Count - 1 do
+  begin
+    Hex := '';
+    Chars := '';
+    for K := 0 to 7 do
+    begin
+      B := I * 8 + K;
+      if not Readable[B] then
+      begin
+        Hex := Hex + '?? ';
+        Chars := Chars + '?';
+      end
+      else
+      begin
+        Hex := Hex + IntToHex(Buf[B], 2) + ' ';
+        if Buf[B] in [32..126] then Chars := Chars + Chr(Buf[B]) else Chars := Chars + '.';
+      end;
+    end;
+    Lines.Add(Format('%.8X %s %s', [Addr + Cardinal(I * 8), Hex, Chars]));
   end;
 end;
 
 { the machine stack from ESP on, a dword a line; ESP's line marked. Read page by page: near the
   stack's base the dwords beyond it are ???????? (the pane stayed empty there) }
 procedure TSdCpuView.FillStack;
-var
-  Buf: array[0..63] of Cardinal;
-  Readable: array[0..255] of Boolean;
-  I: Integer;
-  S: string;
 begin
   StackList.Items.BeginUpdate;
   try
     StackList.Items.Clear;
-    if FDbg = nil then Exit;
-    FDbg.ReadMemoryPaged(FCur.ESP, Buf, SizeOf(Buf), Readable);
-    for I := 0 to High(Buf) do
-    begin
-      if Readable[I * 4] and Readable[I * 4 + 3] then S := Format('%.8X', [Buf[I]]) else S := '????????';
-      StackList.Items.AddObject(Format('%.8X %s', [FCur.ESP + Cardinal(I * 4), S]), TObject(Ord(I = 0)));
-    end;
+    if FDbg <> nil then AddStackLines(StackList.Items, FCur.ESP, 64);
   finally
     StackList.Items.EndUpdate;
+  end;
+end;
+
+procedure TSdCpuView.AddStackLines(Lines: TStrings; Addr: Cardinal; Count: Integer);
+var
+  Buf: array of Cardinal;
+  Readable: array of Boolean;
+  I: Integer;
+  A: Cardinal;
+  S: string;
+begin
+  if (FDbg = nil) or (Count <= 0) then Exit;
+  SetLength(Buf, Count);
+  SetLength(Readable, Count * 4);
+  FDbg.ReadMemoryPaged(Addr, Buf[0], Count * 4, Readable);
+  for I := 0 to Count - 1 do
+  begin
+    A := Addr + Cardinal(I * 4);
+    if Readable[I * 4] and Readable[I * 4 + 3] then S := Format('%.8X', [Buf[I]]) else S := '????????';
+    Lines.AddObject(Format('%.8X %s', [A, S]), TObject(Ord(A = FCur.ESP)));
   end;
 end;
 
@@ -494,13 +562,137 @@ begin
   UIListRowWidth(L, Rect.Left + 12 + C.TextWidth(S));
 end;
 
+{ Ctrl+C and Ctrl+G: the menu's commands - the keys of its items, which the main form's shortcuts
+  may take first }
 procedure TSdCpuView.ListKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
 begin
-  if (Key = Ord('G')) and (ssCtrl in Shift) and ((Sender = DisasmList) or (Sender = DumpList)) then
-  begin
-    if Assigned(FOnGotoAddress) then FOnGotoAddress(Self);
-    Key := 0;
+  if Shift <> [ssCtrl] then Exit;
+  if Key = Ord('C') then aCpuCopy.Execute
+  else if Key = Ord('G') then aCpuGotoAddress.Execute
+  else Exit;
+  Key := 0;
+end;
+
+{ a right click gives the pane the keyboard (the commands are about it) and selects the line under
+  the pointer unless it is among the selected ones }
+procedure TSdCpuView.ListContextPopup(Sender: TObject; MousePos: TPoint; var Handled: Boolean);
+var
+  L: TListBox;
+  I: Integer;
+begin
+  L := Sender as TListBox;
+  if L.CanFocus then L.SetFocus;
+  if MousePos.X < 0 then Exit;            // the menu key: the selection as it is
+  I := L.ItemAtPos(MousePos, True);
+  if (I < 0) or L.Selected[I] then Exit;
+  L.ClearSelection;
+  L.Selected[I] := True;
+  L.ItemIndex := I;
+end;
+
+function TSdCpuView.Pane(Index: Integer): TListBox;
+begin
+  case Index of
+    0: Result := DisasmList;
+    1: Result := RegsList;
+    2: Result := FlagsList;
+    3: Result := DumpList;
+  else
+    Result := StackList;
   end;
+end;
+
+function TSdCpuView.PaneIndex(Pane: TListBox): Integer;
+begin
+  Result := High(FLineCounts);
+  while (Result > 0) and (Self.Pane(Result) <> Pane) do Dec(Result);
+end;
+
+function TSdCpuView.CommandPane: TListBox;
+var
+  I: Integer;
+begin
+  for I := 0 to High(FLineCounts) do
+  begin
+    Result := Pane(I);
+    if Result.Focused then Exit;
+  end;
+  Result := DisasmList;
+end;
+
+function TSdCpuView.PaneText(Pane: TListBox; SelectedOnly: Boolean): string;
+var
+  I: Integer;
+begin
+  Result := '';
+  for I := 0 to Pane.Items.Count - 1 do
+    if not SelectedOnly or Pane.Selected[I] then Result := Result + Pane.Items[I] + #13#10;
+end;
+
+{ the address a line of the dump or the stack begins with }
+function LineAddress(const S: string): Cardinal;
+begin
+  Result := Cardinal(StrToIntDef('$' + Copy(S, 1, 8), 0));
+end;
+
+function TSdCpuView.LinesText(Pane: TListBox; Count: Integer): string;
+var
+  Lines: TStringList;
+  Instrs: TDbgInstrArray;
+  I: Integer;
+begin
+  Result := '';
+  if (Count <= 0) or (Pane.Items.Count = 0) then Exit;
+  I := Pane.ItemIndex;
+  if I < 0 then I := 0;
+  Lines := TStringList.Create;
+  try
+    if (Pane = DisasmList) and (FDbg <> nil) then
+    begin
+      { from the instruction of the line, the one under a source line }
+      while (I < Pane.Items.Count - 1) and (Cardinal(Pane.Items.Objects[I]) = SourceMark) do Inc(I);
+      if FDbg.DecodeAt(Cardinal(Pane.Items.Objects[I]), Count, Instrs) then AddDisasmLines(Lines, Instrs);
+    end
+    else if Pane = DumpList then AddDumpLines(Lines, LineAddress(Pane.Items[I]), Count)
+    else if Pane = StackList then AddStackLines(Lines, LineAddress(Pane.Items[I]), Count)
+    else
+      while (I < Pane.Items.Count) and (Lines.Count < Count) do
+      begin
+        Lines.Add(Pane.Items[I]);
+        Inc(I);
+      end;
+    Result := Lines.Text;
+  finally
+    Lines.Free;
+  end;
+end;
+
+function TSdCpuView.LineCount(Pane: TListBox): Integer;
+begin
+  Result := FLineCounts[PaneIndex(Pane)];
+end;
+
+procedure TSdCpuView.SetLineCount(Pane: TListBox; Count: Integer);
+begin
+  FLineCounts[PaneIndex(Pane)] := Count;
+end;
+
+procedure TSdCpuView.MenuActionsUpdate(Action: TBasicAction; var Handled: Boolean);
+var
+  L: TListBox;
+begin
+  L := CommandPane;
+  if Action = aCpuCopy then aCpuCopy.Enabled := L.SelCount > 0
+  else if Action = aCpuGotoAddress then aCpuGotoAddress.Enabled := FDbg <> nil
+  else if Action is TCustomAction then TCustomAction(Action).Enabled := L.Items.Count > 0;
+  Handled := True;
+end;
+
+procedure TSdCpuView.UpdateCommands;
+var
+  I: Integer;
+begin
+  for I := 0 to MenuActions.ActionCount - 1 do MenuActions.Actions[I].Update;
 end;
 
 end.

@@ -31,9 +31,11 @@ type
   { the elements, in the order of the Color page's tree }
   TEditorElement = (
     { Pascal: the code's tokens; a name by its kind, as code insight finds it (eeType ..
-      eeUnitName: the colour of the text only), else Identifier }
+      eeUnitName: the colour of the text only), else Identifier; the flow-control words (Exit,
+      Break, Continue, Halt, Abort, raise, goto) and the identifiers of the user's list, each on
+      an identifier's ground too }
     eePlainText, eeReservedWord, eeIdentifier, eeType, eeRoutine, eeProperty, eeField, eeVariable,
-    eeLocalVar, eeParameter, eeConstant, eeUnitName, eeSymbol, eeComment, eeDirective, eeString,
+    eeLocalVar, eeParameter, eeConstant, eeUnitName, eeFlowControl, eeCustomIdent, eeSymbol, eeComment, eeDirective, eeString,
     eeCharacter, eeNumber, eeHex, eeAssembler,
     { Editor }
     eeSelection, eeSearchMatch, eeHotLink, eeCurrentLine, eeCaret, eeGutter, eeRightMargin,
@@ -58,6 +60,7 @@ type
     Bold, Italic, Underline: Boolean;
   end;
   TEditorColors = array[TEditorElement] of TEditorColor;
+  TEditorElements = set of TEditorElement;
 
   TEditorTheme = record
     Name: string;
@@ -85,7 +88,7 @@ const
   ElementGroups: array[TEditorElement] of TEditorGroup = (
     egPascal, egPascal, egPascal, egPascal, egPascal, egPascal, egPascal, egPascal, egPascal,
     egPascal, egPascal, egPascal, egPascal, egPascal, egPascal, egPascal, egPascal, egPascal,
-    egPascal, egPascal,
+    egPascal, egPascal, egPascal, egPascal,
     egEditor, egEditor, egEditor, egEditor, egEditor, egEditor, egEditor, egEditor, egEditor,
     egEditor, egEditor, egEditor, egEditor,
     egHighlighting, egHighlighting, egHighlighting, egHighlighting, egHighlighting,
@@ -97,7 +100,8 @@ const
     'Code Insight');
   ElementCaptions: array[TEditorElement] of string = (
     'Plain text', 'Reserved word', 'Identifier', 'Type', 'Routine', 'Property', 'Field',
-    'Variable', 'Local variable', 'Parameter', 'Constant', 'Unit', 'Symbol', 'Comment',
+    'Variable', 'Local variable', 'Parameter', 'Constant', 'Unit', 'Flow control',
+    'Custom identifier', 'Symbol', 'Comment',
     'Directive', 'String', 'Character', 'Number', 'Hex number', 'Assembler',
     'Selection', 'Search match', 'Hot link', 'Current line', 'Caret', 'Gutter and line numbers',
     'Right margin', 'Indentation guides', 'Visible blanks', 'Folding marks', 'Modified lines',
@@ -111,7 +115,8 @@ const
   { the keys of a theme's section }
   ElementKeys: array[TEditorElement] of string = (
     'PlainText', 'ReservedWord', 'Identifier', 'Type', 'Routine', 'Property', 'Field', 'Variable',
-    'LocalVariable', 'Parameter', 'Constant', 'Unit', 'Symbol', 'Comment', 'Directive', 'String',
+    'LocalVariable', 'Parameter', 'Constant', 'Unit', 'FlowControl', 'CustomIdentifier', 'Symbol',
+    'Comment', 'Directive', 'String',
     'Character', 'Number', 'Hex', 'Assembler',
     'Selection', 'SearchMatch', 'HotLink', 'CurrentLine', 'Caret', 'Gutter', 'RightMargin',
     'IndentGuides', 'Blanks', 'Folding', 'ModifiedLines', 'SavedLines', 'ScrollBars',
@@ -128,6 +133,7 @@ const
     [epFore, epBack, epStyle], [epFore, epBack, epStyle], [epFore, epBack, epStyle],
     [epFore, epStyle], [epFore, epStyle], [epFore, epStyle], [epFore, epStyle], [epFore, epStyle],
     [epFore, epStyle], [epFore, epStyle], [epFore, epStyle], [epFore, epStyle],
+    [epFore, epStyle], [epFore, epStyle],
     [epFore, epBack, epStyle], [epFore, epBack, epStyle], [epFore, epBack, epStyle],
     [epFore, epBack, epStyle], [epFore, epBack, epStyle], [epFore, epBack, epStyle],
     [epFore, epBack, epStyle], [epFore, epBack, epStyle],
@@ -137,6 +143,10 @@ const
     [epFore, epBack], [epFore, epBack], [epFore, epBack], [epFore, epBack], [epFore, epBack],
     [epFore, epBack], [epFore, epStyle], [epFore, epStyle], [epFore, epStyle], [epFore, epStyle],
     [epFore, epStyle], [epFore, epStyle], [epFore, epStyle], [epFore, epStyle], [epFore, epStyle]);
+
+  { the elements whose Default is Identifier's: the names by kind, the flow-control words, the
+    user's identifiers }
+  IdentElements = [eeType..eeUnitName, eeFlowControl, eeCustomIdent];
 
   DelphiElementKeys: array[TDelphiElement] of string = ('Whitespace', 'Comment',
     'Reserved word', 'Identifier', 'Symbol', 'String', 'Number', 'Assembler', 'Hot Link',
@@ -194,16 +204,16 @@ function ThemeTextColor(const S: string): TColor;
 function ElementText(const C: TEditorColor): string;
 function TextElement(const S: string): TEditorColor;
 { a theme's colours in Section of Ini (every key written); read: the keys there, the others stay
-  as C has them, then FollowPlainText }
+  as C has them, then FollowPlainText - the elements that had a key }
 procedure WriteThemeColors(Ini: TCustomIniFile; const Section: string; const C: TEditorColors);
-procedure ReadThemeColors(Ini: TCustomIniFile; const Section: string; var C: TEditorColors);
+function ReadThemeColors(Ini: TCustomIniFile; const Section: string; var C: TEditorColors): TEditorElements;
 
 { Delphi 7's factory colour of an element - what its "Use defaults for" shows }
 function DelphiDefaultColor(E: TDelphiElement; Back: Boolean): TColor;
 { Delphi 7's colours into a theme's C: its Pascal elements, the marked block, search match, hot
   link, right margin and the debugger's lines ("Use defaults for": the factory colour); the
-  elements Delphi 7 has none of keep what C has - the names by kind only while Delphi's
-  identifiers look as C's (the same RGB), else they are Default. Delphi's Pascal characters (#13)
+  elements Delphi 7 has none of keep what C has - the names by kind, the flow-control words and the
+  user's identifiers only while Delphi's identifiers look as C's (the same RGB), else they are Default. Delphi's Pascal characters (#13)
   are its strings. Then FollowPlainText }
 procedure ColorsFromDelphi(const D: TDelphiColors; var C: TEditorColors);
 { D7 Studio's text of one element before themes ([Editor Highlight]:
@@ -230,7 +240,8 @@ type
     ListText, ListGround: TColor;                   // the completion list
     Kinds: array[eeCompProcedure..eeCompAbstract] of TColor;
     Names: array[eeType..eeUnitName] of TColor;     // the names by kind (clDefault: Identifier's)
-    KeywordBold, CommentItalic: Boolean;
+    Flow, Custom: TColor;                           // the flow-control words, the user's identifiers
+    KeywordBold, CommentItalic, FlowBold: Boolean;
   end;
 
 const
@@ -252,7 +263,8 @@ const
      Kinds: (clTeal, clBlue, clNavy, clMaroon, clGreen, clOlive, clBlack, clTeal, clRed);
      Names: ($00997F26, $00265E79, $00801000, $00801000, $00801000, $00801000, $00801000,
        $00C17000, $00997F26);
-     KeywordBold: True; CommentItalic: True),
+     Flow: $000000C0; Custom: $00A0008B;
+     KeywordBold: True; CommentItalic: True; FlowBold: True),
     (Name: 'Dark'; Ground: $001E1E1E; Text: $00D4D4D4;
      Comment: $0055996A; Keyword: $00D69C56; Str: $007891CE; Number: $00A8CEB5;
      Directive: $00C086C5; AsmText: $007DBAD7; Link: $00FFC14F; Margin: $003C3C3C;
@@ -265,7 +277,8 @@ const
        $00B0C94E, $004747F4);
      Names: ($00B0C94E, $00AADCDC, $00FEDC9C, $00FEDC9C, $00FEDC9C, $00FEDC9C, $00FEDC9C,
        $00FFC14F, $00B0C94E);
-     KeywordBold: True; CommentItalic: True),
+     Flow: $007A7AF4; Custom: $00DDA0DD;
+     KeywordBold: True; CommentItalic: True; FlowBold: True),
     (Name: 'Classic'; Ground: $00800000; Text: $0000FFFF;
      Comment: $00C0C0C0; Keyword: $00FFFFFF; Str: $0000FFFF; Number: $0000FFFF;
      Directive: $0000FFFF; AsmText: $0000FF00; Link: $00FFFFFF; Margin: $00C0C0C0;
@@ -277,7 +290,8 @@ const
      Kinds: (clTeal, clBlue, clNavy, clMaroon, clGreen, clOlive, clBlack, clTeal, clRed);
      Names: (clDefault, clDefault, clDefault, clDefault, clDefault, clDefault, clDefault,
        clDefault, clDefault);
-     KeywordBold: False; CommentItalic: False));
+     Flow: clDefault; Custom: clDefault;
+     KeywordBold: False; CommentItalic: False; FlowBold: False));
 
   { Delphi 7's factory colours (its "Defaults"): text and ground of each element }
   DelphiFactory: array[TDelphiElement, Boolean] of TColor = (
@@ -342,6 +356,9 @@ begin
   SetC(eeCompletion, S.ListText, S.ListGround);
   for E := Low(S.Kinds) to High(S.Kinds) do C[E].Fore := S.Kinds[E];
   for E := Low(S.Names) to High(S.Names) do C[E].Fore := S.Names[E];
+  C[eeFlowControl].Fore := S.Flow;
+  C[eeFlowControl].Bold := S.FlowBold;
+  C[eeCustomIdent].Fore := S.Custom;
   FollowPlainText(C);
 end;
 
@@ -421,7 +438,7 @@ begin
   Result := C[E].Fore;
   if not IsDefaultColor(Result) then Exit;
   if E = eePlainText then Result := clWindowText
-  else if E in [eeType..eeUnitName] then Result := PascalFore(C, eeIdentifier)
+  else if E in IdentElements then Result := PascalFore(C, eeIdentifier)
   else Result := PascalFore(C, eePlainText);
 end;
 
@@ -430,7 +447,7 @@ begin
   Result := C[E].Back;
   if not IsDefaultColor(Result) then Exit;
   if E = eePlainText then Result := clWindow
-  else if E in [eeType..eeUnitName] then Result := PascalBack(C, eeIdentifier)
+  else if E in IdentElements then Result := PascalBack(C, eeIdentifier)
   else Result := PascalBack(C, eePlainText);
 end;
 
@@ -441,7 +458,7 @@ begin
   for E := Low(E) to High(E) do
     if (ElementGroups[E] = egPascal) and (E <> eePlainText) then
     begin
-      if E in [eeType..eeUnitName] then Source := eeIdentifier else Source := eePlainText;
+      if E in IdentElements then Source := eeIdentifier else Source := eePlainText;
       { a colour made Default shows the same: Source's colours stay what they were }
       if not IsDefaultColor(C[E].Fore) and (ColorToRGB(C[E].Fore) = ColorToRGB(PascalFore(C, Source))) then
         C[E].Fore := clDefault;
@@ -541,16 +558,21 @@ begin
   for E := Low(E) to High(E) do Ini.WriteString(Section, ElementKeys[E], ElementText(C[E]));
 end;
 
-procedure ReadThemeColors(Ini: TCustomIniFile; const Section: string; var C: TEditorColors);
+function ReadThemeColors(Ini: TCustomIniFile; const Section: string; var C: TEditorColors): TEditorElements;
 var
   E: TEditorElement;
   L: TStringList;
 begin
+  Result := [];
   L := TStringList.Create;
   try
     Ini.ReadSectionValues(Section, L);
     for E := Low(E) to High(E) do
-      if L.IndexOfName(ElementKeys[E]) >= 0 then C[E] := TextElement(L.Values[ElementKeys[E]]);
+      if L.IndexOfName(ElementKeys[E]) >= 0 then
+      begin
+        C[E] := TextElement(L.Values[ElementKeys[E]]);
+        Include(Result, E);
+      end;
   finally
     L.Free;
   end;
@@ -590,11 +612,12 @@ begin
   Take(dePlainText, eePlainText);
   Take(deReservedWord, eeReservedWord);
   Take(deIdentifier, eeIdentifier);
-  { Delphi 7 colours every name as an identifier: the kinds keep C's colours only while the
+  { Delphi 7 colours every name as an identifier: the kinds (IdentElements) keep C's colours only while the
     identifiers look as C's (clWindow is C's white too), else they are Default - Identifier's }
   if (ColorToRGB(PascalFore(C, eeIdentifier)) <> IdentFore) or
     (ColorToRGB(PascalBack(C, eeIdentifier)) <> IdentBack) then
-    for E := eeType to eeUnitName do C[E].Fore := clDefault;
+    for E := Low(E) to High(E) do
+      if E in IdentElements then C[E].Fore := clDefault;
   Take(deSymbol, eeSymbol);
   Take(deComment, eeComment);
   Take(dePreprocessor, eeDirective);

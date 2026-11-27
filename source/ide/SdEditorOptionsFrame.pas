@@ -97,6 +97,8 @@ type
     cbSortPagesMenu: TCheckBox;
     chkWordWrap: TCheckBox;
     chkNavigationBar: TCheckBox;
+    chkMultiLineTabs: TCheckBox;
+    chkSelectionButton: TCheckBox;
     cbHistoryLimit: TComboBox;
     gbScrollBars: TGroupBox;
     chkScrollMarkers: TCheckBox;
@@ -151,6 +153,10 @@ type
     gbMatching: TGroupBox;
     chkBrackets: TCheckBox;
     chkRainbow: TCheckBox;
+    gbWords: TGroupBox;
+    chkFlowControl: TCheckBox;
+    lblCustomIdents: TLabel;
+    edCustomIdents: TEdit;
     chkBlocks: TCheckBox;
     chkIdentifiers: TCheckBox;
     chkOccurrences: TCheckBox;
@@ -265,7 +271,8 @@ const
     line saved since it changed and one changed since, a word selected (the caret after it, its
     occurrences), the identifier I's places, the brackets of a call matched, a stray one, the
     words of a block, rainbow brackets, a search match, a hot link, a tab shown, a name of each
-    kind and one code insight would not know (Offset) }
+    kind and one code insight would not know (Offset), a flow-control word (Exit) and an identifier of
+    the sample's list of custom identifiers (SampleCustom) }
   SampleText =
     '{ Syntax Highlighting }'#13#10 +
     'procedure TForm1.Button1Click(Sender: TObject);'#13#10 +
@@ -294,6 +301,8 @@ const
     '    MOV AX,1234H'#13#10 +
     '    MOV Number,AX'#13#10 +
     '  end;'#13#10 +
+    '  Assert(Number > 0);'#13#10 +
+    '  if Number > Limit then Exit;'#13#10 +
     '  {$R-}'#13#10 +
     'end;';
   SampleHeadLine = 1;        // procedure ...(Sender: TObject): the hot link
@@ -312,7 +321,8 @@ const
   SampleInvalidLine = 22;
   SampleModifiedLine = 24;
   SampleAsmLine = 25;        // MOV Number,AX
-  SampleMargin = 40;         // the right margin's column in the sample: in view
+  SampleMargin = 40;
+  SampleCustom = 'Assert';   // the sample's Custom identifiers         // the right margin's column in the sample: in view
   { the sample's names by kind, as code insight finds them in a unit (the editor page's) }
   SampleNames: array[0..21] of record Name: string; E: TEditorElement end = (
     (Name: 'TForm1'; E: eeType), (Name: 'TObject'; E: eeType), (Name: 'Integer'; E: eeType),
@@ -496,6 +506,8 @@ begin
     eoGutterWidth.Text := IntToStr(FOpts.GutterWidth);
     chkWordWrap.Checked := FOpts.WordWrap;
     chkNavigationBar.Checked := FOpts.NavigationBar;
+    chkMultiLineTabs.Checked := FOpts.MultiLineTabs;
+    chkSelectionButton.Checked := FOpts.SelectionButton;
     chkLineNumbers.Checked := FOpts.ShowLineNumbers;
     chkFolding.Checked := FOpts.ShowFolding;
     chkFoldPreview.Checked := FOpts.FoldPreview;
@@ -525,6 +537,8 @@ begin
     chkIdentifiers.Checked := FOpts.HighlightIdentifiers;
     chkOccurrences.Checked := FOpts.HighlightOccurrences;
     chkFindMatches.Checked := FOpts.HighlightFindMatches;
+    chkFlowControl.Checked := FOpts.HighlightFlowControl;
+    edCustomIdents.Text := FOpts.CustomIdentifiers;
     chkCurrentLine.Checked := FOpts.HighlightCurrentLine;
     chkIndentGuides.Checked := FOpts.IndentGuides;
     { Typing }
@@ -567,6 +581,8 @@ begin
   FOpts.GutterWidth := StrToIntDef(eoGutterWidth.Text, FOpts.GutterWidth);
   FOpts.WordWrap := chkWordWrap.Checked;
   FOpts.NavigationBar := chkNavigationBar.Checked;
+  FOpts.MultiLineTabs := chkMultiLineTabs.Checked;
+  FOpts.SelectionButton := chkSelectionButton.Checked;
   FOpts.ShowLineNumbers := chkLineNumbers.Checked;
   FOpts.ShowFolding := chkFolding.Checked;
   FOpts.FoldPreview := chkFoldPreview.Checked;
@@ -589,6 +605,8 @@ begin
   FOpts.HighlightIdentifiers := chkIdentifiers.Checked;
   FOpts.HighlightOccurrences := chkOccurrences.Checked;
   FOpts.HighlightFindMatches := chkFindMatches.Checked;
+  FOpts.HighlightFlowControl := chkFlowControl.Checked;
+  FOpts.CustomIdentifiers := Trim(edCustomIdents.Text);
   FOpts.HighlightCurrentLine := chkCurrentLine.Checked;
   FOpts.IndentGuides := chkIndentGuides.Checked;
   FOpts.AutoClosePairs := chkAutoClose.Checked;
@@ -1161,6 +1179,8 @@ begin
   Result.HighlightFindMatches := True;
   Result.HighlightIdentifiers := True;
   Result.HighlightOccurrences := True;
+  Result.HighlightFlowControl := True;
+  Result.CustomIdentifiers := SampleCustom;
   Result.FileTypes := Copy(FOpts.FileTypes, 0, Length(FOpts.FileTypes));
   for I := 0 to High(Result.FileTypes) do
   begin
@@ -1476,6 +1496,18 @@ begin
         Result := E;
         Exit;
       end;
+    case FSample.Sci(SCI_GETSTYLEINDEXAT, Pos) of
+      STYLE_FLOW_WORD, STYLE_FLOW_IDENT:
+        begin
+          Result := eeFlowControl;
+          Exit;
+        end;
+      STYLE_CUSTOM:
+        begin
+          Result := eeCustomIdent;
+          Exit;
+        end;
+    end;
     case FSample.StyleAt(Pos) of
       SCE_PAS_COMMENT, SCE_PAS_COMMENT2, SCE_PAS_COMMENTLINE: Result := eeComment;
       SCE_PAS_PREPROCESSOR, SCE_PAS_PREPROCESSOR2: Result := eeDirective;

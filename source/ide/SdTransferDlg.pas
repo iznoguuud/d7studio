@@ -10,7 +10,8 @@
 unit SdTransferDlg;
 
 { D7 Studio - Delphi 7's Tool Options, Tools | Configure Tools:
-  the programs of the Tools menu - add, delete, edit (SdTransEditDlg), move. The list is kept by
+  the programs of the Tools menu - add, delete, edit (SdTransEditDlg), move, export to a file and import
+  from one. The list is kept by
   SdEnvOptions ([Transfer]). }
 
 interface
@@ -30,12 +31,16 @@ type
     AddButton: TButton;
     DelButton: TButton;
     EditButton: TButton;
+    ExportButton: TButton;
+    ImportButton: TButton;
     Actions: TActionList;
     aAdd: TAction;
     aDelete: TAction;
     aEdit: TAction;
     aUp: TAction;
     aDown: TAction;
+    aExport: TAction;
+    aImport: TAction;
     pnlFooter: TPanel;
     lnFooter: TShape;
     CloseButton: TButton;
@@ -48,8 +53,11 @@ type
     procedure SelectedUpdate(Sender: TObject);
     procedure ItemDraw(Control: TWinControl; Index: Integer; Rect: TRect; State: TOwnerDrawState);
     procedure ItemDblClick(Sender: TObject);
+    procedure aExportExecute(Sender: TObject);
+    procedure aExportUpdate(Sender: TObject);
+    procedure aImportExecute(Sender: TObject);
   private
-    FTools: array of TTransferTool;
+    FTools: TTransferTools;
     procedure FillList(Index: Integer);
   public
     { the list is saved when the dialog closes (it has no Cancel, as in Delphi) }
@@ -112,7 +120,7 @@ var
   T: TTransferTool;
 begin
   FillChar(T, SizeOf(T), 0);
-  if not TTransEditDlg.Execute(Self, '', T) then Exit;
+  if not TToolPropertiesDlg.Execute(Self, '', T) then Exit;
   SetLength(FTools, Length(FTools) + 1);
   FTools[High(FTools)] := T;
   FillList(High(FTools));
@@ -140,7 +148,7 @@ var
 begin
   K := ItemList.ItemIndex;
   if K < 0 then Exit;
-  if TTransEditDlg.Execute(Self, '', FTools[K]) then FillList(K);
+  if TToolPropertiesDlg.Execute(Self, '', FTools[K]) then FillList(K);
 end;
 
 procedure TTransferDlg.aMoveExecute(Sender: TObject);
@@ -164,6 +172,39 @@ end;
 procedure TTransferDlg.SelectedUpdate(Sender: TObject);
 begin
   TAction(Sender).Enabled := ItemList.ItemIndex >= 0;
+end;
+
+const
+  ToolFilter = 'Tool lists (*.ini)|*.ini|All files (*.*)|*.*';
+
+procedure TTransferDlg.aExportExecute(Sender: TObject);
+var
+  S: string;
+begin
+  S := 'Tools.ini';
+  if BrowseFile('Export Tools', ToolFilter, S, bfSave, 'ini') then ExportTransferTools(S, FTools);
+end;
+
+procedure TTransferDlg.aExportUpdate(Sender: TObject);
+begin
+  aExport.Enabled := Length(FTools) > 0;
+end;
+
+{ the file's tools go after the list's; those the list holds already are left out }
+procedure TTransferDlg.aImportExecute(Sender: TObject);
+var
+  S: string;
+  N, K: Integer;
+begin
+  S := '';
+  if not BrowseFile('Import Tools', ToolFilter, S, bfOpen, 'ini') then Exit;
+  K := Length(FTools);
+  N := ImportTransferTools(S, FTools);
+  if N < 0 then
+    MessageBox(Handle, PChar(ExtractFileName(S) + ' holds no tools.'), PChar(Caption), MB_OK or MB_ICONWARNING)
+  else if N = 0 then
+    MessageBox(Handle, 'The list holds every tool of the file already.', PChar(Caption), MB_OK or MB_ICONINFORMATION)
+  else FillList(K);
 end;
 
 class procedure TTransferDlg.Execute(AOwner: TComponent);

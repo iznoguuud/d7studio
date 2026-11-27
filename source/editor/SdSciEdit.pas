@@ -20,7 +20,7 @@ unit SdSciEdit;
 interface
 
 uses
-  Windows, Messages, SysUtils, Classes, Graphics, Controls, Forms, SdSciDefs, SdSciLexDefs,
+  Windows, Messages, SysUtils, Classes, Graphics, Controls, Forms, Menus, SdSciDefs, SdSciLexDefs,
   SdEncoding, SdFileNames, SdEditorThemes, SdEditorOptions, SdKeymaps, SdSciScroll, SdSciMinimap,
   SdHints, SdPasBlocks;
 
@@ -91,6 +91,12 @@ const
   { the styles of the names by kind, Type .. Unit (ShowNameKinds): their kinds' colours and font
     styles; above every lexer's and a comparison's. StyleAt gives them as SCE_PAS_IDENTIFIER }
   STYLE_NAMES = 210;
+  { Highlighting | Flow control: Exit, Break, Continue, Halt, Abort (identifiers for the lexer),
+    raise and goto (reserved words); Custom identifiers: the user's list. Their elements' colours and
+    font styles, above the names' (OwnWordStyle); StyleAt gives the lexer's style }
+  STYLE_FLOW_WORD = 220;
+  STYLE_FLOW_IDENT = 221;
+  STYLE_CUSTOM = 222;
   RainbowColours = 3;
   SampleScrollBar = -2;      // TSciSampleClickEvent's Margin of a scroll bar
 
@@ -168,6 +174,8 @@ type
     the routines, the types, the unit's sections, the top level, the nested routines, the regions }
   TSciFoldAction = (sfFoldAll, sfUnfoldAll, sfFold, sfUnfold, sfToggle, sfFoldMethods,
     sfFoldClasses, sfFoldSections, sfFoldUnit, sfFoldNested, sfFoldRegions);
+  { Edit | Line | Surround With: begin ... end, try ... finally ... end, try ... except ... end }
+  TSciSurround = (ssBeginEnd, ssTryFinally, ssTryExcept);
 
   { the kinds of the buffer's block, in the order of ToolsAPI's TOTABlockType (the Open Tools API
     converts with Ord) }
@@ -309,6 +317,10 @@ type
     procedure RestyleNames(FromPos, ToPos: Integer; Revert: Boolean);
     procedure RestyleRun(FromPos, ToPos, OldStyle, NewStyle: Integer);
     procedure NamesLexed(FromPos, ToPos: Integer);
+    { the style of D7 Studio's own a word in the lexer's style Lex takes - STYLE_FLOW_WORD,
+      STYLE_FLOW_IDENT, STYLE_CUSTOM -, -1: none; StyleWords: those of a range in them }
+    function OwnWordStyle(const Word: string; Lex: Integer): Integer;
+    procedure StyleWords(FromPos, ToPos: Integer);
     procedure ClearNameIndicators(FromPos, ToPos: Integer);
     function NextStyleRun(var P: Integer; ToPos, Style: Integer; Names: Boolean; out S: Integer): Boolean;
     procedure SetStyling(Pos, Len, Style: Integer);
@@ -387,6 +399,8 @@ type
     function BlockRow(Line: Integer; out S, E: Integer): Boolean;
     procedure CaseRange(S, E, Kind: Integer);
     procedure RangeCase(A, B: Integer; Upper: Boolean);
+    { the lines of the text from A to B: a range that ends at a line's start leaves that line out }
+    procedure LinesOf(A, B: Integer; out L1, L2: Integer);
     procedure IndentLines(A, B, Delta: Integer);
     function SearchPattern(const Text: string; RegExp: Boolean): string;
     function SearchSpan(const S: string; From, Bound, Skip: Integer): Integer;
@@ -555,6 +569,13 @@ type
     procedure DuplicateSelection;
     procedure MoveLines(Up: Boolean);
     procedure JoinLines;
+    { Edit | Line's case commands: Kind 0 upper, 1 lower, 2 toggled - every selection, else the word at
+      each caret; the selected lines (two at least) sorted, or the other way round when they are
+      sorted already; the selected lines (else the caret's) in a block of Pascal's (CanSurround) }
+    procedure ChangeCase(Kind: Integer);
+    procedure SortLines;
+    procedure Surround(Kind: TSciSurround);
+    function CanSurround: Boolean;
     { multiple carets: the next place of the selected text (or the word at the caret) selected as
       well, every place, a caret on the line above or below }
     procedure SelectNextOccurrence;
@@ -755,6 +776,8 @@ type
     FNumberDigits: Integer;     // the digits the line numbers' margin was measured for
     FBarCaret: Integer;         // the caret's display line in the scroll bar's markers
     FWheelZoom: Integer;        // parts of wheel notches with the zoom key (UIWheelSteps)
+    FSelButton: TControl;       // Editor Options | Selection button (TSciSelButton; nil until needed)
+    FSelectionMenu: TPopupMenu; // ... the menu it opens (nil: no button)
     function GetEdit: TSciEdit;
     function WheelZoom(var Message: TWMMouseWheel): Boolean;
     procedure SetEdit(Value: TSciEdit);
@@ -812,6 +835,10 @@ type
       DPI, and its room on the worker too, which measures what that window would; made at its first
       need }
     procedure SyncMap;
+    { Editor Options | Selection button: shown by the end of the selection while there is one (one
+      selection, the mouse button up) and SelectionMenu is set, in view; a press opens the menu }
+    procedure UpdateSelButton;
+    property SelectionMenu: TPopupMenu read FSelectionMenu write FSelectionMenu;
     property Map: TSciMinimap read FMap;
     { the editor shown; a window with an editor of its own gives that one also before its window
       is made. Set: that editor shown (its document leaves the window it was in) }
@@ -908,7 +935,7 @@ const
 implementation
 
 uses
-  Math, Menus, SdUI, SdIcons, SdPasLex, SdZoom;
+  Math, SdUI, SdIcons, SdPasLex, SdZoom;
 
 type
   TCreateLexer = function(Name: PAnsiChar): Pointer; stdcall;
@@ -985,13 +1012,55 @@ begin
   Result := (Style >= STYLE_NAMES) and (Style < STYLE_NAMES + NameKindCount);
 end;
 
+{ the lexer's style of a style of D7 Studio's own: a name's, a flow-control word's, a user's
+  identifier's }
+function LexStyle(Style: Integer): Integer;
+begin
+  if IsNameStyle(Style) or (Style = STYLE_FLOW_IDENT) or (Style = STYLE_CUSTOM) then Result := SCE_PAS_IDENTIFIER
+  else if Style = STYLE_FLOW_WORD then Result := SCE_PAS_WORD
+  else Result := Style;
+end;
+
+const
+  { the flow-control words, in lower case, each between blanks: identifiers, reserved words }
+  FlowIdents = ' exit break continue halt abort ';
+  FlowReserved = ' raise goto ';
+
+var
+  CustomSource: string;            // Editor Options' Custom identifiers as CustomWords was made from
+  CustomWords: string = ' ';       // ... its names in lower case, each between blanks
+
+{ Highlighting | Custom identifiers in lower case, each between blanks (' ': none) }
+function CustomIdentWords: string;
+var
+  I: Integer;
+  S: string;
+begin
+  if EditorOptions.CustomIdentifiers <> CustomSource then
+  begin
+    CustomSource := EditorOptions.CustomIdentifiers;
+    S := LowerCase(CustomSource);
+    for I := 1 to Length(S) do
+      if not IdentTab[S[I]] then S[I] := ' ';
+    CustomWords := ' ';
+    while Trim(S) <> '' do
+    begin
+      S := TrimLeft(S);
+      I := Pos(' ', S + ' ');
+      CustomWords := CustomWords + Copy(S, 1, I - 1) + ' ';
+      Delete(S, 1, I);
+    end;
+  end;
+  Result := CustomWords;
+end;
+
 procedure NameLexerLex(This: Pointer; StartPos, Length, InitStyle: Integer; Access: Pointer); stdcall;
 var
   H: PNameLexer;
 begin
   H := PPointer(This)^;
   { the lexer knows its own styles: a name's is an identifier }
-  if IsNameStyle(InitStyle) then InitStyle := SCE_PAS_IDENTIFIER;
+  InitStyle := LexStyle(InitStyle);
   TLexerLex(H^.Original^[SlotLex])(This, StartPos, Length, InitStyle, Access);
   if H^.Edit <> nil then
     try
@@ -2293,6 +2362,7 @@ begin
           Bars.Paint;
         { the minimap: the scrolling, the caret's line, the selections }
         if Map <> nil then Map.Update;
+        FWindow.UpdateSelButton;
       end;
     SCN_PAINTED:
       begin
@@ -2628,27 +2698,33 @@ begin
   AdjustBlockImage(Pos, Len, Inserted);
 end;
 
+{ the case of A..B (CaseRange's: Windows' case mapping in the editor's encoding), the selection kept }
 procedure TSciEdit.RangeCase(A, B: Integer; Upper: Boolean);
 var
   S, E: Integer;
 begin
   S := Sci(SCI_GETANCHOR);
   E := CaretPos;
-  Sci(SCI_SETSEL, A, B);
-  if Upper then Sci(SCI_UPPERCASE) else Sci(SCI_LOWERCASE);
+  CaseRange(A, B, Ord(not Upper));
   Sci(SCI_SETSEL, S, E);
+end;
+
+procedure TSciEdit.LinesOf(A, B: Integer; out L1, L2: Integer);
+begin
+  L1 := LineFromPos(A);
+  L2 := LineFromPos(B);
+  if (L2 > L1) and (B = PosFromLine(L2)) then Dec(L2);
 end;
 
 { the lines from A to B in by Delta columns (out: negative) - the file type's Block indent }
 procedure TSciEdit.IndentLines(A, B, Delta: Integer);
 var
-  L, L2: Integer;
+  L, L1, L2: Integer;
 begin
-  L2 := LineFromPos(B);
-  if (L2 > LineFromPos(A)) and (B = PosFromLine(L2)) then Dec(L2);
+  LinesOf(A, B, L1, L2);
   BeginUndo;
   try
-    for L := LineFromPos(A) to L2 do
+    for L := L1 to L2 do
       Sci(SCI_SETLINEINDENTATION, L, Max(0, Sci(SCI_GETLINEINDENTATION, L) + Delta));
   finally
     EndUndo;
@@ -4175,14 +4251,19 @@ end;
 
 procedure TSciEdit.ShowNameKinds(FromPos, ToPos: Integer; const Names: TSciNames; Count: Integer);
 var
-  K, Style: Integer;
+  K, Style, Own: Integer;
 begin
   if not Ready or (ToPos <= FromPos) then Exit;
   ClearNameIndicators(FromPos, ToPos);
-  { every name of the range in its kind's style, the others in an identifier's }
+  { every name of the range in its kind's style, the others in an identifier's; a flow-control word
+    and an identifier of the user's list in theirs - without the kind's indicator, which would colour
+    the text over the style (StyleWords gives them their style again after the lexer) }
   for K := 0 to Count - 1 do
   begin
-    if Names[K].Element in [eeType..eeUnitName] then
+    Own := OwnWordStyle(GetRange(Names[K].Start, Names[K].Start + Names[K].Len), SCE_PAS_IDENTIFIER);
+    if Own >= 0 then
+      Style := Own
+    else if Names[K].Element in [eeType..eeUnitName] then
     begin
       FillIndicator(IND_NAMES + NameKind(Names[K].Element), Names[K].Start, Names[K].Len);
       Style := STYLE_NAMES + NameKind(Names[K].Element);
@@ -4263,7 +4344,56 @@ end;
   would move the document while Scintilla styles it }
 procedure TSciEdit.NamesLexed(FromPos, ToPos: Integer);
 begin
-  if FDirectPtr <> nil then RestyleNames(FromPos, ToPos, False);
+  if FDirectPtr = nil then Exit;
+  RestyleNames(FromPos, ToPos, False);
+  StyleWords(FromPos, ToPos);
+end;
+
+function TSciEdit.OwnWordStyle(const Word: string; Lex: Integer): Integer;
+var
+  W: string;
+begin
+  Result := -1;
+  if FLanguage <> slPascal then Exit;
+  W := ' ' + LowerCase(Word) + ' ';
+  if Lex = SCE_PAS_IDENTIFIER then
+  begin
+    if System.Pos(W, CustomIdentWords) > 0 then Result := STYLE_CUSTOM
+    else if EditorOptions.HighlightFlowControl and (System.Pos(W, FlowIdents) > 0) then Result := STYLE_FLOW_IDENT;
+  end
+  else if (Lex = SCE_PAS_WORD) and EditorOptions.HighlightFlowControl and (System.Pos(W, FlowReserved) > 0) then
+    Result := STYLE_FLOW_WORD;
+end;
+
+{ only the words of the lists are looked at: their style once each }
+procedure TSciEdit.StyleWords(FromPos, ToPos: Integer);
+var
+  T, Words: string;
+  I, J, Own: Integer;
+begin
+  if FLanguage <> slPascal then Exit;
+  Words := CustomIdentWords;
+  if EditorOptions.HighlightFlowControl then Words := Words + FlowIdents + FlowReserved;
+  if Trim(Words) = '' then Exit;
+  T := GetRange(FromPos, ToPos);
+  I := 1;
+  while I <= Length(T) do
+  begin
+    if not IdentTab[T[I]] then
+    begin
+      Inc(I);
+      Continue;
+    end;
+    J := I;
+    while (J <= Length(T)) and IdentTab[T[J]] do Inc(J);
+    if System.Pos(' ' + LowerCase(System.Copy(T, I, J - I)) + ' ', Words) > 0 then
+    begin
+      Own := OwnWordStyle(System.Copy(T, I, J - I), StyleAt(FromPos + I - 1));
+      if (Own >= 0) and (Sci(SCI_GETSTYLEINDEXAT, FromPos + I - 1) <> Own) then
+        SetStyling(FromPos + I - 1, J - I, Own);
+    end;
+    I := J;
+  end;
 end;
 
 procedure TSciEdit.MarkMatches(const Text: string; MatchCase, WholeWord, RegExp: Boolean);
@@ -4824,9 +4954,7 @@ var
   L1, L2, L, A, B: Integer;
 begin
   if not Ready or ReadOnly then Exit;
-  L1 := LineFromPos(SelStart);
-  L2 := LineFromPos(SelEnd);
-  if (L2 > L1) and (SelEnd = PosFromLine(L2)) then Dec(L2);
+  LinesOf(SelStart, SelEnd, L1, L2);
   if L2 = L1 then Inc(L2);
   if L2 >= LineCount then
   begin
@@ -4850,8 +4978,119 @@ begin
   GotoPos(LineEndPos(L1));
 end;
 
-{ the search of Select Next / All Occurrences: without letter case in a language whose words have
-  none (Pascal, SQL ...) }
+{ the selections from the last: a replacement leaves the earlier ones where they are. One selection
+  stays selected over its new text (a case may take more or fewer bytes in UTF-8) }
+procedure TSciEdit.ChangeCase(Kind: Integer);
+var
+  N, I, S, E, Before: Integer;
+begin
+  if not Ready or ReadOnly then Exit;
+  N := Sci(SCI_GETSELECTIONS);
+  BeginUndo;
+  try
+    for I := N - 1 downto 0 do
+    begin
+      S := Sci(SCI_GETSELECTIONNSTART, I);
+      E := Sci(SCI_GETSELECTIONNEND, I);
+      if S = E then WordAt(Sci(SCI_GETSELECTIONNCARET, I), S, E);
+      if E <= S then Continue;
+      Before := TextLength;
+      CaseRange(S, E, Kind);
+      if N = 1 then SetSel(S, E + TextLength - Before);
+    end;
+  finally
+    EndUndo;
+  end;
+end;
+
+{ by Windows' comparison of the text, without letter case in a language whose words have none
+  (Pascal, SQL ...) }
+procedure TSciEdit.SortLines;
+var
+  L1, L2, L, A: Integer;
+  Lines: TStringList;
+  Old, New: string;
+begin
+  if not Ready or ReadOnly then Exit;
+  LinesOf(SelStart, SelEnd, L1, L2);
+  if L2 <= L1 then
+  begin
+    MessageBeep(0);
+    Exit;
+  end;
+  Lines := TStringList.Create;
+  try
+    for L := L1 to L2 do Lines.Add(GetLineText(L));
+    Old := Lines.Text;
+    Lines.CaseSensitive := not SciLanguages[FLanguage].NoCase;
+    Lines.Sort;
+    if Lines.Text = Old then
+      for L := 0 to Lines.Count div 2 - 1 do Lines.Exchange(L, Lines.Count - 1 - L);
+    New := '';
+    for L := 0 to Lines.Count - 1 do
+    begin
+      if L > 0 then New := New + EolText;
+      New := New + Lines[L];
+    end;
+  finally
+    Lines.Free;
+  end;
+  A := PosFromLine(L1);
+  BeginUndo;
+  try
+    Sci(SCI_SETTARGETRANGE, A, LineEndPos(L2));
+    SciS(SCI_REPLACETARGET, Length(New), New);
+  finally
+    EndUndo;
+  end;
+  SetSel(A, A + Length(New));
+end;
+
+function TSciEdit.CanSurround: Boolean;
+begin
+  Result := Ready and (FLanguage = slPascal);
+end;
+
+{ the new lines at the first line's indentation, the lines a block indent further in (blank ones
+  stay as they are); the caret where the code of the new part goes - after finally / except -, else
+  at the end of the begin }
+procedure TSciEdit.Surround(Kind: TSciSurround);
+const
+  Middles: array[TSciSurround] of string = ('', 'finally', 'except');
+var
+  L1, L2, L, Ind, Step: Integer;
+  Tail: string;
+begin
+  if not CanSurround or ReadOnly then Exit;
+  LinesOf(SelStart, SelEnd, L1, L2);
+  Ind := Sci(SCI_GETLINEINDENTATION, L1);
+  Step := FFileType.BlockIndent;
+  if Kind = ssBeginEnd then Tail := EolText + 'end;'
+  else Tail := EolText + Middles[Kind] + EolText + EolText + 'end;';
+  BeginUndo;
+  try
+    InsertText(LineEndPos(L2), Tail);
+    if Kind = ssBeginEnd then InsertText(PosFromLine(L1), 'begin' + EolText)
+    else InsertText(PosFromLine(L1), 'try' + EolText);
+    { the new lines: the head at L1, the lines L1 + 1 .. L2 + 1, then the tail }
+    Sci(SCI_SETLINEINDENTATION, L1, Ind);
+    for L := L1 + 1 to L2 + 1 do
+      if LineEndPos(L) > PosFromLine(L) then
+        Sci(SCI_SETLINEINDENTATION, L, Sci(SCI_GETLINEINDENTATION, L) + Step);
+    Sci(SCI_SETLINEINDENTATION, L2 + 2, Ind);
+    if Kind <> ssBeginEnd then
+    begin
+      Sci(SCI_SETLINEINDENTATION, L2 + 3, Ind + Step);
+      Sci(SCI_SETLINEINDENTATION, L2 + 4, Ind);
+    end;
+  finally
+    EndUndo;
+  end;
+  if Kind = ssBeginEnd then GotoPos(LineEndPos(L1)) else GotoPos(LineEndPos(L2 + 3));
+  Sci(SCI_SCROLLCARET);
+end;
+
+{ the search of Select Next / All Occurrences: without letter case in a language whose words have  none (Pascal, SQL ...) }
 procedure TSciEdit.SearchFlagsForWords;
 begin
   if SciLanguages[FLanguage].NoCase then Sci(SCI_SETSEARCHFLAGS, 0)
@@ -5192,8 +5431,8 @@ end;
 function TSciEdit.StyleAt(Pos: Integer): Integer;
 begin
   Result := Sci(SCI_GETSTYLEINDEXAT, Pos);
-  { a name by kind is the lexer's identifier }
-  if IsNameStyle(Result) then Result := SCE_PAS_IDENTIFIER;
+  { a name by kind, a flow-control word, a user's identifier: the lexer's own style }
+  Result := LexStyle(Result);
 end;
 
 { A lexer begins in the state of the style before its first character. Begun inside a line, it
@@ -6034,13 +6273,9 @@ end;
 
 procedure TSciEdit.IndentSelection(Outdent: Boolean);
 var
-  L1, L2, L, Ind, S, E: Integer;
+  L1, L2, L, Ind: Integer;
 begin
-  S := SelStart;
-  E := SelEnd;
-  L1 := LineFromPos(S);
-  L2 := LineFromPos(E);
-  if (L2 > L1) and (E = PosFromLine(L2)) then Dec(L2);
+  LinesOf(SelStart, SelEnd, L1, L2);
   BeginUndo;
   try
     for L := L1 to L2 do
@@ -6064,18 +6299,14 @@ end;
 
 procedure TSciEdit.ToggleComment;
 var
-  L1, L2, L, P, S, E: Integer;
+  L1, L2, L, P: Integer;
   AllCommented: Boolean;
   T, Mark: string;
 begin
   { the mark in any letter case: a batch file's REM is rem (the marks are in lower case) }
   Mark := SciLanguages[FLanguage].Comment;
   if Mark = '' then Exit;
-  S := SelStart;
-  E := SelEnd;
-  L1 := LineFromPos(S);
-  L2 := LineFromPos(E);
-  if (L2 > L1) and (E = PosFromLine(L2)) then Dec(L2);
+  LinesOf(SelStart, SelEnd, L1, L2);
   AllCommented := True;
   for L := L1 to L2 do
   begin
@@ -6578,6 +6809,7 @@ begin
     GatherMarks;
   end;
   if Shown and Assigned(FOnViewApplied) then FOnViewApplied(Self);
+  if (FWindow <> nil) and (FWindow.FEdit = Self) then FWindow.UpdateSelButton;   // Selection button
 end;
 
 { the minimap's colours: its ground the scroll bars' track, the box of the lines in view the thumb's
@@ -6654,9 +6886,15 @@ begin
   else
     for I := Low(SciLexStyles) to High(SciLexStyles) do
       if FLanguage in SciLexStyles[I].Langs then El(SciLexStyles[I].Style, SciLexStyles[I].Element);
-  { the names by kind (ShowNameKinds): an identifier's ground, their kinds' colours and font styles }
+  { the names by kind (ShowNameKinds), the flow-control words and the user's identifiers (StyleWords):
+    an identifier's ground, their elements' colours and font styles }
   if FLanguage in SciPascal then
+  begin
     for Kind := eeType to eeUnitName do El(STYLE_NAMES + NameKind(Kind), Kind);
+    El(STYLE_FLOW_WORD, eeFlowControl);
+    El(STYLE_FLOW_IDENT, eeFlowControl);
+    El(STYLE_CUSTOM, eeCustomIdent);
+  end;
   { the selection; the caret }
   Sci(SCI_SETELEMENTCOLOUR, SC_ELEMENT_SELECTION_BACK, SciColorA(ElementBack(C, eeSelection)));
   Sci(SCI_SETELEMENTCOLOUR, SC_ELEMENT_SELECTION_TEXT, SciColorA(ElementFore(C, eeSelection)));
@@ -7007,6 +7245,7 @@ begin
   if (E = nil) or (E <> FEdit) then Exit;
   HadFocus := HandleAllocated and Focused;
   if HandleAllocated then KillTimer(Handle, IdleTimerId);
+  if FSelButton <> nil then FSelButton.Visible := False;
   if Assigned(FDirectFn) then E.Detached(KeepView);
   FEdit := nil;
   if Assigned(FDirectFn) then Sci(SCI_SETDOCPOINTER, 0, 0);
@@ -7360,10 +7599,118 @@ begin
   if (FEdit <> nil) and Assigned(FEdit.FOnMouseDown) then FEdit.FOnMouseDown(FEdit, Button, Shift, X, Y);
 end;
 
+{ --- Editor Options | Selection button ---
+  A small button over the text by the end of the selection: the menu of the commands on a selection
+  (TSciWindow.SelectionMenu) under it at a press. It takes neither the keyboard nor the mouse's
+  capture: the editor keeps both. }
+
+type
+  TSciSelButton = class(TSdControl)
+  private
+    FHot: Boolean;
+    procedure CMMouseEnter(var Message: TMessage); message CM_MOUSEENTER;
+    procedure CMMouseLeave(var Message: TMessage); message CM_MOUSELEAVE;
+  protected
+    procedure PaintBuffer(C: TCanvas); override;
+    procedure MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Integer); override;
+  public
+    constructor Create(AOwner: TComponent); override;
+  end;
+
+constructor TSciSelButton.Create(AOwner: TComponent);
+begin
+  inherited Create(AOwner);
+  Buffered := True;
+  Cursor := crArrow;
+  Hint := 'Commands on the selection';
+  ShowHint := True;
+end;
+
+procedure TSciSelButton.PaintBuffer(C: TCanvas);
+var
+  Ground: TColor;
+  State: TUIButtonState;
+begin
+  Ground := ElementBack(EditorOptions.Colors, eePlainText);
+  UIFill(C.Handle, ClientRect, Ground);
+  if FHot then State := bsHot else State := bsNormal;
+  UIDrawFlatButton(C.Handle, ClientRect, State, Ground);
+  UIFrame(C.Handle, ClientRect, ElementFore(EditorOptions.Colors, eeGutter));
+  if IconList <> nil then
+    IconList.Draw(C, (Width - IconList.Width) div 2, (Height - IconList.Height) div 2,
+      IconIndex(iiSelectionMenu));
+end;
+
+procedure TSciSelButton.CMMouseEnter(var Message: TMessage);
+begin
+  inherited;
+  FHot := True;
+  Invalidate;
+end;
+
+procedure TSciSelButton.CMMouseLeave(var Message: TMessage);
+begin
+  inherited;
+  FHot := False;
+  Invalidate;
+end;
+
+procedure TSciSelButton.MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
+var
+  P: TPoint;
+  Menu: TPopupMenu;
+begin
+  inherited MouseDown(Button, Shift, X, Y);
+  Menu := (Parent as TSciWindow).SelectionMenu;
+  if (Button <> mbLeft) or (Menu = nil) then Exit;
+  P := ClientToScreen(Point(0, Height));
+  Menu.Popup(P.X, P.Y);
+end;
+
+procedure TSciWindow.UpdateSelButton;
+var
+  E: TSciEdit;
+  P, Size: Integer;
+  At: TPoint;
+  Show: Boolean;
+begin
+  E := FEdit;
+  Show := (FSelectionMenu <> nil) and EditorOptions.SelectionButton and (E <> nil) and E.Ready and
+    HandleAllocated and Visible and (GetKeyState(VK_LBUTTON) >= 0) and (Sci(SCI_GETSELECTIONS) = 1) and
+    (Sci(SCI_GETSELECTIONEMPTY) = 0);
+  Size := 0;
+  if Show then
+  begin
+    { after the text of the selection's last line - the line before when it ends at a line's start -,
+      over no code; at the window's right edge when the line goes on beyond it }
+    P := E.SelEnd;
+    if (P > E.SelStart) and (P = E.PosFromLine(E.LineFromPos(P))) then Dec(P);
+    At := E.PointFromPos(E.LineEndPos(E.LineFromPos(P)));
+    Size := E.TextHeight;
+    if IconList <> nil then Size := Max(Size, IconList.Height + 4);
+    Inc(At.X, 8);
+    if At.X + Size > ClientWidth then At.X := ClientWidth - Size;
+    Show := (At.X >= 0) and (At.Y >= 0) and (At.Y + Size <= ClientHeight);
+  end;
+  if not Show then
+  begin
+    if FSelButton <> nil then FSelButton.Visible := False;
+    Exit;
+  end;
+  if FSelButton = nil then
+  begin
+    FSelButton := TSciSelButton.Create(Self);
+    FSelButton.Visible := False;
+    FSelButton.Parent := Self;
+  end;
+  FSelButton.SetBounds(At.X, At.Y, Size, Size);
+  if not FSelButton.Visible then FSelButton.Visible := True;
+end;
 procedure TSciWindow.MouseUp(Button: TMouseButton; Shift: TShiftState; X, Y: Integer);
 begin
   inherited MouseUp(Button, Shift, X, Y);
   if (FEdit <> nil) and Assigned(FEdit.FOnMouseUp) then FEdit.FOnMouseUp(FEdit, Button, Shift, X, Y);
+  UpdateSelButton;                  // a selection made with the mouse is done
 end;
 
 procedure TSciWindow.DblClick;
