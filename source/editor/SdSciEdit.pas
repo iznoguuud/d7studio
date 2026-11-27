@@ -89,6 +89,9 @@ const
   STYLE_DIFF_REMOVED_SIGN = 203;   // ... its sign
   STYLE_DIFF_ADDED_SIGN = 204;
   STYLE_DIFF_NOTE = 205;
+  { the caret line's number in the line numbers' margin of every 10th line (UpdateLineMarks): the
+    plain text's colour on the gutter's ground }
+  STYLE_CARET_NUMBER = 206;
   { the styles of the names by kind, Type .. Unit (ShowNameKinds): their kinds' colours and font
     styles; above every lexer's and a comparison's. StyleAt gives them as SCE_PAS_IDENTIFIER }
   STYLE_NAMES = 210;
@@ -262,6 +265,7 @@ type
     FEncoding: TSdEncoding;      // the file's encoding (SdEncoding): how the bytes are shown and written
     FLineForeDirty: Boolean;
     FLineMarks: Boolean;         // a line may carry a line marker (MK_LINE_MASK): edits repaint their text colour
+    FNumFirst, FNumLast, FNumRows, FNumCaret, FNumCount: Integer;   // what UpdateLineMarks wrote the margin for (FNumFirst -1: nothing)
     FTypeFile: string;          // the file name its source file type comes from (Source Options)
     FFileType: TEditorFileType;
     FSwallowTab: Boolean;        // a smart tab was done: the WM_CHAR of the key goes
@@ -431,6 +435,7 @@ type
     procedure LoadFile(const FileName: string; Detect: Boolean; E: TSdEncoding);
     procedure SetupMargins;
     procedure SetupLineNumbers(Force: Boolean);
+    procedure UpdateLineMarks(Force: Boolean);
     procedure SetupMarkers;
     procedure SetupDiffMargins;
     procedure DiffStyle(Style: Integer; Fore, Back: TColor; Italic: Boolean = False);
@@ -1617,6 +1622,7 @@ begin
   else if FWindow.FViewKey <> ViewKey then ApplyView
   else SetupLineNumbers(False);
   RestoreView;
+  UpdateLineMarks(True);
   if FTrimPending and FWindow.HandleAllocated then PostMessage(FWindow.Handle, WM_SCITRIMUNDO, 0, 0);
   if FBlocksStale or FFindStale or FMarksDirty then ScheduleIdle;
   if Bars <> nil then Bars.Update;
@@ -2376,6 +2382,7 @@ begin
           ClearIndicator(IND_AUTOCLOSE);
           FAutoCloseLine := -1;
         end;
+        UpdateLineMarks(False);
         if N^.updated and (SC_UPDATE_SELECTION or SC_UPDATE_CONTENT) <> 0 then UpdateMatching;
         if EditorOptions.HighlightOccurrences and not FSample and (N^.updated and SC_UPDATE_SELECTION <> 0) then
           UpdateOccurrences;
@@ -2408,7 +2415,13 @@ begin
           if (FAtSaved <> Was) and Assigned(FOnSavePointChange) then FOnSavePointChange(Self);
         end;
         if Map <> nil then Map.Changed;
-        if N^.linesAdded <> 0 then SetupLineNumbers(False);    // the other margins stay as they are
+        if N^.linesAdded <> 0 then
+        begin
+          SetupLineNumbers(False);    // the other margins stay as they are
+          { the lines' margin texts moved with them, new lines have none: written again at
+            SCN_UPDATEUI (not here: margin text is the document's, changed in its notification) }
+          FNumFirst := -1;
+        end;
         if N^.modificationType and SC_MOD_INSERTTEXT <> 0 then AdjustBlock(N^.position, N^.length, True)
         else if N^.modificationType and SC_MOD_DELETETEXT <> 0 then AdjustBlock(N^.position, N^.length, False);
         { Editor Options | Undo limit: after a change made by typing (not in this notification) }
@@ -6671,6 +6684,53 @@ begin
   Sci(SCI_SETMARGINWIDTHN, MARGIN_NUMBERS, SciS(SCI_TEXTWIDTH, STYLE_LINENUMBER, '_' + StringOfChar('9', Digits)) + 2);
 end;
 
+{ Line numbers: Every 10th line - the margin is a text margin: line 1, every 10th line and the caret's
+  line show their number (the caret's in STYLE_CARET_NUMBER), the others a centred dot. Only the lines
+  in view get their text, written again when the view scrolls, the caret changes line, lines come or go
+  or a fold opens or closes (Force: always); Scintilla keeps a margin text with its line in the
+  document, so a line out of view may keep a stale one until it comes into view }
+procedure TSciEdit.UpdateLineMarks(Force: Boolean);
+var
+  First, Rows, Last, Caret, Count, R, L, Prev: Integer;
+  Dot: string;
+begin
+  if (FWindow = nil) or FDiffView or not EditorOptions.ShowLineNumbers or
+    not EditorOptions.SparseLineNumbers then Exit;
+  First := Sci(SCI_GETFIRSTVISIBLELINE);
+  Rows := Sci(SCI_LINESONSCREEN) + 1;
+  Count := LineCount;
+  Caret := CaretLine;
+  Last := Min(Sci(SCI_DOCLINEFROMVISIBLE, First + Rows), Count - 1);
+  R := Sci(SCI_VISIBLEFROMDOCLINE, Last);
+  L := Sci(SCI_DOCLINEFROMVISIBLE, First);
+  if not Force and (FNumFirst = L) and (FNumLast = Last) and (FNumRows = R) and
+    (FNumCaret = Caret) and (FNumCount = Count) then Exit;
+  FNumFirst := L;
+  FNumLast := Last;
+  FNumRows := R;
+  FNumCaret := Caret;
+  FNumCount := Count;
+  { U+00B7 in the document's code page; a double-byte code page has no single-byte one }
+  case Sci(SCI_GETCODEPAGE) of
+    SC_CP_UTF8: Dot := #$C2#$B7;
+    0: Dot := #$B7;
+  else
+    Dot := '.';
+  end;
+  Prev := -1;
+  for R := First to First + Rows do
+  begin
+    L := Sci(SCI_DOCLINEFROMVISIBLE, R);
+    if L >= Count then Break;
+    if L = Prev then Continue;       // the next row of a wrapped line
+    Prev := L;
+    if (L = Caret) or (L = 0) or ((L + 1) mod 10 = 0) then SciS(SCI_MARGINSETTEXT, L, IntToStr(L + 1))
+    else SciS(SCI_MARGINSETTEXT, L, Dot);
+    if L = Caret then Sci(SCI_MARGINSETSTYLE, L, STYLE_CARET_NUMBER)
+    else Sci(SCI_MARGINSETSTYLE, L, STYLE_LINENUMBER);
+  end;
+end;
+
 procedure TSciEdit.SetupMargins;
 begin
   if not Assigned(FDirectFn) then Exit;
@@ -6682,9 +6742,16 @@ begin
     SetupDiffMargins;
     Exit;
   end;
-  { line numbers }
-  Sci(SCI_SETMARGINTYPEN, MARGIN_NUMBERS, SC_MARGIN_NUMBER);
+  { line numbers: Scintilla's on every line, else a text margin that UpdateLineMarks writes }
+  if EditorOptions.SparseLineNumbers then
+    Sci(SCI_SETMARGINTYPEN, MARGIN_NUMBERS, SC_MARGIN_RTEXT)
+  else
+  begin
+    Sci(SCI_SETMARGINTYPEN, MARGIN_NUMBERS, SC_MARGIN_NUMBER);
+    Sci(SCI_MARGINTEXTCLEARALL);
+  end;
   SetupLineNumbers(True);
+  UpdateLineMarks(True);
   { symbols: breakpoints, execution point, bookmarks }
   Sci(SCI_SETMARGINTYPEN, MARGIN_SYMBOLS, SC_MARGIN_COLOUR);
   Sci(SCI_SETMARGINBACKN, MARGIN_SYMBOLS, SciColor(ThemeBack(eeGutter)));
@@ -7162,6 +7229,7 @@ begin
   Sci(SCI_STYLECLEARALL);
   { gutter }
   StyleSet(STYLE_LINENUMBER, ElementFore(C, eeGutter), ElementBack(C, eeGutter));
+  StyleSet(STYLE_CARET_NUMBER, Fg, ElementBack(C, eeGutter));
   { the brackets have boxes (IND_BRACE): Scintilla's brace style colours only the highlighted
     indentation guide }
   StyleSet(STYLE_BRACELIGHT, ElementFore(C, eeBraceMatch), Bg, True);

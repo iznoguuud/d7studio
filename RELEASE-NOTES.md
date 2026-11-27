@@ -11,6 +11,23 @@ installing in [README.md](source/README.md).
 
 ## [Unreleased]
 
+## [1.0.5.1] - 2026-11-28
+
+### Added
+
+- **Code editor**: a macro recorder. *Edit ▸ Macros* and a *Macros* drop-down on the code view's tool bar record a
+  keystroke macro (Shift+Ctrl+R; the command becomes *Stop Recording Macro* meanwhile), play it (Shift+Ctrl+P) and
+  play it repeatedly - a number of times, or until the end of the file -, all of it one undo step. Every recording is
+  kept in the new *Macro Library* view (*View ▸ Macro Library*) and from one start to the next: choose a macro there
+  to make it the one Shift+Ctrl+P plays; rename, delete and reorder macros, and export them to or import them from
+  `.d7macros` files (also by dropping such files on the list).
+
+### Changed
+
+- **Code editor**: the line numbers show the number of line 1, of every 10th line and of the caret's line, and a dot
+  on the other lines; *Editor Options ▸ Display ▸ Line numbers* is now a drop-down - *Every 10th line* (the default),
+  *Every line* or *Hidden* - in the place of the check box.
+
 ## [1.0.5.0] - 2026-11-27
 
 ### Added
@@ -369,7 +386,8 @@ The first release.
   its settings. It also installs Microsoft's WinHelp viewer, which shows Delphi 7's help on
   Windows 10 and 11.
 
-[Unreleased]: https://github.com/iznoguuud/d7studio/compare/v1.0.5.0...HEAD
+[Unreleased]: https://github.com/iznoguuud/d7studio/compare/v1.0.5.1...HEAD
+[1.0.5.1]: https://github.com/iznoguuud/d7studio/compare/v1.0.5.0...v1.0.5.1
 [1.0.5.0]: https://github.com/iznoguuud/d7studio/compare/v1.0.4.1...v1.0.5.0
 [1.0.4.1]: https://github.com/iznoguuud/d7studio/compare/v1.0.4.0...v1.0.4.1
 [1.0.4.0]: https://github.com/iznoguuud/d7studio/compare/v1.0.3.4...v1.0.4.0

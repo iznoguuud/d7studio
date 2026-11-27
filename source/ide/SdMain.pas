@@ -29,7 +29,7 @@ uses
   SdPackageAddDlg, SdNavHistory, SdOptionsDlg, SdOtaCore, SdMessageView, SdResourceViewFrame, SdResources,
   SdResImage, SdResPage, SdOtaPalette, SdOtaViews, SdOtaToDo, SdNavBar, SdPageBar, SdZoom, SdHistory,
   SdHistoryFrame, SdUpdate, SdRefactor, SdRefactorGen, SdRefactorClean, SdRefactorMove, SdRefactorView,
-  SdRefactorDlg, SdRefactorListDlg, SdChangeParamsDlg;
+  SdRefactorDlg, SdRefactorListDlg, SdChangeParamsDlg, SdMacros, SdMacrosView, SdMacroPlayDlg;
 
 const
   WM_SDTESTKEY = WM_APP + 76;          // test mode: the postkey command's key, from the message loop (CMTestKey)
@@ -746,6 +746,8 @@ type
     aAlignBottoms: TAction;
     DesignerBar: TToolBar;
     CodeBar: TToolBar;
+    tbMacro: TToolButton;
+    tbCodeSep: TToolButton;
     tbRefactor: TToolButton;
     MinimapBar: TToolBar;
     tbMinimap: TToolButton;
@@ -757,6 +759,14 @@ type
     mmSep2: TMenuItem;
     mmLarge: TMenuItem;
     RefactorPopup: TPopupMenu;
+    MacroPopup: TPopupMenu;
+    mcRecord: TMenuItem;
+    mcPlay: TMenuItem;
+    mcRepeat: TMenuItem;
+    mcSep: TMenuItem;
+    mcLibrary: TMenuItem;
+    miMacroMenu: TMenuItem;
+    miViewMacros: TMenuItem;
     ThreadList: TListView;
     ModuleList: TListView;
     tbAlGrid: TToolButton;
@@ -790,6 +800,10 @@ type
     tbDsnSep5: TToolButton;
     aRecordMacro: TAction;
     aPlayMacro: TAction;
+    aPlayMacroRepeat: TAction;
+    aViewMacros: TAction;
+    aMacroMenu: TAction;
+    aRefMenu: TAction;
     aOpenFileAtCursor: TAction;
     aBrowseSymbolAtCursor: TAction;
     aTopicSearch: TAction;
@@ -804,7 +818,6 @@ type
     aRefExtractResString: TAction;
     aRefFindUnit: TAction;
     aRefSyncEdit: TAction;
-    aRefMenu: TAction;
     aRefRenameUnit: TAction;
     aRefExtractConst: TAction;
     aRefConvertFormat: TAction;
@@ -1088,6 +1101,7 @@ type
     procedure ActCodeFolding(Sender: TObject);
     procedure ActMinimap(Sender: TObject);
     procedure ActMinimapMenu(Sender: TObject);
+    procedure ActMacroMenu(Sender: TObject);
     procedure ActZoom(Sender: TObject);
     procedure ActDesign(Sender: TObject);
     procedure ActSearch(Sender: TObject);
@@ -1221,6 +1235,9 @@ type
     FBrowserPanel: TSdDockPanel;
     FRefView: TRefactoringsView;     // Refactor: what a refactoring will change (SdRefactorView) ...
     FRefPanel: TSdDockPanel;         // ... its view of the dock
+    FMacros: TSdMacroLibrary;        // the keystroke macros kept (SdMacros), [Macros] of the settings
+    FMacroView: TMacrosView;         // ... the Macro Library view (SdMacrosView)
+    FMacroPanel: TSdDockPanel;       // ... its view of the dock
     FRefFiles: TStringList;          // while a refactoring is planned: the files it reaches (RefactorFiles) ...
     FRefSources: TStringList;        // ... the texts of those that are not open, as the editor reads them (CIGetSource)
     FBrowserFresh: Boolean;          // just built (Browse Symbol): showing it builds nothing
@@ -1452,6 +1469,19 @@ type
     function RefCurrentText(const FileName: string; out Text: string): Boolean;
     procedure RefShow(R: TRefactoring);
     procedure RefApply(Sender: TObject);
+    { A with its enabled state as it is now (the window sets the states at idle time), when it is
+      enabled: what Execute answered }
+    function RunEnabled(A: TCustomAction): Boolean;
+    procedure MacroRecorded;
+    procedure UseCurrentMacro;
+    procedure SaveMacros;
+    function ChooseMacro(I: Integer): Boolean;
+    procedure FocusCodeEditor;
+    procedure PlayMacroRepeatedly;
+    procedure MacroChoose(Sender: TObject);
+    procedure MacroPlay(Sender: TObject; Repeated: Boolean);
+    procedure MacroRecord(Sender: TObject);
+    procedure MacroChanged(Sender: TObject);
     procedure RefDiscard(Sender: TObject);
     procedure RefOpen(Sender: TObject; const FileName: string; Line: Integer);
     procedure BrowserGoto(Sender: TObject; const FileName: string; Line, Col: Integer);
@@ -2017,18 +2047,14 @@ begin
   Result := FMain.WizardActions;
 end;
 
+{ the enabled states as they are now (RunEnabled): an expert may have changed the page (its view,
+  its file) in the same call }
 function TOtaMainHost.ExecuteAction(const Name: string): Boolean;
 var
   C: TComponent;
 begin
-  Result := False;
   C := FMain.FindNamed(Name);
-  if not (C is TCustomAction) then Exit;
-  { the enabled states as they are now: an expert may have changed the page (its view, its
-    file) in the same call - the main window sets them at idle time (UpdateActionStates) }
-  FMain.UpdateActionStates;
-  TCustomAction(C).Update;
-  if TCustomAction(C).Enabled then Result := TCustomAction(C).Execute;
+  Result := (C is TCustomAction) and FMain.RunEnabled(TCustomAction(C));
 end;
 
 { as the VCL finds a shortcut (TActionList.IsShortCut, TMenu.IsShortCut): an action of the main
@@ -2880,8 +2906,7 @@ procedure TMainServices.EditorCommand(Page: TEditorPage; Cmd: TEdCmd; Arg: Integ
 
   procedure Run(A: TAction);
   begin
-    A.Update;
-    if A.Enabled then A.Execute else MessageBeep(0);
+    if not FMain.RunEnabled(A) then MessageBeep(0);
   end;
 
 const
@@ -2986,6 +3011,8 @@ begin
   { Edit | Refactor and the editor's Refactoring list the code view's Refactor drop-down }
   CopyMenuItems(RefactorPopup.Items, miRefactorMenu);
   CopyMenuItems(RefactorPopup.Items, pmEdRefactor);
+  { Edit | Macros lists the code view's Macros drop-down }
+  CopyMenuItems(MacroPopup.Items, miMacroMenu);
   { the menus in D7 Studio's flat style (SdUI); a Reopen entry outside the code page with its
     real name }
   UIMenuTextW := MenuTextW;
@@ -3398,6 +3425,24 @@ begin
   FRefPanel.FocusControl := FRefView.Tree;
   FRefPanel.PopupMenu := FRefView.RefPopup;
   FDock.HidePanel(FRefPanel);
+  { Edit | Macros | Macro Library: the keystroke macros kept, a tab of the bottom group hidden until
+    shown; the current one is the IDE's macro again (Shift+Ctrl+P) }
+  FMacros := TSdMacroLibrary.Create;
+  FMacros.Load(Settings);
+  UseCurrentMacro;
+  FMacroView := TMacrosView.Create(Self);
+  FMacroView.Macros := FMacros;
+  FMacroView.OnMenuPopup := PaneMenuPopup;
+  FMacroView.OnChoose := MacroChoose;
+  FMacroView.OnPlay := MacroPlay;
+  FMacroView.OnRecord := MacroRecord;
+  FMacroView.OnChange := MacroChanged;
+  FMacroView.Fill(FMacros.Current);
+  FMacroPanel := FDock.AddTab(FMacroView, 'MacroLibrary', 'Macro Library', FBottomPanels[BT_MESSAGES]);
+  FMacroPanel.ToolBar := FMacroView.Bar;
+  FMacroPanel.FocusControl := FMacroView.MacroList;
+  FMacroPanel.PopupMenu := FMacroView.MacroPopup;
+  FDock.HidePanel(FMacroPanel);
   { Delphi's package editors: one view for each open package (NewPackageView), the first made now
     for the arrangement to place }
   FPkgViews := TList.Create;
@@ -3452,7 +3497,7 @@ begin
   FBottomPanels[BT_TODO].PopupMenu := FTodoView.TodoPopup;
   AddDockItems([FProjView.ProjPopup, FCodeExp.ExpPopup, FObjTree.ObjTreePopup, FInspector.InspPopup, FCompBar.CompPopup, FWatchView.WatchPopup, FDebugInsp.DebugInspPopup,
     MsgHintsPopup, FBrowser.BrowserPopup, FTypeLibView.TypeLibPopup, FResView.ResPopup, MsgPopup, FBreakView.BreakPopup,
-    FBreakView.BreakItemPopup, StackPopup, LocalsPopup, LogPopup, FTodoView.TodoPopup, FCpuView.CpuPopup, FRefView.RefPopup, DockPopup]);
+    FBreakView.BreakItemPopup, StackPopup, LocalsPopup, LogPopup, FTodoView.TodoPopup, FCpuView.CpuPopup, FRefView.RefPopup, FMacroView.MacroPopup, DockPopup]);
   { a view without a menu of its own - an expert's, made later too - has the dock's commands alone
     on its caption, its tab and its auto-hide tab (TSdDock.CaptionMenu) }
   FDock.CaptionMenu := DockPopup;
@@ -4490,6 +4535,7 @@ begin
   FDebug.Free;
   FTodo.Free;
   FTodoHost.Free;
+  FMacros.Free;
   ClearTodoTexts;
   FTodoTexts.Free;
   FMsgHints.Free;
@@ -4852,9 +4898,7 @@ begin
   end
   else if Verb = 'action' then               // action <name>: runs an action, as its key would
   begin                                      // (one without a menu item: Record Macro ...)
-    if (FindNamed(Arg) is TBasicAction) and TBasicAction(FindNamed(Arg)).Update then ;
-    if (FindNamed(Arg) is TCustomAction) and TCustomAction(FindNamed(Arg)).Enabled then
-      TCustomAction(FindNamed(Arg)).Execute;
+    if FindNamed(Arg) is TCustomAction then RunEnabled(TCustomAction(FindNamed(Arg)));
   end
   else if Verb = 'newapp' then               // newapp <file.dpr>: File | New | Application without
     NewApplication(Arg)                      // its Save dialog
@@ -5801,7 +5845,10 @@ begin
 end;
 
 procedure TMainForm.UpdateActionStates;
+const
+  RecordMacroCaptions: array[Boolean] of string = ('&Record Macro', 'Stop &Recording Macro');
 var
+  MacroRec: Boolean;
   P: TEditorPage;
   R: TSdResPage;
   Doc: TWinControl;
@@ -6111,6 +6158,14 @@ begin
   aOpenFileAtCursor.Enabled := (Ed <> nil);
   aRecordMacro.Enabled := (Ed <> nil) and not OtaMacroPlaying;
   aPlayMacro.Enabled := (Ed <> nil) and not OtaMacroRecording and (OtaMacroLength > 0);
+  aPlayMacroRepeat.Enabled := aPlayMacro.Enabled;
+  { Record Macro stops a recording: its caption and image, also on the Macros drop-down }
+  MacroRec := OtaMacroRecording;
+  aRecordMacro.Caption := RecordMacroCaptions[MacroRec];
+  aRecordMacro.ImageIndex := IconIndex(MacroRecordIcons[MacroRec]);
+  aMacroMenu.ImageIndex := aRecordMacro.ImageIndex;
+  if FMacroView <> nil then
+    FMacroView.SetState(aRecordMacro.Enabled, (Ed <> nil) and not MacroRec and not OtaMacroPlaying, MacroRec);
   aTopicSearch.Enabled := (Ed <> nil);
   EditAddToDoItemCommand.Enabled := (Ed <> nil) and not Ed.ReadOnly;
   ecCompleteClass.Enabled := Pas and not Ed.ReadOnly;
@@ -6630,8 +6685,7 @@ begin
   else
     Exit;
   end;
-  A.Update;
-  if A.Enabled then A.Execute;
+  RunEnabled(A);
   Handled := True;
 end;
 { a source line for the CPU view's disassembly (IDE text, as its list shows it): from the open
@@ -7428,6 +7482,16 @@ begin
   ShowDockPanel(FRefPanel, True);
 end;
 
+type
+  TToolBarAccess = class(TToolBar);     // CheckMenuDropdown
+
+{ a drop-down button's face drops its menu as its arrow does - the VCL's own drop-down, the button
+  pressed while the menu is open }
+procedure DropButtonMenu(Button: TToolButton);
+begin
+  TToolBarAccess(Button.Parent as TToolBar).CheckMenuDropdown(Button);
+end;
+
 procedure TMainForm.ActRefactor(Sender: TObject);
 var
   P: TEditorPage;
@@ -7443,7 +7507,7 @@ begin
   { the code view's Refactor button: its menu under it }
   if Sender = aRefMenu then
   begin
-    with tbRefactor.ClientToScreen(Point(0, tbRefactor.Height)) do RefactorPopup.Popup(X, Y);
+    DropButtonMenu(tbRefactor);
     Exit;
   end;
   if Sender = aRefSyncEdit then
@@ -8403,10 +8467,11 @@ begin
     and played key by key }
   if Sender = aRecordMacro then
   begin
-    OtaRecordMacro;
+    if OtaRecordMacro then MacroRecorded;
     UpdateStatus;
   end
   else if Sender = aPlayMacro then OtaPlayMacro
+  else if Sender = aPlayMacroRepeat then PlayMacroRepeatedly
   else if Sender = aOpenFileAtCursor then OpenFileAtCursor
   else if Sender = EditAddToDoItemCommand then AddTodoItem
   else if Sender = ecCompleteClass then
@@ -11794,16 +11859,6 @@ begin
   ShowPlace(TAction(Sender).Tag);
 end;
 
-type
-  TToolBarAccess = class(TToolBar);     // CheckMenuDropdown
-
-{ a drop-down button's face drops its menu as its arrow does - the VCL's own drop-down, the button
-  pressed while the menu is open }
-procedure DropButtonMenu(Button: TToolButton);
-begin
-  TToolBarAccess(Button.Parent as TToolBar).CheckMenuDropdown(Button);
-end;
-
 { the drop-down at the end of the file tabs' row, the open files as a list to choose from }
 procedure TMainForm.ActFileList(Sender: TObject);
 begin
@@ -11814,6 +11869,111 @@ end;
 procedure TMainForm.ActMinimapMenu(Sender: TObject);
 begin
   DropButtonMenu(tbMinimap);
+end;
+
+{ the code view's Macros drop-down: Record (Stop), Play, Play Repeatedly, the Macro Library }
+procedure TMainForm.ActMacroMenu(Sender: TObject);
+begin
+  DropButtonMenu(tbMacro);
+end;
+
+{ A recording of the IDE's macro ended: with keys it goes to the top of the Macro Library as the
+  current macro; an empty one leaves the current macro of the library the IDE's again }
+procedure TMainForm.MacroRecorded;
+begin
+  if OtaMacroLength > 0 then
+  begin
+    FMacros.Current := FMacros.Add(FMacros.NewName, OtaCurrentMacro, 0);
+    SaveMacros;
+    FMacroView.Fill(FMacros.Current);
+  end
+  else
+    UseCurrentMacro;
+end;
+
+{ the library's current macro becomes the IDE's (none: the IDE's stays as it is) }
+procedure TMainForm.UseCurrentMacro;
+begin
+  if FMacros.CurrentMacro <> nil then OtaSetCurrentMacro(FMacros.CurrentMacro.Rec);
+end;
+
+function TMainForm.RunEnabled(A: TCustomAction): Boolean;
+begin
+  UpdateActionStates;
+  A.Update;
+  Result := A.Enabled and A.Execute;
+end;
+
+procedure TMainForm.SaveMacros;
+begin
+  FMacros.Save(Settings);
+end;
+
+{ the library's macro I becomes the IDE's (Shift+Ctrl+P plays it); False while a macro records or
+  plays }
+function TMainForm.ChooseMacro(I: Integer): Boolean;
+begin
+  Result := (I >= 0) and (I < FMacros.Count);
+  if not Result or (I = FMacros.Current) then Exit;
+  Result := OtaSetCurrentMacro(FMacros[I].Rec);
+  if not Result then Exit;
+  FMacros.Current := I;
+  SaveMacros;
+  FMacroView.MarkCurrent;
+end;
+
+{ the keys go to the code editor of the active page (a macro played or recorded from the view) }
+procedure TMainForm.FocusCodeEditor;
+var
+  P: TEditorPage;
+begin
+  P := ActivePage;
+  if (P <> nil) and P.CodeView and P.Editor.CanFocus then P.Editor.SetFocus;
+end;
+
+{ Play Macro Repeatedly: how many times asked (the answer kept with the library), then the plays,
+  one undo step }
+procedure TMainForm.PlayMacroRepeatedly;
+var
+  Times: Integer;
+  ToEnd: Boolean;
+begin
+  Times := FMacros.Times;
+  ToEnd := FMacros.ToEnd;
+  if not MacroPlayDialog(Self, Times, ToEnd) then Exit;
+  FMacros.Times := Times;
+  FMacros.ToEnd := ToEnd;
+  SaveMacros;
+  FocusCodeEditor;
+  if ToEnd then OtaPlayMacroTimes(MaxMacroPlays, True) else OtaPlayMacroTimes(Times, False);
+end;
+
+procedure TMainForm.MacroChoose(Sender: TObject);
+begin
+  ChooseMacro(FMacroView.SelectedIndex);
+end;
+
+procedure TMainForm.MacroPlay(Sender: TObject; Repeated: Boolean);
+begin
+  if not ChooseMacro(FMacroView.SelectedIndex) then Exit;
+  if Repeated then RunEnabled(aPlayMacroRepeat)
+  else
+  begin
+    FocusCodeEditor;
+    RunEnabled(aPlayMacro);
+  end;
+end;
+
+{ the view's Record: Record Macro; the keys typed then go to the code editor }
+procedure TMainForm.MacroRecord(Sender: TObject);
+begin
+  if RunEnabled(aRecordMacro) and OtaMacroRecording then FocusCodeEditor;
+end;
+
+{ the view changed the library: renamed, deleted, moved, imported }
+procedure TMainForm.MacroChanged(Sender: TObject);
+begin
+  SaveMacros;
 end;
 
 procedure TMainForm.FilesMenuPopup(Sender: TObject);
@@ -15973,6 +16133,7 @@ begin
   else if Sender = ViewObjInspCommand then ViewDockPanel(FInspPanel)
   else if Sender = aViewMessages then ViewDockPanel(FBottomPanels[BT_MESSAGES])
   else if Sender = aViewRefactorings then ViewDockPanel(FRefPanel)
+  else if Sender = aViewMacros then ViewDockPanel(FMacroPanel)
   else if Sender = aViewErrorList then ViewDockPanel(FBottomPanels[BT_ERRORS])
   else if Sender = DebugBreakPointsCommand then ViewDockPanel(FBottomPanels[BT_BREAKS])
   else if Sender = DebugCallStackCommand then ViewDockPanel(FBottomPanels[BT_STACK])

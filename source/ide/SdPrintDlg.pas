@@ -129,7 +129,7 @@ procedure PrintEditor(Ed: TSciEdit; const Title: string; const Opts: TPrintOptio
 var
   F: TSciRangeToFormat;
   DC: HDC;
-  PageW, PageH, DpiX, DpiY, Top, Page, Pos, Last, OldMargin, S: Integer;
+  PageW, PageH, DpiX, DpiY, Top, Page, Pos, Last, OldMargin, OldType, S: Integer;
   Header: string;
   ActiveWnd: HWND;
   WindowList: Pointer;
@@ -158,6 +158,7 @@ begin
   { the editor lends its margins and styles to the print: given back whatever happens (a printer
     that cannot start raises in BeginDoc) }
   OldMargin := Ed.Sci(SCI_GETMARGINWIDTHN, 0, 0);
+  OldType := Ed.Sci(SCI_GETMARGINTYPEN, 0, 0);
   Faces := nil;
   { while the job spools, the printer pumps messages (its abort procedure): the IDE takes no input
     (the page could close under the print) and the editor, whose margins and styles the print
@@ -166,7 +167,9 @@ begin
   WindowList := DisableTaskWindows(0);
   UIFreezeRedraw(W, True);
   try
-    { the line numbers are printed with the line number margin }
+    { the line numbers are printed with the line number margin - every line's number: the editor's
+      text margin of every 10th line holds only the lines in view }
+    Ed.Sci(SCI_SETMARGINTYPEN, 0, SC_MARGIN_NUMBER);
     if not Opts.LineNumbers then Ed.Sci(SCI_SETMARGINWIDTHN, 0, 0);
     if not Opts.SyntaxPrint then
     begin
@@ -221,6 +224,7 @@ begin
     end;
   finally
     Ed.Sci(SCI_SETMARGINWIDTHN, 0, OldMargin);
+    Ed.Sci(SCI_SETMARGINTYPEN, 0, OldType);
     for S := 0 to High(Faces) do
       if Faces[S] <> 0 then
       begin

@@ -68,6 +68,7 @@ type
     ErrorInsight: Boolean;          // D7 Studio's own: a Pascal text's errors marked after a pause (Diagnose)
     { D7 Studio's own }
     ShowLineNumbers, ShowFolding, ShowChangeBars, HighlightBraces, HighlightOccurrences: Boolean;
+    SparseLineNumbers: Boolean;     // ... the numbers of line 1, every 10th line and the caret's, dots between (TSciEdit.UpdateLineMarks)
     FoldPreview: Boolean;           // the code a folded line hides, in a tip over its box (TSciEdit.FoldPreview)
     WordWrap, ScrollBarMarkers: Boolean;
     Minimap: Integer;               // the text in miniature beside the vertical scroll bar (SdSciMinimap): MinimapNone ...
@@ -266,6 +267,7 @@ begin
   O.CodeDelay := 10;
   O.ErrorInsight := True;
   O.ShowLineNumbers := True;
+  O.SparseLineNumbers := True;
   O.ShowFolding := True;
   O.FoldPreview := True;
   O.ShowChangeBars := True;
@@ -429,6 +431,7 @@ begin
     OptBool('Declaration Information', O.TooltipDecl, 1),
     OptInt('Code Complete Delay', O.CodeDelay, 1),
     OptFlag('LineNumbers', O.ShowLineNumbers, -1),
+    OptFlag('SparseLineNumbers', O.SparseLineNumbers, -1),
     OptFlag('Folding', O.ShowFolding, -1),
     OptFlag('FoldPreview', O.FoldPreview, -1),
     OptFlag('ChangeBars', O.ShowChangeBars, -1),

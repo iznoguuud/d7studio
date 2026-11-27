@@ -107,7 +107,10 @@ type
     { the code view's page bar: the minimap shown, the whole text in it, its large cells (its preview is iiPreview) }
     iiMinimap, iiMinimapEntire, iiMinimapLarge,
     { Help: Check for Updates, Create Bug Report }
-    iiCheckUpdates, iiBugReport);
+    iiCheckUpdates, iiBugReport,
+    { Edit | Macros and the Macro Library: Record Macro (Stop is iiStop), Play Macro, Play Macro
+      Repeatedly, the Macro Library; its Import and Export }
+    iiMacroRecord, iiMacroPlay, iiMacroRepeat, iiMacroLibrary, iiImport, iiExport);
 
 const
   { the icons that also come at 32 x 32 (ICONS32, in this order): File | New | Other's items.

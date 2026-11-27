@@ -476,17 +476,31 @@ object EditorOptionsFrame: TEditorOptionsFrame
           Caption = 'Visible &gutter'
           TabOrder = 1
         end
-        object chkLineNumbers: TCheckBox
-          Left = 455
-          Top = 18
-          Width = 161
-          Height = 19
-          Caption = '&Line numbers'
+        object lbLineNumbers: TLabel
+          Left = 214
+          Top = 64
+          Width = 77
+          Height = 15
+          Caption = '&Line numbers:'
+          FocusControl = cbLineNumbers
+          Transparent = True
+        end
+        object cbLineNumbers: TComboBox
+          Left = 302
+          Top = 61
+          Width = 127
+          Height = 23
+          Style = csDropDownList
+          ItemHeight = 15
           TabOrder = 5
+          Items.Strings = (
+            'Every line'
+            'Every 10th line'
+            'Hidden')
         end
         object chkFolding: TCheckBox
           Left = 455
-          Top = 40
+          Top = 18
           Width = 161
           Height = 19
           Caption = 'Code fol&ding'
@@ -495,7 +509,7 @@ object EditorOptionsFrame: TEditorOptionsFrame
         end
         object chkFoldPreview: TCheckBox
           Left = 455
-          Top = 62
+          Top = 40
           Width = 161
           Height = 19
           Caption = 'Fold pr&eview'

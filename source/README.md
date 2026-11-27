@@ -245,8 +245,8 @@ IDE, area by area: what is new and what works better.
 - **Object Inspector** in Delphi 7's layout, with categories, value glyphs and Unicode property
   values.
 - **Code editor** (Scintilla): navigation bar, code completion and code parameters, matching and
-  typing aids, a minimap beside the scroll bar, browse history, bookmarks, macros, code templates, a
-  source formatter, and file encodings; flow-control words and identifiers of your own list in colours of
+  typing aids, a minimap beside the scroll bar, browse history, bookmarks, a macro recorder with a macro
+  library, code templates, a source formatter, and file encodings; flow-control words and identifiers of your own list in colours of
   their own; case, sort and surround commands in Edit ▸ Line and in a menu that a button by the selection
   opens; file tabs in one row or several. Code insight works on Pascal sources. C/C++, C#, resource scripts, IDL, XML,
   HTML, INI-style files (`.ini`, `.dof`, `.dsk` ...), SQL, batch files and make files (`.bpg`)

@@ -86,7 +86,8 @@ type
     eoRightMargin: TComboBox;
     eoGutterWidth: TComboBox;
     eoVisibleGutter: TCheckBox;
-    chkLineNumbers: TCheckBox;
+    lbLineNumbers: TLabel;
+    cbLineNumbers: TComboBox;
     chkFolding: TCheckBox;
     chkFoldPreview: TCheckBox;
     chkChangeBars: TCheckBox;
@@ -271,6 +272,8 @@ const
     'Borland.EditOptions.XML,Borland.EditOptions.Default,';
   { the values of the Display page's Minimap box, in the order of its items }
   MinimapItems: array[0..2] of Integer = (MinimapOn, MinimapPreview, MinimapNone);
+  { the Display page's Line numbers box: Every line, Every 10th line (SparseLineNumbers), Hidden }
+  LineNumbersHidden = 2;
   { The Color page's sample, after Delphi 7's: each element somewhere - the debugger's lines, a
     line saved since it changed and one changed since, a word selected (the caret after it, its
     occurrences), the identifier I's places, the brackets of a call matched, a stray one, the
@@ -529,7 +532,8 @@ begin
     chkNavigationBar.Checked := FOpts.NavigationBar;
     chkMultiLineTabs.Checked := FOpts.MultiLineTabs;
     chkSelectionButton.Checked := FOpts.SelectionButton;
-    chkLineNumbers.Checked := FOpts.ShowLineNumbers;
+    if not FOpts.ShowLineNumbers then cbLineNumbers.ItemIndex := LineNumbersHidden
+    else cbLineNumbers.ItemIndex := Ord(FOpts.SparseLineNumbers);
     chkFolding.Checked := FOpts.ShowFolding;
     chkFoldPreview.Checked := FOpts.FoldPreview;
     chkFoldingClick(nil);
@@ -611,7 +615,8 @@ begin
   FOpts.NavigationBar := chkNavigationBar.Checked;
   FOpts.MultiLineTabs := chkMultiLineTabs.Checked;
   FOpts.SelectionButton := chkSelectionButton.Checked;
-  FOpts.ShowLineNumbers := chkLineNumbers.Checked;
+  FOpts.ShowLineNumbers := cbLineNumbers.ItemIndex <> LineNumbersHidden;
+  if FOpts.ShowLineNumbers then FOpts.SparseLineNumbers := cbLineNumbers.ItemIndex = Ord(True);
   FOpts.ShowFolding := chkFolding.Checked;
   FOpts.FoldPreview := chkFoldPreview.Checked;
   FOpts.ShowChangeBars := chkChangeBars.Checked;

@@ -39,6 +39,7 @@ unit SdDialogs;
       SdEvalDlg                                    Evaluate/Modify (called by SdDebugUI)
       SdAlignDlg, SdSizeDlg, SdScaleDlg,           Edit | Align, Size, Scale, Tab Order
         SdTabOrderDlg
+      SdMacroPlayDlg                               Edit | Macros | Play Macro Repeatedly
       SdWindowListDlg, SdDesktopDlg,               View | Window List, Desktops (save, debug, delete)
         SdDesktopDeleteDlg, SdDesktopsDlg          ... and the Desktops button (all in one)
       SdTransferDlg, SdTransEditDlg                Tools | Configure Tools
@@ -181,6 +182,8 @@ function CompileWithProgress(AOwner: TComponent; Compiler: TSdCompiler; const Pr
 function AlignDialog(AOwner: TComponent; var H, V: Integer): Boolean;
 function SizeDialog(AOwner: TComponent; var HMode, VMode, W, H: Integer): Boolean;
 function ScaleDialog(AOwner: TComponent; var Percent: Integer): Boolean;
+{ Play Macro Repeatedly: Times (1 .. MaxMacroTimes) or ToEnd, until the end of the file }
+function MacroPlayDialog(AOwner: TComponent; var Times: Integer; var ToEnd: Boolean): Boolean;
 function TabOrderDialog(AOwner: TComponent; Items: TStrings; CreationOrder: Boolean = False): Boolean;
 function WindowListDialog(AOwner: TComponent; Items: TStrings; var Index: Integer): Boolean;
 function DesktopDialog(AOwner: TComponent; Debug: Boolean; Names: TStrings; var Name: string): Boolean;
@@ -329,7 +332,7 @@ uses
   Dialogs, ComCtrls, SdFileNames,
   SdFindDlg, SdReplaceDlg, SdFindInFilesDlg, SdListDlg,
   SdInstallCompDlg, SdAboutDlg, SdCompileDlg, SdVarEntryDlg, SdListEditDlg, SdUI,
-  SdAlignDlg, SdSizeDlg, SdScaleDlg, SdTabOrderDlg, SdWindowListDlg, SdDesktopDlg, SdDesktopDeleteDlg, SdDesktopsDlg,
+  SdAlignDlg, SdSizeDlg, SdScaleDlg, SdMacroPlayDlg, SdTabOrderDlg, SdWindowListDlg, SdDesktopDlg, SdDesktopDeleteDlg, SdDesktopsDlg,
   SdTransferDlg, SdTransEditDlg, SdFindErrorDlg, SdBrowseSymbolDlg, SdNewCompDlg, SdCompListDlg, SdNewItemsDlg, SdNewThreadDlg, SdPrintDlg,
   SdSettings, SdEnvOptions, SdEditorOptions, SdCodeTemplatesDlg,
   SdAddCodeTemplateDlg, SdExceptRangeDlg, SdCustomizeDlg, SdAddModuleDlg, SdAttachDlg,
@@ -361,6 +364,11 @@ end;
 function ScaleDialog(AOwner: TComponent; var Percent: Integer): Boolean;
 begin
   Result := TScaleDlg.Execute(AOwner, Percent);
+end;
+
+function MacroPlayDialog(AOwner: TComponent; var Times: Integer; var ToEnd: Boolean): Boolean;
+begin
+  Result := TMacroPlayDlg.Execute(AOwner, Times, ToEnd);
 end;
 
 function TabOrderDialog(AOwner: TComponent; Items: TStrings; CreationOrder: Boolean): Boolean;

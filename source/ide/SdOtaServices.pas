@@ -101,11 +101,18 @@ procedure OtaMessageRows(List: TListBox; Rows: TStrings);
 { the IDE's keystroke macro (Edit | Record Macro, Play Macro - Delphi's record of the keyboard
   services): Record starts and stops it, Play plays it in the active code editor; the state of
   the keyboard services' records - one records (not paused), one plays; the macro's items }
-procedure OtaRecordMacro;
+function OtaRecordMacro: Boolean;
 procedure OtaPlayMacro;
 function OtaMacroRecording: Boolean;
 function OtaMacroPlaying: Boolean;
 function OtaMacroLength: Integer;
+{ ... OtaRecordMacro: True when it ended a recording of the IDE's macro. The macro's record
+  (SdMacros keeps copies of it); SetCurrent: R's items become the macro (nil: none) - not while it
+  records or plays (False); PlayTimes: plays it Times times, with ToEnd until a play leaves the caret
+  no nearer the end of the file (at most Times), as one undo step - the number of plays }
+function OtaCurrentMacro: IOTARecord;
+function OtaSetCurrentMacro(const R: IOTARecord): Boolean;
+function OtaPlayMacroTimes(Times: Integer; ToEnd: Boolean): Integer;
 { the experts of Delphi 1-3 (SdOtaLegacy) hear what the IDE does: a file added to (Added) or removed
   from the active project; the active project closed }
 procedure OtaProjectFileChanged(const FileName: string; Added: Boolean);
@@ -402,6 +409,7 @@ type
       editor; the editor's keys and characters while a record records }
     procedure RecordKeyMacro(const R: IOTARecord);
     procedure PlayKeyMacro(const R: IOTARecord);
+    function PlayKeyMacroTimes(const R: IOTARecord; Times: Integer; ToEnd: Boolean): Integer;
     function Recording: Boolean;
     function Playing: Boolean;
     function PageEditor(Ed: TSciEdit): Boolean;
@@ -3742,6 +3750,40 @@ begin
   end;
 end;
 
+{ PlayKeyMacro again and again in the active code editor, inside one undo step of it: Times plays at
+  most; ToEnd - until a play leaves no less text after the caret than there was before it (the caret
+  at the end of the file, a search that found nothing more, a key that could not move); a play an
+  expert's binding paused, or that closed the editor's page, ends it }
+function TSdOtaKeyboard.PlayKeyMacroTimes(const R: IOTARecord; Times: Integer; ToEnd: Boolean): Integer;
+var
+  Rec: TSdOtaRecord;
+  Ed: TSciEdit;
+  Left, Was: Integer;
+begin
+  Result := 0;
+  Rec := OwnRecord(R);
+  if (Rec = nil) or (Rec.Count = 0) or Recording or Playing then Exit;
+  Ed := PlaybackEditor;
+  if Ed = nil then Exit;
+  Ed.BeginKeyPlayback;
+  try
+    while Result < Times do
+    begin
+      Was := Ed.TextLength - Ed.CaretPos;
+      PlayKeyMacro(R);
+      Inc(Result);
+      if Rec.Paused or not PageEditor(Ed) or not Ed.Ready then Break;
+      if ToEnd then
+      begin
+        Left := Ed.TextLength - Ed.CaretPos;
+        if (Left = 0) or (Left >= Was) then Break;
+      end;
+    end;
+  finally
+    if PageEditor(Ed) then Ed.EndKeyPlayback;
+  end;
+end;
+
 function TSdOtaKeyboard.PlayCommand(Ed: TSciEdit; const Name: string): Boolean;
 var
   I: Integer;
@@ -4461,9 +4503,19 @@ begin
   end;
 end;
 
-procedure OtaRecordMacro;
+function OtaRecordMacro: Boolean;
+var
+  K: TSdOtaKeyboard;
+  R: TSdOtaRecord;
+  Was: Boolean;
 begin
-  if Services <> nil then Services.FKeyboard.RecordKeyMacro(Services.FKeyboard.FIdeRecord);
+  Result := False;
+  if Services = nil then Exit;
+  K := Services.FKeyboard;
+  R := OwnRecord(K.FIdeRecord);
+  Was := (R <> nil) and (K.FRecord = K.FIdeRecord) and R.Recording and not R.Paused;
+  K.RecordKeyMacro(K.FIdeRecord);
+  Result := Was and not R.Recording;
 end;
 
 procedure OtaPlayMacro;
@@ -4489,6 +4541,31 @@ begin
   if Services = nil then Exit;
   R := OwnRecord(Services.FKeyboard.FIdeRecord);
   if R <> nil then Result := R.Count;
+end;
+
+function OtaCurrentMacro: IOTARecord;
+begin
+  if Services <> nil then Result := Services.FKeyboard.FIdeRecord else Result := nil;
+end;
+
+function OtaSetCurrentMacro(const R: IOTARecord): Boolean;
+var
+  Ide: TSdOtaRecord;
+begin
+  Result := False;
+  if Services = nil then Exit;
+  Ide := OwnRecord(Services.FKeyboard.FIdeRecord);
+  if (Ide = nil) or Ide.Recording or Ide.Playing then Exit;
+  Ide.Clear;
+  if R <> nil then Ide.Append(R);
+  Result := True;
+end;
+
+function OtaPlayMacroTimes(Times: Integer; ToEnd: Boolean): Integer;
+begin
+  Result := 0;
+  if Services <> nil then
+    Result := Services.FKeyboard.PlayKeyMacroTimes(Services.FKeyboard.FIdeRecord, Times, ToEnd);
 end;
 
 initialization

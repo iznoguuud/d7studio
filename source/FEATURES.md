@@ -144,7 +144,8 @@ modernized RTL/VCL in full is in [MODERNIZATION.md](MODERNIZATION.md).
   Options ▸ Display ▸ Fold preview*). *Edit ▸
   Folding* and RAD Studio's Shift+Ctrl+K keys fold all, the methods, the classes, the sections, the
   nested routines or the regions, and turn folding on or off. **Line numbers** and **change bars** (unsaved and saved
-  changes) in the gutter.
+  changes) in the gutter; the line numbers of line 1, every 10th line and the caret's line, with dots between, or of
+  every line (*Editor Options ▸ Display ▸ Line numbers*).
 - **Highlighting** (*Editor Options ▸ Highlighting*): the bracket at the caret and its partner (a
   bracket without one in red); the words of the block at the caret (`begin` ... `end`, `try` ...
   `finally` ... `end`); every place of the name at the caret - code insight tells same-named
@@ -171,6 +172,11 @@ modernized RTL/VCL in full is in [MODERNIZATION.md](MODERNIZATION.md).
   (Shift+Ctrl+Alt+Up / Down) and *Join* (Shift+Ctrl+J) lines; *Upper Case*, *Lower Case*, *Toggle Case*, *Sort
   Lines* and *Surround With* `begin ... end`, `try ... finally`, `try ... except` (*Edit ▸ Line*); *Toggle Comment* (Ctrl+/) in every language that has comments; *Expand* / *Shrink
   Selection* (Shift+Alt+= / Shift+Alt+-) by the code's structure.
+- **A macro recorder** (*Edit ▸ Macros*, and the *Macros* drop-down on the code view's tool bar): record keys
+  (Shift+Ctrl+R, again to stop), play them (Shift+Ctrl+P) or play them repeatedly - so many times, or until the end
+  of the file -, undone in one step. Every recording is kept in the *Macro Library* (*View ▸ Macro Library*), also
+  after a restart: choose the macro that Shift+Ctrl+P plays, rename, delete and reorder them, export them to a
+  `.d7macros` file and import them from one. Delphi 7 has one unnamed macro, lost when it closes, and no menu for it.
 - **A button by the selection** opens a menu of what applies to it: cut, copy, comment, indent, duplicate, move,
   case, sort, surround, format (*Editor Options ▸ Display ▸ Selection button*).
 - **Word wrap** (*Editor Options ▸ Display ▸ Word wrap*) and **zoom** (the zoom bar, *View ▸ Zoom*,
