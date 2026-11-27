@@ -22,7 +22,11 @@ unit SdDock;
     along the dock's own edge: added before the areas across it, it spans the whole edge (a
     bottom area across the full width, under the left and right areas). A drop on the band at
     that edge of the dock puts views into it while its edge's outer areas take no room, else into
-    a new row at the dock's edge: an outer column, before the other outer areas of the edge;
+    a new row at the dock's edge: an outer column, before the other outer areas of the edge.
+    Centre areas (AddCenterArea) lie inside the centre, under its header (CenterHeader: a control
+    the dock places across the top of the centre - the file tabs in D7 Studio), at an edge of what
+    the other areas left to it: laid out after all the others, they share the centre with the
+    control Center, which gets the rest;
   * groups: stacked in an area (left/right: top to bottom; top/bottom: side by side) with a
     3 px splitter between them; every group but the last has its size, the last the rest. A
     group has a caption (the titles of its visible panels - "Project Manager, Structure" - a
@@ -50,13 +54,14 @@ unit SdDock;
   an edge of the centre it goes into a new column beside the areas of that edge, or into that
   edge's area while the edge shows no other group; onto the 24 px band at the dock's edge of an
   outer area, into that area while the outer areas of the edge show no other group, else into a
-  new row at the dock's edge (before any other target there). A translucent window marks the
-  target.
+  new row at the dock's edge (before any other target there); anywhere else over the centre, into
+  the centre area of the side of Center it is nearest to (the page cut by its diagonals into four
+  triangles), last. A translucent window marks the target.
   Esc, or another window taking the mouse, ends a drag of a caption, a tab or a splitter without
   a change.
 
   Floating: a group dropped where no
-  target is - outside the window, over the middle of the centre - floats in a window of its own
+  target is - outside the window, over the centre while the dock has no centre areas - floats in a window of its own
   (TDockFloatForm, owned by the dock's form), with its caption, tabs and views; FloatGroup /
   FloatPanel do it without a drag. Its caption moves the window, and over a target docks it
   again; a double click on it, or DockBack, puts it back where it was docked last. Views dropped
@@ -85,6 +90,9 @@ const
 
 type
   TSdDockEdge = (deLeft, deTop, deRight, deBottom);
+  { an area beside the centre, along the dock's own edge (AddArea's AOuter, its rows), or inside
+    the centre (AddCenterArea) }
+  TSdDockAreaKind = (dkBeside, dkOuter, dkCenter);
   TSdDockDragStage = (ddStart, ddMove, ddEnd);
 
   TSdDock = class;
@@ -169,14 +177,17 @@ type
     FColumn: Boolean;               // a column beside its edge's areas (AddColumn): goes with its last group
     FBase: TSdDockArea;             // ... the area it is named after, where its groups go home when it goes
     FOuter: Boolean;                // along the dock's own edge (AddArea's AOuter, its rows): its own drop band
-    FSpan: TRect;                   // what was left when it took its strip (Layout) ...
+    FInCenter: Boolean;             // inside the centre, under its header (AddCenterArea)
+    FSpan: TRect;                  // what was left when it took its strip (Layout) ...
     FRoom: TRect;                   // ... and its room: it lies at that rectangle's edge
   public
     destructor Destroy; override;
     function Vertical: Boolean;     // groups stacked top to bottom (left and right areas)
+    function Kind: TSdDockAreaKind;
     property Name: string read FName;
     property Edge: TSdDockEdge read FEdge;
     property Outer: Boolean read FOuter;
+    property InCenter: Boolean read FInCenter;
   end;
 
   TSdDockGroup = class
@@ -332,7 +343,10 @@ type
   private
     FCenter: TControl;
     FCenterHost: TSdDockHost;
-    FCenterRect: TRect;
+    FCenterHeader: TControl;
+    FCenterRect: TRect;             // what the areas left: the header, the centre areas and FPageRect
+    FHeaderRect: TRect;             // ... the header's part at its top (empty while it is hidden)
+    FPageRect: TRect;               // ... Center's: what the header and the centre areas left
     FAreas: TList;
     FPanels: TList;                 // in the order they were added
     FDead: TList;                   // groups without panels, freed by WM_SDDOCKRELEASE
@@ -383,6 +397,7 @@ type
     function GetPanel(Index: Integer): TSdDockPanel;
     function GetPanelCount: Integer;
     procedure SetCenter(Value: TControl);
+    procedure SetCenterHeader(Value: TControl);
     procedure SetCaptionMenu(Value: TPopupMenu);
     function MenuOf(P: TSdDockPanel): TPopupMenu;
     procedure SetGroupMenus(G: TSdDockGroup);
@@ -427,8 +442,8 @@ type
     procedure Unfloat(G: TSdDockGroup);
     procedure KeepFloatOnly;
     function NewArea(const AName: string; AEdge: TSdDockEdge; ASize: Integer): TSdDockArea;
-    function EdgeShows(Edge: TSdDockEdge; Outer: Boolean; Moving: TSdDockGroup): Boolean;
-    function OuterMost(Edge: TSdDockEdge): TSdDockArea;
+    function EdgeShows(Edge: TSdDockEdge; Kind: TSdDockAreaKind; Moving: TSdDockGroup): Boolean;
+    function FirstArea(Edge: TSdDockEdge; Kind: TSdDockAreaKind): TSdDockArea;
     function FirstInnerArea: TSdDockArea;
     function NewColumn(Base: TSdDockArea; const AName: string; Loading: Boolean): TSdDockArea;
     function AddColumn(Base: TSdDockArea): TSdDockArea;
@@ -458,6 +473,7 @@ type
     procedure CreateParams(var Params: TCreateParams); override;
     procedure CreateWnd; override;
     procedure Resize; override;
+    procedure AlignControls(AControl: TControl; var Rect: TRect); override;
     procedure MouseDown(Button: TMouseButton; Shift: TShiftState; X, Y: Integer); override;
     procedure MouseMove(Shift: TShiftState; X, Y: Integer); override;
     procedure MouseUp(Button: TMouseButton; Shift: TShiftState; X, Y: Integer); override;
@@ -468,6 +484,9 @@ type
       own edge - added before the areas across it, it spans the whole edge (see the unit's header) }
     function AddArea(const AName: string; AEdge: TSdDockEdge; ASize: Integer;
       AOuter: Boolean = False): TSdDockArea;
+    { an area inside the centre along AEdge, under the header (see the unit's header): the centre
+      areas are laid out after all the others, in the order they were added }
+    function AddCenterArea(const AName: string; AEdge: TSdDockEdge; ASize: Integer): TSdDockArea;
     { AControl as a group of its own at the end of AArea (ASize along the area, 0: a third) }
     function AddPanel(AControl: TControl; const AName, ATitle: string; AArea: TSdDockArea;
       ASize: Integer = 0): TSdDockPanel;
@@ -509,6 +528,10 @@ type
     function DebugText: string;
     function DebugTabs: string;
     property Center: TControl read FCenter write SetCenter;
+    { a control across the top of the centre, above the centre areas and Center, as high as it is
+      and only while it is visible; it becomes a child of the dock, and a change of its height or
+      its visibility lays the dock out again }
+    property CenterHeader: TControl read FCenterHeader write SetCenterHeader;
     property AreaCount: Integer read GetAreaCount;
     property Areas[Index: Integer]: TSdDockArea read GetArea;
     property PanelCount: Integer read GetPanelCount;
@@ -573,6 +596,18 @@ begin
   else
     Result := Rect(R.Left, R.Bottom - S, R.Right, R.Bottom);
   end;
+end;
+
+{ where A would lie at its edge of R: as thick as its size, leaving at least Leave of R (a drop
+  marker) }
+function AreaPart(A: TSdDockArea; const R: TRect; Leave: Integer): TRect;
+var
+  S: Integer;
+begin
+  S := A.FSize;
+  if S > Extent(R, not A.Vertical) - Leave then S := Extent(R, not A.Vertical) - Leave;
+  if S < 0 then S := 0;
+  Result := EdgePart(R, A.FEdge, S);
 end;
 
 { the part of R that is S thick at its Edge, taken off R (R keeps the rest) }
@@ -725,6 +760,13 @@ end;
 function TSdDockArea.Vertical: Boolean;
 begin
   Result := FEdge in [deLeft, deRight];
+end;
+
+function TSdDockArea.Kind: TSdDockAreaKind;
+begin
+  if FInCenter then Result := dkCenter
+  else if FOuter then Result := dkOuter
+  else Result := dkBeside;
 end;
 
 { ---------------------------------------------------------------- TSdDockGroup }
@@ -1338,6 +1380,27 @@ begin
   Layout;
 end;
 
+procedure TSdDock.SetCenterHeader(Value: TControl);
+begin
+  if FCenterHeader <> nil then FCenterHeader.RemoveFreeNotification(Self);
+  FCenterHeader := Value;
+  if Value <> nil then
+  begin
+    Value.FreeNotification(Self);
+    Adopt(Value);
+  end;
+  Layout;
+end;
+
+{ The header's SetBounds and SetVisible ask its parent to align it (RequestAlign): its height or
+  its visibility changed, and the centre is shared out again. The dock aligns nothing else - its
+  children are placed by Layout -, and Layout's own changes come back here while it runs. }
+procedure TSdDock.AlignControls(AControl: TControl; var Rect: TRect);
+begin
+  inherited AlignControls(AControl, Rect);
+  if (AControl <> nil) and (AControl = FCenterHeader) and not FInLayout then Layout;
+end;
+
 { the groups whose view shown has a menu of its own keep it }
 procedure TSdDock.SetCaptionMenu(Value: TPopupMenu);
 var
@@ -1427,6 +1490,7 @@ function TSdDock.AreaLength(A: TSdDockArea): Integer;
 begin
   if not IsRectEmpty(A.FBounds) then Result := Extent(A.FBounds, A.Vertical)
   else if A.FOuter and not IsRectEmpty(A.FRoom) then Result := Extent(A.FRoom, A.Vertical)
+  else if A.FInCenter then Result := Extent(FPageRect, A.Vertical)
   else Result := Extent(FCenterRect, A.Vertical);
 end;
 
@@ -1435,6 +1499,13 @@ function TSdDock.AddArea(const AName: string; AEdge: TSdDockEdge; ASize: Integer
 begin
   Result := NewArea(AName, AEdge, ASize);
   Result.FOuter := AOuter;
+  Layout;
+end;
+
+function TSdDock.AddCenterArea(const AName: string; AEdge: TSdDockEdge; ASize: Integer): TSdDockArea;
+begin
+  Result := NewArea(AName, AEdge, ASize);
+  Result.FInCenter := True;
   Layout;
 end;
 
@@ -1463,16 +1534,16 @@ end;
 
 { --- columns: areas beside the areas of an edge, rows along the dock's edge --- }
 
-{ an area of Edge, an inner one or an outer one (Outer), shows a group - not counting Moving,
-  the group a drag takes away whole }
-function TSdDock.EdgeShows(Edge: TSdDockEdge; Outer: Boolean; Moving: TSdDockGroup): Boolean;
+{ an area of Edge of that Kind shows a group - not counting Moving, the group a drag takes away
+  whole }
+function TSdDock.EdgeShows(Edge: TSdDockEdge; Kind: TSdDockAreaKind; Moving: TSdDockGroup): Boolean;
 var
   I, K: Integer;
   L: TList;
 begin
   Result := False;
   for I := 0 to FAreas.Count - 1 do
-    if (Areas[I].FEdge = Edge) and (Areas[I].FOuter = Outer) then
+    if (Areas[I].FEdge = Edge) and (Areas[I].Kind = Kind) then
     begin
       L := VisibleGroups(Areas[I]);
       try
@@ -1485,14 +1556,15 @@ begin
     end;
 end;
 
-{ the outer area of Edge at the dock's edge: the first in the order (nil: none) }
-function TSdDock.OuterMost(Edge: TSdDockEdge): TSdDockArea;
+{ the first area of Edge of that Kind in the order (nil: none): the outer one at the dock's edge,
+  the centre area of a side of the pages }
+function TSdDock.FirstArea(Edge: TSdDockEdge; Kind: TSdDockAreaKind): TSdDockArea;
 var
   I: Integer;
 begin
   Result := nil;
   for I := 0 to FAreas.Count - 1 do
-    if (Areas[I].FEdge = Edge) and Areas[I].FOuter then
+    if (Areas[I].FEdge = Edge) and (Areas[I].Kind = Kind) then
     begin
       Result := Areas[I];
       Exit;
@@ -1536,7 +1608,7 @@ var
 begin
   E := NoRect;
   for I := 0 to FAreas.Count - 1 do
-    if (Areas[I].FEdge = A.FEdge) and not Areas[I].FOuter and not IsRectEmpty(Areas[I].FBounds) then
+    if (Areas[I].FEdge = A.FEdge) and (Areas[I].Kind = dkBeside) and not IsRectEmpty(Areas[I].FBounds) then
       E := Areas[I].FBounds;
   if IsRectEmpty(E) then E := FCenterRect;
   S := A.FSize;
@@ -1582,7 +1654,7 @@ begin
   if A.FOuter then
   begin
     K := FAreas.IndexOf(A.FBase);
-    if not Loading and (OuterMost(A.FEdge) <> nil) then K := FAreas.IndexOf(OuterMost(A.FEdge));
+    if not Loading and (FirstArea(A.FEdge, dkOuter) <> nil) then K := FAreas.IndexOf(FirstArea(A.FEdge, dkOuter));
     if K < 0 then K := 0;
     FAreas.Insert(K, A);
   end
@@ -1590,7 +1662,7 @@ begin
   begin
     K := -1;
     for I := 0 to FAreas.Count - 1 do
-      if (Areas[I].FEdge = A.FEdge) and not Areas[I].FOuter then K := I;
+      if (Areas[I].FEdge = A.FEdge) and (Areas[I].Kind = dkBeside) then K := I;
     FAreas.Insert(K + 1, A);
   end;
 end;
@@ -1606,7 +1678,7 @@ begin
   for I := 0 to FAreas.Count - 1 do
   begin
     B := Areas[I];
-    if B.FColumn or (Length(AName) <= Length(B.FName)) or
+    if B.FColumn or B.FInCenter or (Length(AName) <= Length(B.FName)) or
       not SameText(Copy(AName, 1, Length(B.FName)), B.FName) or
       (StrToIntDef(Copy(AName, Length(B.FName) + 1, MaxInt), 0) < 2) then Continue;
     Result := NewColumn(B, AName, True);
@@ -1941,7 +2013,7 @@ var
   I: Integer;
 begin
   for I := 0 to FAreas.Count - 1 do
-    if not Areas[I].FOuter and not Areas[I].FColumn and (Areas[I] <> FFloatArea) then
+    if (Areas[I].Kind = dkBeside) and not Areas[I].FColumn and (Areas[I] <> FFloatArea) then
     begin
       Result := Areas[I];
       Exit;
@@ -2460,6 +2532,7 @@ procedure TSdDock.Notification(AComponent: TComponent; Operation: TOperation);
 begin
   inherited Notification(AComponent, Operation);
   if (Operation = opRemove) and (AComponent = FKeepFocus) then FKeepFocus := nil;
+  if (Operation = opRemove) and (AComponent = FCenterHeader) then FCenterHeader := nil;
 end;
 
 { Wnd belongs to the group that is out (its caption, tabs, views) or to the strip it came from }
@@ -2667,6 +2740,31 @@ var
   A: TSdDockArea;
   G: TSdDockGroup;
   L, Fresh: TList;
+
+  { A at the edge of what is left (Rest), its splitter next to it; a centre area leaves the page
+    the smallest size of an area }
+  procedure Place(A: TSdDockArea);
+  var
+    S, Room: Integer;
+  begin
+    A.FAutoTabs.Changed;
+    A.FStrip := NoRect;
+    A.FBounds := NoRect;
+    A.FSplit := NoRect;
+    A.FSpan := Rest;
+    if HasAutoTabs(A) then A.FStrip := TakeEdge(Rest, A.FEdge, UIDockTabHeight);
+    A.FRoom := Rest;
+    if GroupAt(A, 0) = nil then Exit;                 // no visible group: no room
+    Room := Extent(Rest, not A.Vertical);             // across the edge
+    if A.FInCenter then Dec(Room, MinArea);
+    S := A.FSize;                                     // cut down while the dock is small; FSize stays
+    if S > Room - Gap then S := Room - Gap;
+    if S < 0 then S := 0;
+    A.FBounds := TakeEdge(Rest, A.FEdge, S);
+    A.FSplit := TakeEdge(Rest, A.FEdge, Gap);
+    LayoutGroups(A);
+  end;
+
 begin
   if FInLayout or (csDestroying in ComponentState) then Exit;
   DropEmptyColumns;
@@ -2688,32 +2786,27 @@ begin
         L.Free;
       end;
       for I := 0 to FAreas.Count - 1 do
-      begin
-        A := Areas[I];
-        A.FAutoTabs.Changed;
-        A.FStrip := NoRect;
-        A.FBounds := NoRect;
-        A.FSplit := NoRect;
-        A.FSpan := Rest;
-        if HasAutoTabs(A) then A.FStrip := TakeEdge(Rest, A.FEdge, UIDockTabHeight);
-        A.FRoom := Rest;
-        if GroupAt(A, 0) = nil then Continue;           // no visible group: no room
-        Room := Extent(Rest, not A.Vertical);           // across the edge
-        S := A.FSize;                                   // cut down while the dock is small; FSize stays
-        if S > Room - Gap then S := Room - Gap;
-        if S < 0 then S := 0;
-        { the area at the edge of what is left, its splitter next to it }
-        A.FBounds := TakeEdge(Rest, A.FEdge, S);
-        A.FSplit := TakeEdge(Rest, A.FEdge, Gap);
-        LayoutGroups(A);
-      end;
+        if not Areas[I].FInCenter then Place(Areas[I]);
+      { the centre: its header across the top, then the centre areas, Center the rest. A hidden
+        header gets its place too, so that it appears there }
       FCenterRect := Rest;
-      { the group that is out: as wide (left / right) or high as its area, along its strip }
+      FHeaderRect := NoRect;
+      if FCenterHeader <> nil then
+        if FCenterHeader.Visible then
+          FHeaderRect := TakeEdge(Rest, deTop, FCenterHeader.Height)
+        else
+          FCenterHeader.BoundsRect := EdgePart(Rest, deTop, FCenterHeader.Height);
+      for I := 0 to FAreas.Count - 1 do
+        if Areas[I].FInCenter then Place(Areas[I]);
+      FPageRect := Rest;
+      { the group that is out: as wide (left / right) or high as its area, along its strip - a
+        centre area's within the centre }
       if FSlid <> nil then
       begin
         A := FSlid.FArea;
         Strip := A.FStrip;
-        if A.Vertical then Room := ClientWidth - (Strip.Right - Strip.Left) else Room := ClientHeight - (Strip.Bottom - Strip.Top);
+        if A.FInCenter then Room := Extent(A.FSpan, not A.Vertical) - Extent(Strip, not A.Vertical)
+        else if A.Vertical then Room := ClientWidth - (Strip.Right - Strip.Left) else Room := ClientHeight - (Strip.Bottom - Strip.Top);
         S := A.FSize;
         if S > Room - MinArea then S := Room - MinArea;
         if S < MinArea then S := MinArea;
@@ -2826,7 +2919,8 @@ var
 
 begin
   N := 0;
-  Put(FCenterHost, FCenterRect, True, nil);
+  Put(FCenterHost, FPageRect, True, nil);
+  if (FCenterHeader <> nil) and FCenterHeader.Visible then Put(FCenterHeader, FHeaderRect, True, nil);
   CapH := UIPaneCaptionHeight;
   L := AllGroups;
   try
@@ -3245,11 +3339,78 @@ end;
 function TSdDock.DropTarget(const P: TPoint; var T: TSdDockTarget; var R: TRect): Boolean;
 var
   Q: TPoint;
-  I, K, Lo, Hi, V, Quarter: Integer;
+  I, W, H: Integer;
+  D: array[TSdDockEdge] of Integer;
+  E, Near: TSdDockEdge;
   A, O: TSdDockArea;
-  L: TList;
   G: TSdDockGroup;
   B: TRect;
+
+  { Q over a group of the first area that holds it - a centre area (InCenter) or one beside the
+    centre: the group's caption, its tabs and its middle half take the views as tabs, its first or
+    last quarter as a group of their own before or after it }
+  function OnGroups(InCenter: Boolean): Boolean;
+  var
+    I, K, Lo, Hi, V, Quarter: Integer;
+    A: TSdDockArea;
+    L: TList;
+    G: TSdDockGroup;
+    B: TRect;
+  begin
+    Result := False;
+    A := nil;
+    for I := 0 to FAreas.Count - 1 do
+      if ((Areas[I].Kind = dkCenter) = InCenter) and PtInRect(Areas[I].FBounds, Q) then
+      begin
+        A := Areas[I];
+        Break;
+      end;
+    if A = nil then Exit;
+    L := VisibleGroups(A);
+    try
+      for K := 0 to L.Count - 1 do
+      begin
+        G := TSdDockGroup(L[K]);
+        B := G.FBounds;
+        if not PtInRect(B, Q) then Continue;
+        T.Area := A;
+        if A.Vertical then
+        begin
+          Lo := B.Top;
+          Hi := B.Bottom;
+          V := Q.Y;
+        end
+        else
+        begin
+          Lo := B.Left;
+          Hi := B.Right;
+          V := Q.X;
+        end;
+        Quarter := (Hi - Lo) div 4;
+        if (Q.Y < B.Top + UIPaneCaptionHeight) or (G.ShowsTabs and PtInRect(G.TabsRect, Q)) or
+          ((V >= Lo + Quarter) and (V < Hi - Quarter)) then
+        begin
+          T.Group := G;
+          R := B;
+        end
+        else if V < Lo + Quarter then
+        begin
+          T.Index := K;
+          R := Along(B, A.Vertical, Lo, (Lo + Hi) div 2);
+        end
+        else
+        begin
+          if K < L.Count - 1 then T.Index := K + 1;
+          R := Along(B, A.Vertical, (Lo + Hi) div 2, Hi);
+        end;
+        Result := True;
+        Exit;
+      end;
+    finally
+      L.Free;
+    end;
+  end;
+
 begin
   Result := False;
   Q := ScreenToClient(P);
@@ -3277,90 +3438,62 @@ begin
   begin
     A := Areas[I];
     if not A.FOuter or A.FColumn then Continue;
-    O := OuterMost(A.FEdge);
+    O := FirstArea(A.FEdge, dkOuter);
     if IsRectEmpty(O.FRoom) or not PtInRect(EdgeBand(O.FRoom, A.FEdge), Q) then Continue;
     T.Area := A;
-    T.Column := EdgeShows(A.FEdge, True, DragWhole);
+    T.Column := EdgeShows(A.FEdge, dkOuter, DragWhole);
     if T.Column then B := O.FSpan else B := A.FRoom;
-    V := A.FSize;
-    if V > Extent(B, not A.Vertical) - Gap then V := Extent(B, not A.Vertical) - Gap;
-    if V < 0 then V := 0;
-    R := EdgePart(B, A.FEdge, V);
+    R := AreaPart(A, B, Gap);
     Result := True;
     Break;
   end;
-  if not Result then
-    for I := 0 to FAreas.Count - 1 do
-    begin
-      A := Areas[I];
-      if not PtInRect(A.FBounds, Q) then Continue;
-      L := VisibleGroups(A);
-      try
-        for K := 0 to L.Count - 1 do
-        begin
-          G := TSdDockGroup(L[K]);
-          B := G.FBounds;
-          if not PtInRect(B, Q) then Continue;
-          T.Area := A;
-          if A.Vertical then
-          begin
-            Lo := B.Top;
-            Hi := B.Bottom;
-            V := Q.Y;
-          end
-          else
-          begin
-            Lo := B.Left;
-            Hi := B.Right;
-            V := Q.X;
-          end;
-          Quarter := (Hi - Lo) div 4;
-          if (Q.Y < B.Top + UIPaneCaptionHeight) or (G.ShowsTabs and PtInRect(G.TabsRect, Q)) or
-            ((V >= Lo + Quarter) and (V < Hi - Quarter)) then
-          begin
-            T.Group := G;
-            R := B;
-          end
-          else if V < Lo + Quarter then
-          begin
-            T.Index := K;
-            R := Along(B, A.Vertical, Lo, (Lo + Hi) div 2);
-          end
-          else
-          begin
-            if K < L.Count - 1 then T.Index := K + 1;
-            R := Along(B, A.Vertical, (Lo + Hi) div 2, Hi);
-          end;
-          Result := True;
-          Break;
-        end;
-      finally
-        L.Free;
-      end;
-      Break;
-    end;
+  { over an area beside the centre: its groups }
+  if not Result then Result := OnGroups(False);
+  { the band at an edge of the centre (before the centre areas' groups that lie there too): a new
+    column beside the areas of that edge, or into the edge's area }
   if not Result and PtInRect(FCenterRect, Q) then
     for I := 0 to FAreas.Count - 1 do
     begin
       A := Areas[I];
-      if A.FOuter then Continue;          // its band is the dock's edge (above)
+      if A.Kind <> dkBeside then Continue;   // the dock's edge (above); inside the centre (below)
       Result := PtInRect(EdgePart(FCenterRect, A.FEdge, DropZone), Q);
       if Result then
       begin
         T.Area := A;
-        T.Column := EdgeShows(A.FEdge, False, DragWhole);
+        T.Column := EdgeShows(A.FEdge, dkBeside, DragWhole);
         if T.Column then
           R := ColumnRect(A)
         else
-        begin
-          { the edge's area as wide (high) as it is, at most the centre }
-          V := A.FSize;
-          if V > Extent(FCenterRect, not A.Vertical) then V := Extent(FCenterRect, not A.Vertical);
-          R := EdgePart(FCenterRect, A.FEdge, V);
-        end;
+          R := AreaPart(A, FCenterRect, 0);       // the edge's area as wide (high) as it is, at most the centre
         Break;
       end;
     end;
+  { a centre area's groups }
+  if not Result then Result := OnGroups(True);
+  { anywhere else in the centre (the page, its header): last into the centre area of the side of
+    the page the pointer is nearest to - the page cut by its diagonals into four triangles. The
+    marker is the area: its place as Layout will make it while it takes no room }
+  if not Result and PtInRect(FCenterRect, Q) and not IsRectEmpty(FPageRect) then
+  begin
+    B := FPageRect;
+    W := B.Right - B.Left;
+    H := B.Bottom - B.Top;
+    { the distances to the four sides, each scaled by the other side's length (W * H across) }
+    D[deLeft] := (Q.X - B.Left) * H;
+    D[deRight] := (B.Right - Q.X) * H;
+    D[deTop] := (Q.Y - B.Top) * W;
+    D[deBottom] := (B.Bottom - Q.Y) * W;
+    Near := deLeft;
+    for E := Low(TSdDockEdge) to High(TSdDockEdge) do
+      if D[E] < D[Near] then Near := E;
+    A := FirstArea(Near, dkCenter);
+    if A <> nil then
+    begin
+      T.Area := A;
+      if GroupAt(A, 0) <> nil then R := A.FBounds else R := AreaPart(A, B, MinArea + Gap);
+      Result := True;
+    end;
+  end;
   Result := Result and WouldChange(T);
   if Result then R := ScreenRect(Self, R);
 end;
@@ -3440,7 +3573,7 @@ begin
     end
     else
       for Idx := FAreas.IndexOf(G.FArea) + 1 to FAreas.Count - 1 do
-        if (Areas[Idx].FEdge = T.Area.FEdge) and not Areas[Idx].FOuter and (GroupAt(Areas[Idx], 0) <> nil) then Exit;
+        if (Areas[Idx].FEdge = T.Area.FEdge) and (Areas[Idx].Kind = dkBeside) and (GroupAt(Areas[Idx], 0) <> nil) then Exit;
     Result := False;
     Exit;
   end;
@@ -3525,7 +3658,8 @@ begin
     V := not FSplitArea.Vertical;
     FSplitOld := FSplitArea.FSize;
     FSplitSize := Extent(FSplitArea.FBounds, V);
-    FSplitRoom := FSplitSize + Extent(FCenterRect, V) - MinArea;
+    if FSplitArea.FInCenter then FSplitRoom := FSplitSize + Extent(FPageRect, V) - MinArea
+    else FSplitRoom := FSplitSize + Extent(FCenterRect, V) - MinArea;
     { an outer area takes its room from the areas across it too (an outer bottom area from the
       left and right areas): each keeps the smallest size of its groups }
     if FSplitArea.FOuter then

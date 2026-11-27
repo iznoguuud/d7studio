@@ -467,12 +467,12 @@ object EnvOptionsFrame: TEnvOptionsFrame
         Left = 9
         Top = 220
         Width = 620
-        Height = 77
+        Height = 98
         Caption = ' Snap lines '
         TabOrder = 3
         object lbSnapDistance: TLabel
           Left = 9
-          Top = 47
+          Top = 68
           Width = 73
           Height = 15
           Caption = 'Snap &distance'
@@ -480,7 +480,7 @@ object EnvOptionsFrame: TEnvOptionsFrame
         end
         object lbSnapSpacing: TLabel
           Left = 172
-          Top = 47
+          Top = 68
           Width = 42
           Height = 15
           Caption = 'Spa&cing'
@@ -488,7 +488,7 @@ object EnvOptionsFrame: TEnvOptionsFrame
         end
         object lbSnapMargin: TLabel
           Left = 305
-          Top = 47
+          Top = 68
           Width = 38
           Height = 15
           Caption = 'M&argin'
@@ -502,60 +502,68 @@ object EnvOptionsFrame: TEnvOptionsFrame
           Caption = 'Use snap &lines'
           TabOrder = 0
         end
+        object cbSnapText: TCheckBox
+          Left = 28
+          Top = 40
+          Width = 400
+          Height = 22
+          Caption = 'Snap to captions and text (&baselines, left edges)'
+          TabOrder = 1
+        end
         object ecSnapDistance: TEdit
           Left = 92
-          Top = 44
+          Top = 65
           Width = 47
           Height = 23
-          TabOrder = 1
+          TabOrder = 2
           Text = '5'
         end
         object udSnapDistance: TUpDown
           Left = 138
-          Top = 44
+          Top = 65
           Width = 14
           Height = 23
           Associate = ecSnapDistance
           Min = 1
           Max = 32
           Position = 5
-          TabOrder = 2
+          TabOrder = 3
         end
         object ecSnapSpacing: TEdit
           Left = 224
-          Top = 44
+          Top = 65
           Width = 47
           Height = 23
-          TabOrder = 3
+          TabOrder = 4
           Text = '8'
         end
         object udSnapSpacing: TUpDown
           Left = 271
-          Top = 44
+          Top = 65
           Width = 14
           Height = 23
           Associate = ecSnapSpacing
           Max = 64
           Position = 8
-          TabOrder = 4
+          TabOrder = 5
         end
         object ecSnapMargin: TEdit
           Left = 353
-          Top = 44
+          Top = 65
           Width = 47
           Height = 23
-          TabOrder = 5
+          TabOrder = 6
           Text = '8'
         end
         object udSnapMargin: TUpDown
           Left = 400
-          Top = 44
+          Top = 65
           Width = 14
           Height = 23
           Associate = ecSnapMargin
           Max = 64
           Position = 8
-          TabOrder = 6
+          TabOrder = 7
         end
       end
     end

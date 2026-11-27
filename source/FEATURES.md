@@ -41,9 +41,13 @@ modernized RTL/VCL in full is in [MODERNIZATION.md](MODERNIZATION.md).
 - **Docking areas** left of, right of and below the editor, and one across the whole bottom of the
   window. Views share an area in tabbed groups; a drop on the editor's edge makes a new column
   beside the area. While you drag, a translucent mark shows where the view will land; Esc cancels.
+- **Docking inside the editor area.** Drop a view anywhere over the editor and it docks inside the
+  editor area, under the file tabs, at the side of the page you dropped it nearest to: left, top,
+  right or bottom. The page keeps the rest; these areas have tabbed groups, splitters and auto hide
+  like the others, and desktops keep them.
 - **The dock's commands in every view's menu** (right-click its caption or its tab): *Dock Left*,
-  *Dock Right*, *Dock Bottom*, *Dock Bottom (Full Width)*, *Floating*, *Tabs* (top, bottom, left or
-  right), *Auto Hide* and *Close*.
+  *Dock Right*, *Dock Bottom*, *Dock Bottom (Full Width)*, *Dock in Editor Area* (left, top, right or
+  bottom), *Floating*, *Tabs* (top, bottom, left or right), *Auto Hide* and *Close*.
 - **Auto hide.** The pin on a caption collapses its group into tabs along the window's edge. Click
   a tab, or rest the pointer on it, and the group slides out; it slides back when you leave it. A
   failed compile slides Messages out, a debugger stop its view.
@@ -54,6 +58,9 @@ modernized RTL/VCL in full is in [MODERNIZATION.md](MODERNIZATION.md).
   ends in `*`. The project's desktop keeps their order, and Delphi 7 reopens the files in that order
   too. A button at the end of the row lists the open files; or the tabs go into as many rows as they need (*Tools ▸
   Editor Options ▸ Display ▸ Multi-line file tabs*).
+- **The *Tabs* menu** (Delphi 7's *Window*): *Next Tab* (Ctrl+Tab) and *Previous Tab* (Ctrl+Shift+Tab) go through
+  the file tabs, then come the open files and the windows outside the main window - floating views and the
+  components' design windows -, any of them brought to the front with a click.
 - **Back where you left off.** D7 Studio opens the project that was open when it closed (or the
   files named on its command line), and no new Project1 is made. Its start-up screen shows what it
   is loading.
@@ -234,7 +241,10 @@ modernized RTL/VCL in full is in [MODERNIZATION.md](MODERNIZATION.md).
   alignments in a separate floating Alignment Palette and the others in its menus only.
 - **Snap lines** (*Tools ▸ Environment Options ▸ Designer ▸ Snap lines*, on): an edge you drag
   snaps to the edges of the other controls, to the usual spacing beside them and to the margin of
-  their container, and a line shows it.
+  their container, and a line shows it. A control you move also snaps by its text: its caption's or
+  text's baseline onto another control's - a label beside an edit, a check box or a button - and the
+  start of its text onto where another control's text begins, shown by a dashed line (*Snap to
+  captions and text*, on).
 - **Undo and Redo** of every designer change (Ctrl+Z, Shift+Ctrl+Z), up to 100 steps: drops,
   moves and sizes, Object Inspector edits, deletions, pastes, alignments - with the code the
   designer wrote for them. Delphi 7 has only *Undelete*.

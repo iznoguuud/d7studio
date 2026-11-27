@@ -67,6 +67,7 @@ type
     procedure Sync;                         // owner and first position; cheap, call often
     procedure CloseAll;
     function Count: Integer;
+    function Form(Index: Integer): TCustomForm;   // the Index-th design window that is alive
     property OnGetOrigin: TDesignOriginEvent read FOnGetOrigin write FOnGetOrigin;
     { this form (a designer's root) is shown (nil: no answer, every window stays as it is) }
     property OnShown: TDesignShownEvent read FOnShown write FOnShown;
@@ -99,6 +100,11 @@ end;
 function TDesignWindows.Count: Integer;
 begin
   Result := FForms.Count;
+end;
+
+function TDesignWindows.Form(Index: Integer): TCustomForm;
+begin
+  Result := TCustomForm(FForms[Index]);
 end;
 
 procedure TDesignWindows.Add(F: TCustomForm);

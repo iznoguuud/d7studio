@@ -11,6 +11,27 @@ installing in [README.md](source/README.md).
 
 ## [Unreleased]
 
+## [1.0.4.1] - 2026-11-27
+
+### Added
+
+- **IDE**: views dock inside the editor area too, under the file tabs, beside the code editor or the designer: drop
+  a view over the editor and it docks at the side of the page it is nearest to - left, top, right or bottom -, or
+  choose *Dock in Editor Area* in the view's menu. These areas have tabbed groups, splitters and auto hide like the
+  others, and desktops keep them.
+- **Form designer**: snap lines by text: a control you move snaps its caption's or text's baseline onto another
+  control's - a label beside an edit, a combo box, a check box or a button - and the start of its text onto where
+  another control's text begins, shown by a dashed line (*Environment Options ▸ Designer ▸ Snap lines ▸ Snap to
+  captions and text*, on).
+
+### Changed
+
+- **IDE**: a view dropped over the editor docks inside the editor area instead of floating: to float it, drop it
+  outside the main window or choose *Floating* in its menu.
+- **IDE**: the *Window* menu is now *Tabs*: *Next Tab* (Ctrl+Tab) and *Previous Tab* (Ctrl+Shift+Tab) go through
+  the file tabs in their order, then come the open files, then the windows outside the main window - floating
+  views and the components' design windows -, one of which comes to the front when you choose it.
+
 ## [1.0.4.0] - 2026-11-27
 
 ### Added
@@ -280,7 +301,8 @@ The first release.
   its settings. It also installs Microsoft's WinHelp viewer, which shows Delphi 7's help on
   Windows 10 and 11.
 
-[Unreleased]: https://github.com/iznoguuud/d7studio/compare/v1.0.4.0...HEAD
+[Unreleased]: https://github.com/iznoguuud/d7studio/compare/v1.0.4.1...HEAD
+[1.0.4.1]: https://github.com/iznoguuud/d7studio/compare/v1.0.4.0...v1.0.4.1
 [1.0.4.0]: https://github.com/iznoguuud/d7studio/compare/v1.0.3.4...v1.0.4.0
 [1.0.3.4]: https://github.com/iznoguuud/d7studio/compare/v1.0.3.3...v1.0.3.4
 [1.0.3.3]: https://github.com/iznoguuud/d7studio/compare/v1.0.3.2...v1.0.3.3

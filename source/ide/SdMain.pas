@@ -326,6 +326,10 @@ type
     aPaneRight: TAction;
     aPaneBottom: TAction;
     aPaneBottomFull: TAction;
+    aPaneCenterLeft: TAction;
+    aPaneCenterTop: TAction;
+    aPaneCenterRight: TAction;
+    aPaneCenterBottom: TAction;
     aTabsTop: TAction;
     aTabsBottom: TAction;
     aTabsLeft: TAction;
@@ -390,6 +394,7 @@ type
     ViewCustomizeCommand: TAction;
     aTbReset: TAction;
     ViewNextWindow: TAction;
+    aPreviousTab: TAction;
     ProjectImportTypeLibraryCommand: TAction;
     ProjectAddRepositoryCommand: TAction;
     ProjectAddNewProjectCommand: TAction;
@@ -658,6 +663,8 @@ type
     ToolsToolsItem: TMenuItem;
     WindowsMenu: TMenuItem;
     ViewNextWindowItem: TMenuItem;
+    miPreviousTab: TMenuItem;
+    miTabsLine: TMenuItem;
     HelpMenu: TMenuItem;
     HelpContentsItem: TMenuItem;
     HelpDelphiToolsItem: TMenuItem;
@@ -1155,6 +1162,7 @@ type
     FNavLock: Integer;               // > 0: what is shown now is no jump (Back itself, a desktop, the debugger)
     FLeftArea, FRightArea, FBottomArea: TSdDockArea;
     FBottomFullArea: TSdDockArea;    // along the window's bottom edge, under the left and right areas
+    FCenterAreas: array[TSdDockEdge] of TSdDockArea;   // inside the editor area, under the file tabs
     FProjPanel, FCodeExpPanel, FObjTreePanel, FInspPanel: TSdDockPanel;
     FBottomPanels: array[0..8] of TSdDockPanel;   // Messages .. Error List, indexed BT_MESSAGES .. BT_ERRORS
     FMenuPanel: TSdDockPanel;        // the panel whose caption or tab menu is open
@@ -1174,6 +1182,7 @@ type
     FTestResult: Integer;            // test mode: 1 done, 3 no such menu item (panel, area), 4 item disabled
     procedure CreatePanes;
     procedure AddDockItems(const Menus: array of TPopupMenu);
+    function CenterPaneAction(Edge: TSdDockEdge): TAction;
     procedure WireViewMenu(Menu: TPopupMenu; Actions: TActionList; Handler: TNotifyEvent);
     procedure DisableUnbuilt;
     procedure LoadBands;
@@ -1336,6 +1345,7 @@ type
     procedure SetTodoSource(const FileName, Text: string; const E: TSdEncoding; Ansi, Save: Boolean);
     procedure EditTodo(Item: TSdTodoItem);
     procedure WindowExecute(Sender: TObject);
+    procedure FloatWindowExecute(Sender: TObject);
     procedure WatchGroupMenu;
     procedure WatchMoveExecute(Sender: TObject);
     procedure InspViewMenu;
@@ -2973,11 +2983,11 @@ begin
   { the row of the file tabs above the pages, shown with the first page: before the tabs the tool
     bar of Back and Forward, the file history (Delphi 7 has them at the end of the row, where they
     stood next to the tabs' scroll arrows), after them the drop-down of the open files (FilesBar). A host without CS_HREDRAW /
-    CS_VREDRAW: a resize repaints what it uncovers only }
+    CS_VREDRAW: a resize repaints what it uncovers only. The dock places it across the centre,
+    above the centre areas and the pages (TSdDock.CenterHeader) }
   FTabRow := TSdDockHost.Create(Self);
   FTabRow.Visible := False;
-  FTabRow.Parent := CenterPanel;
-  FTabRow.Align := alTop;
+  FDock.CenterHeader := FTabRow;
   FPageTabs := TSdFileTabs.Create(Self);
   FPageTabs.Parent := FTabRow;
   FPageTabs.Align := alClient;
@@ -3021,6 +3031,12 @@ begin
   FLeftArea := FDock.AddArea('Left', deLeft, 232);
   FRightArea := FDock.AddArea('Right', deRight, 232);
   FBottomArea := FDock.AddArea('Bottom', deBottom, 150);
+  { the areas inside the editor area, under the file tabs, beside the pages: left and right from
+    the tabs down, top and bottom between them }
+  FCenterAreas[deLeft] := FDock.AddCenterArea('CenterLeft', deLeft, 232);
+  FCenterAreas[deRight] := FDock.AddCenterArea('CenterRight', deRight, 232);
+  FCenterAreas[deTop] := FDock.AddCenterArea('CenterTop', deTop, 150);
+  FCenterAreas[deBottom] := FDock.AddCenterArea('CenterBottom', deBottom, 150);
   { the Code Explorer (Delphi 7's) and the Object TreeView: views made once, the IDE carries out
     what reaches beyond them }
   FCodeExp := TCodeExplorerView.Create(Self);
@@ -3830,13 +3846,15 @@ begin
 end;
 
 { the dock's commands at the end of each view's menu, the same in every one (made here, not in
-  the menus' .dfm): Dock Left ... Floating, Tabs, Auto Hide, and Close where Delphi's items of the
-  menu have no Hide (PaneMenuPopup sets their states); the separator only after items of the view }
+  the menus' .dfm): Dock Left ... Dock in Editor Area, Floating, Tabs, Auto Hide, and Close where
+  Delphi's items of the menu have no Hide (PaneMenuPopup sets their states); the separator only
+  after items of the view }
 procedure TMainForm.AddDockItems(const Menus: array of TPopupMenu);
 var
   I, K: Integer;
   M: TPopupMenu;
-  Tabs: TMenuItem;
+  Tabs, Center: TMenuItem;
+  E: TSdDockEdge;
   HasHide: Boolean;
 
   function NewItem(Parent: TMenuItem; Action: TBasicAction; const ACaption: string; Group: Byte;
@@ -3861,6 +3879,8 @@ begin
     NewItem(M.Items, aPaneRight, '', 0, True);
     NewItem(M.Items, aPaneBottom, '', 0, True);
     NewItem(M.Items, aPaneBottomFull, '', 0, True);
+    Center := NewItem(M.Items, nil, 'Doc&k in Editor Area', 0, False);
+    for E := Low(TSdDockEdge) to High(TSdDockEdge) do NewItem(Center, CenterPaneAction(E), '', 8, True);
     NewItem(M.Items, aPaneFloat, '', 0, True);
     Tabs := NewItem(M.Items, nil, '&Tabs', 0, False);
     NewItem(Tabs, aTabsTop, '', 7, True);
@@ -3895,17 +3915,20 @@ var
   C: TComponent;
   L: TListBox;
   W: TWatchItem;
-  Dockable: Boolean;
+  E: TSdDockEdge;
+  Dockable, InCenter: Boolean;
 begin
   C := TPopupMenu(Sender).PopupComponent;
   FMenuPanel := FDock.PanelOf(C);
   FMenuGroup := C is TSdDockCaption;
-  { by the edge: a column beside an area (side by side) is docked at that edge too }
-  aPaneLeft.Checked := (FMenuPanel <> nil) and not FMenuPanel.Group.Floating and
+  { by the edge: a column beside an area (side by side) is docked at that edge too; a centre
+    area's view has its side in Dock in Editor Area }
+  InCenter := (FMenuPanel <> nil) and not FMenuPanel.Group.Floating and FMenuPanel.Group.Area.InCenter;
+  aPaneLeft.Checked := (FMenuPanel <> nil) and not FMenuPanel.Group.Floating and not InCenter and
     (FMenuPanel.Group.Area.Edge = FLeftArea.Edge);
-  aPaneRight.Checked := (FMenuPanel <> nil) and not FMenuPanel.Group.Floating and
+  aPaneRight.Checked := (FMenuPanel <> nil) and not FMenuPanel.Group.Floating and not InCenter and
     (FMenuPanel.Group.Area.Edge = FRightArea.Edge);
-  aPaneBottom.Checked := (FMenuPanel <> nil) and not FMenuPanel.Group.Floating and
+  aPaneBottom.Checked := (FMenuPanel <> nil) and not FMenuPanel.Group.Floating and not InCenter and
     (FMenuPanel.Group.Area.Edge = FBottomArea.Edge) and not FMenuPanel.Group.Area.Outer;
   aPaneBottomFull.Checked := (FMenuPanel <> nil) and FMenuPanel.Group.Area.Outer and
     (FMenuPanel.Group.Area.Edge = FBottomFullArea.Edge);
@@ -3916,6 +3939,11 @@ begin
   aPaneRight.Enabled := Dockable;
   aPaneBottom.Enabled := Dockable;
   aPaneBottomFull.Enabled := Dockable;
+  for E := Low(TSdDockEdge) to High(TSdDockEdge) do
+  begin
+    CenterPaneAction(E).Checked := InCenter and (FMenuPanel.Group.Area.Edge = E);
+    CenterPaneAction(E).Enabled := Dockable;
+  end;
   aPaneFloat.Enabled := Dockable;
   aAutoHide.Enabled := (FMenuPanel <> nil) and not FMenuPanel.Group.Floating;   // no edge to hide at
   aTabsTop.Checked := (FMenuPanel <> nil) and (FMenuPanel.Group.TabSide = tsTop);
@@ -4091,6 +4119,7 @@ end;
 procedure TMainForm.ActPane(Sender: TObject);
 var
   A: TSdDockArea;
+  E: TSdDockEdge;
 begin
   if FMenuPanel = nil then Exit;
   if (Sender = aPaneClose) or (Sender = aPaneHide) then
@@ -4128,7 +4157,21 @@ begin
   else if Sender = aPaneRight then A := FRightArea
   else if Sender = aPaneBottomFull then A := FBottomFullArea
   else A := FBottomArea;
+  for E := Low(TSdDockEdge) to High(TSdDockEdge) do
+    if Sender = CenterPaneAction(E) then A := FCenterAreas[E];
   if FMenuGroup then FDock.MoveGroup(FMenuPanel.Group, A) else FDock.MovePanel(FMenuPanel, A);
+end;
+
+{ the command of Dock in Editor Area that moves a view into the centre area of Edge }
+function TMainForm.CenterPaneAction(Edge: TSdDockEdge): TAction;
+begin
+  case Edge of
+    deLeft: Result := aPaneCenterLeft;
+    deTop: Result := aPaneCenterTop;
+    deRight: Result := aPaneCenterRight;
+  else
+    Result := aPaneCenterBottom;
+  end;
 end;
 { An action of its own for every entry of a list that comes from data (Reopen, the verbs of a
   component editor): the entries are commands like all others. }
@@ -5251,6 +5294,7 @@ begin
       OptInt('GridX', GridX),
       OptInt('GridY', GridY),
       OptFlag('SnapLines', SnapLines),
+      OptFlag('SnapText', SnapText),
       OptInt('SnapDistance', SnapDistance),
       OptInt('SnapSpacing', SnapSpacing),
       OptInt('SnapMargin', SnapMargin)]);
@@ -5847,6 +5891,7 @@ begin
   ViewCodeExplorerCommand.Enabled := FDocs.Count > 0;
   ecViewExplorer.Enabled := ViewCodeExplorerCommand.Enabled;
   ViewNextWindow.Enabled := FDocs.Count > 1;
+  aPreviousTab.Enabled := ViewNextWindow.Enabled;
   ProjectCompileAllCommand.Enabled := ProjectCompileCommand.Enabled;
   ProjectBuildAllCommand.Enabled := ProjectCompileCommand.Enabled;
   RunRegisterComCommand.Enabled := ProjectCompileCommand.Enabled and FProject.IsLibrary and (FProject.Platform = spWin32);
@@ -6262,10 +6307,12 @@ begin
   end;
 end;
 
-{ the open pages - files and resources -, one entry each, the active one checked: the Window menu (then Next Window),
-  the Pages menu of the file tabs and the drop-down at the end of their row (these two in
-  alphabetical order with Editor Options | Sort pages menu, as Delphi 7 sorts it). One action list
-  for all: only one of them is open at a time }
+{ the open pages - files and resources -, one entry each, the active one checked: the Tabs menu
+  (after Next Tab, Previous Tab and their line; then a line and the windows outside the main
+  window - the floating dock groups, a group by the view it shows, and the packages' design-time
+  windows that are shown -, "(no windows)" when there is none), the Pages menu of the file tabs and
+  the drop-down at the end of their row (these two in alphabetical order with Editor Options | Sort
+  pages menu, as Delphi 7 sorts it). One action list for all: only one of them is open at a time }
 { a menu item of a list that comes from data: its action belongs to List (or it is Line) }
 function ListItem(Item: TMenuItem; List: TActionList; Line: TMenuItem): Boolean;
 begin
@@ -6274,14 +6321,36 @@ end;
 
 procedure TMainForm.UpdatePageItems(Menu: TMenuItem; Sorted: Boolean);
 const
-  PageLineTag = 7901;              // the Window menu's line below the files
+  PageLineTag = 7901;              // the Tabs menu's line below the files, its "(no windows)"
 var
-  I, K: Integer;
+  I, K, Base: Integer;
   A: TAction;
   L: TStringList;
-  Line: TMenuItem;
   Doc: TWinControl;
   Hint: string;
+  P: TSdDockPanel;
+  F: TCustomForm;
+
+  { the place of the next entry: the entries follow one another from Base }
+  function Slot: Integer;
+  begin
+    Result := Base;
+    Inc(Base);
+  end;
+
+  { an item of the Tabs menu's own (made here, gone at the next fill) }
+  function AddOwnItem(const ACaption: string): TMenuItem;
+  begin
+    Result := TMenuItem.Create(Self);
+    Result.Caption := ACaption;
+    Result.Tag := PageLineTag;
+    Menu.Insert(Slot, Result);
+  end;
+
+  procedure AddFloat(Target: TObject; const ACaption: string);
+  begin
+    NewActionItem(Menu, NewAction(WindowActions, ACaption, ACaption, Integer(Target), FloatWindowExecute), Slot);
+  end;
 
   procedure ClearPageItems(M: TMenuItem);
   var
@@ -6299,6 +6368,8 @@ begin
   ClearPageItems(pmTabPages);
   ClearPageItems(FilesMenu.Items);
   ClearActions(WindowActions);
+  { the Tabs menu's entries come after its line; the other menus are the entries alone }
+  if Menu = WindowsMenu then Base := Menu.IndexOf(miTabsLine) + 1 else Base := 0;
   L := TStringList.Create;
   try
     for I := 0 to FDocs.Count - 1 do L.AddObject(NoAccel(DocTitle(TWinControl(FDocs[I]))), TObject(I));
@@ -6311,17 +6382,26 @@ begin
       else Hint := TSdResPage(Doc).Title + ' - ' + TSdResPage(Doc).ResFile;
       A := NewAction(WindowActions, L[I], Hint, K, WindowExecute);
       A.Checked := Doc = ActiveDoc;
-      NewActionItem(Menu, A, I);
+      NewActionItem(Menu, A, Slot);
     end;
   finally
     L.Free;
   end;
-  if (Menu = WindowsMenu) and (FDocs.Count > 0) then
+  if Menu <> WindowsMenu then Exit;
+  if FDocs.Count > 0 then AddOwnItem('-');
+  K := Base;
+  for I := 0 to FDock.PanelCount - 1 do
   begin
-    Line := NewLine;
-    Line.Tag := PageLineTag;
-    Menu.Insert(FDocs.Count, Line);
+    P := FDock.Panels[I];
+    if P.Visible and (P.Group <> nil) and P.Group.Floating and (P.Group.Active = P) then
+      AddFloat(P, NoAccel(P.Title));
   end;
+  for I := 0 to FDesignWindows.Count - 1 do
+  begin
+    F := FDesignWindows.Form(I);
+    if F.Visible then AddFloat(F, NoAccel(F.Caption));
+  end;
+  if Base = K then AddOwnItem('(no windows)').Enabled := False;
 end;
 
 { Debugger Options | Map TD32 keystrokes on run: while a program is debugged, Turbo Debugger's
@@ -6825,6 +6905,34 @@ var
 begin
   I := TAction(Sender).Tag;
   if (I >= 0) and (I < FDocs.Count) then ActivatePage(TWinControl(FDocs[I]));
+end;
+
+{ a floating window of the Tabs menu to the front - Tag: a floating dock group's view, or a
+  design-time window; looked for again, the menu was made when it opened }
+procedure TMainForm.FloatWindowExecute(Sender: TObject);
+var
+  I: Integer;
+  T: TObject;
+  F: TCustomForm;
+begin
+  T := TObject(TAction(Sender).Tag);
+  for I := 0 to FDock.PanelCount - 1 do
+    if FDock.Panels[I] = T then
+    begin
+      ViewDockPanel(FDock.Panels[I]);
+      Exit;
+    end;
+  for I := 0 to FDesignWindows.Count - 1 do
+    if FDesignWindows.Form(I) = T then
+    begin
+      F := FDesignWindows.Form(I);
+      if F.Visible then
+      begin
+        F.BringToFront;
+        if F.CanFocus then F.SetFocus;
+      end;
+      Exit;
+    end;
 end;
 
 { Tools: the programs of Configure Tools (Delphi's "Transfer" list) after Configure Tools }
@@ -14548,9 +14656,11 @@ begin
   else if Sender = DebugModulesCommand then ViewDockPanel(FMachinePanels[1])
   else if Sender = DebugCPUCommand then ViewDockPanel(FMachinePanels[2])
   else if Sender = DebugFPUCommand then ViewDockPanel(FMachinePanels[3])
-  else if Sender = ViewNextWindow then
+  else if (Sender = ViewNextWindow) or (Sender = aPreviousTab) then
   begin
-    if FDocs.Count > 1 then ActivatePage(TWinControl(FDocs[(FDocs.IndexOf(ActiveDoc) + 1) mod FDocs.Count]));
+    { the tab after (before) the shown one in the row, round from the last to the first }
+    if Sender = ViewNextWindow then I := 1 else I := FDocs.Count - 1;
+    if FDocs.Count > 1 then ActivatePage(TWinControl(FDocs[(FDocs.IndexOf(ActiveDoc) + I) mod FDocs.Count]));
   end
   else if Sender = aDesktops then ShowDesktops
   else if (Sender = ViewSaveDesktopCommand) or (Sender = ViewDeleteDesktopCommand) or (Sender = ViewRuntimeDesktopCommand) then

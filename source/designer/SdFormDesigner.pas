@@ -79,6 +79,9 @@ type
       controls side by side, the margin inside a container's edges }
     SnapLines: Boolean;
     SnapDistance, SnapSpacing, SnapMargin: Integer;
+    { a moved control's text also snaps: its baseline onto another control's baseline, where its
+      text begins onto where another control's text begins }
+    SnapText: Boolean;
     ShowCaptions: Boolean;            // the names under the non-visual components
     ShowNonVisual: Boolean;           // Show non-visual components: their tiles on the form
     ShowHints, ExtendedHints: Boolean; // Show designer hints, Show extended control hints
@@ -192,6 +195,18 @@ type
     akCenterInWindowH, akCenterInWindowV, akSpaceEquallyH, akSpaceEquallyV, akSameWidth, akSameHeight);
   { the design form is itself the form, or it hosts a data module or a frame }
   THostKind = (hkForm, hkDataModule, hkFrame);
+  { a snap line where the last move or size step put it (root coordinates); Text: it joins two
+    controls' text, not their edges }
+  TSnapLine = record
+    R: TRect;
+    Text: Boolean;
+  end;
+  { a control's line of text: where its text begins (Left) and its baseline (Base), NoTextLine
+    where it has none; Bounds the control's }
+  TTextLine = record
+    Bounds: TRect;
+    Left, Base: Integer;
+  end;
 
   TFormDesigner = class(TObject, IInterface, IDesignerNotify, IDesignerHook, IDesigner60, IDesigner, ISdZoomView)
   private
@@ -209,7 +224,9 @@ type
     FLateAdds: TList;            // components an editor created itself (TAction.Create(Form) ...)
     FOutlines: TList;
     FSnapLines: TList;                // the snap lines' windows (TSnapLineWnd), made as needed
-    FLineRects: array of TRect;       // ... where the last move or size step put them (root coordinates)
+    FLines: array of TSnapLine;       // ... where the last move or size step put them
+    FDragText: array of TTextLine;    // mmMove: the dragged controls' lines of text, from their top-left ...
+    FSiblingText: array of TTextLine; // ... and those of the other controls of their container
     FMoveSnapX, FMoveSnapY: Boolean;  // mmMove: the selection snapped to a line on that axis ...
     FMoveDelta: TPoint;               // ... by this offset for every control
     FPosWnd: HWND;                    // a designed control about to move (WM_WINDOWPOSCHANGING) ...
@@ -295,6 +312,11 @@ type
     function SnapAxis(Parent: TWinControl; const R: TRect; Horz, MoveLo, MoveHi: Boolean;
       var Delta: Integer): Boolean;
     procedure AddSnapLines(Parent: TWinControl; const R: TRect; Horz, MoveLo, MoveHi: Boolean);
+    function LineOrigin(Parent: TWinControl): TPoint;
+    procedure AddLine(R: TRect; const Origin: TPoint; Text: Boolean);
+    procedure PrepareTextSnap;
+    function SnapTextAxis(Horz: Boolean; Offset: Integer; var Delta: Integer): Boolean;
+    procedure AddTextLines(Parent: TWinControl; DX, DY: Integer);
     procedure MoveSnap(DX, DY: Integer);
     function MovedTo(Index, DX, DY: Integer): TPoint;
     procedure ShowSnapLines;
@@ -604,7 +626,7 @@ function ShiftTemplateText(const Text: string; DX, DY: Integer): string;
 implementation
 
 uses
-  ComCtrls, Themes, Math, SdOsFrame, SdCrashLog, SdSettings, SdEncoding, SdFileNames;
+  StdCtrls, ComCtrls, Themes, UxTheme, Math, SdOsFrame, SdCrashLog, SdSettings, SdEncoding, SdFileNames;
 
 const
   RawClassName = 'SdDesignHelper';
@@ -617,6 +639,10 @@ type
   TComponentCracker = class(TComponent);
   TControlCracker = class(TControl);
   TWinControlCracker = class(TWinControl);
+  TLabelCracker = class(TCustomLabel);
+  TCheckBoxCracker = class(TCustomCheckBox);
+  TStaticTextCracker = class(TCustomStaticText);
+  TMemoCracker = class(TCustomMemo);
 
   { a frame of the project placed on the designed form (an "inline" entry of its form file), as
     Delphi's designer makes one: a TFrame given the frame's class name (a subclass, as the root),
@@ -703,10 +729,14 @@ type
     procedure Hide;
   end;
 
-  { a snap line: 1 px in the highlight colour }
+  { a snap line: 1 px in the highlight colour, dashed where it joins two controls' text }
   TSnapLineWnd = class(TLineWnd)
+  private
+    FText: Boolean;
   protected
     procedure Paint(DC: HDC); override;
+  public
+    procedure SetText(Value: Boolean);
   end;
 
   TGrabHandle = class(TRawWnd)
@@ -1246,6 +1276,7 @@ begin
   ShowGrid := True;
   SnapToGrid := True;
   SnapLines := True;
+  SnapText := True;
   SnapDistance := DefSnapDistance;
   SnapSpacing := DefSnapSpacing;
   SnapMargin := DefSnapMargin;
@@ -1983,11 +2014,39 @@ begin
 end;
 
 procedure TSnapLineWnd.Paint(DC: HDC);
+const
+  Dash = 3;
+  Gap = 2;
 var
-  R: TRect;
+  R, D: TRect;
+  I, Len: Integer;
+  Horz: Boolean;
 begin
   GetClientRect(FHandle, R);
-  UIFill(DC, R, clHighlight);
+  if not FText then
+  begin
+    UIFill(DC, R, clHighlight);
+    Exit;
+  end;
+  { the dashes from the line's start: a line that moves or grows keeps its pattern }
+  UIFill(DC, R, clHighlightText);
+  Horz := R.Right > R.Bottom;
+  if Horz then Len := R.Right else Len := R.Bottom;
+  I := 0;
+  while I < Len do
+  begin
+    if Horz then D := Rect(I, 0, Min(I + Dash, Len), R.Bottom)
+    else D := Rect(0, I, R.Right, Min(I + Dash, Len));
+    UIFill(DC, D, clHighlight);
+    Inc(I, Dash + Gap);
+  end;
+end;
+
+procedure TSnapLineWnd.SetText(Value: Boolean);
+begin
+  if Value = FText then Exit;
+  FText := Value;
+  Invalidate;
 end;
 
 constructor TFrameRect.Create(AParent: HWND);
@@ -3969,6 +4028,16 @@ begin
   end;
 end;
 
+{ a snap line 1 px wide on the axis (Horz: x) at Pos, across it from A to B (along the other
+  axis) - or, not Across, along the axis from A to B at Pos of the other }
+function AxisLine(Horz, Across: Boolean; Pos, A, B: Integer): TRect;
+var
+  T: Integer;
+begin
+  if B < A then begin T := A; A := B; B := T; end;
+  if Across = Horz then Result := Rect(Pos, A, Pos + 1, B) else Result := Rect(A, Pos, B, Pos + 1);
+end;
+
 function ContainerSize(Parent: TWinControl; Horz: Boolean): Integer;
 begin
   if Horz then Result := Parent.ClientWidth else Result := Parent.ClientHeight;
@@ -4017,17 +4086,9 @@ var
   SR: TRect;
   O: TPoint;
 
-  { a line across the axis at Pos from A to B (along the other axis), or along it }
   procedure Add(Across: Boolean; Pos, A, B: Integer);
-  var
-    L: TRect;
-    T: Integer;
   begin
-    if B < A then begin T := A; A := B; B := T; end;
-    if Across = Horz then L := Rect(Pos, A, Pos + 1, B) else L := Rect(A, Pos, B, Pos + 1);
-    OffsetRect(L, O.X, O.Y);
-    SetLength(FLineRects, Length(FLineRects) + 1);
-    FLineRects[High(FLineRects)] := L;
+    AddLine(AxisLine(Horz, Across, Pos, A, B), O, False);
   end;
 
   function Mid(A1, B1, A2, B2: Integer): Integer;   // the middle of the overlap
@@ -4037,13 +4098,7 @@ var
 
 begin
   if Parent = nil then Exit;
-  if Parent = FForm then O := Point(0, 0)
-  else
-  begin
-    O := Parent.ClientToScreen(Point(0, 0));
-    Dec(O.X, RootOrigin.X);
-    Dec(O.Y, RootOrigin.Y);
-  end;
+  O := LineOrigin(Parent);
   AxisOf(R, Horz, Lo, Hi, OLo, OHi);
   Size := ContainerSize(Parent, Horz);
   if MoveLo and (Lo = DesignEnv.SnapMargin) then Add(False, (OLo + OHi) div 2, 0, Lo);
@@ -4062,19 +4117,289 @@ begin
     end;
 end;
 
+{ where Parent's client area lies in the root (the snap lines' coordinates) }
+function TFormDesigner.LineOrigin(Parent: TWinControl): TPoint;
+begin
+  if Parent = FForm then Result := Point(0, 0)
+  else
+  begin
+    Result := Parent.ClientToScreen(Point(0, 0));
+    Dec(Result.X, RootOrigin.X);
+    Dec(Result.Y, RootOrigin.Y);
+  end;
+end;
+
+{ a snap line R in the coordinates of a container whose client area lies at Origin in the root }
+procedure TFormDesigner.AddLine(R: TRect; const Origin: TPoint; Text: Boolean);
+begin
+  OffsetRect(R, Origin.X, Origin.Y);
+  SetLength(FLines, Length(FLines) + 1);
+  FLines[High(FLines)].R := R;
+  FLines[High(FLines)].Text := Text;
+end;
+
+const
+  NoTextLine = Low(Integer);
+
+{ the metrics of Font, and the box DrawText gives S in it with Flags (Width: where words break) }
+function TextBox(Font: TFont; out TM: TTextMetric; const S: string; Width: Integer; Flags: UINT): TRect;
+var
+  DC: HDC;
+  Old: HFONT;
+begin
+  DC := GetDC(0);
+  try
+    Old := SelectObject(DC, Font.Handle);
+    GetTextMetrics(DC, TM);
+    Result := Rect(0, 0, Width, TM.tmHeight);
+    if S <> '' then DrawText(DC, PChar(S), Length(S), Result, Flags or DT_CALCRECT);
+    SelectObject(DC, Old);
+  finally
+    ReleaseDC(0, DC);
+  end;
+end;
+
+{ C's line of text as Windows and the VCL draw it, from C's top-left: the baseline of its first
+  line, and where its text begins when it begins at the same place whatever the text is (not a
+  push button's or a centred caption's). Labels, edits and memos, combo boxes, check boxes and
+  radio buttons, push buttons, static texts and group boxes have one; other controls none }
+function TextLineOf(C: TControl): TTextLine;
+var
+  TM: TTextMetric;
+  R, E: TRect;
+  P: TPoint;
+  Info: TComboBoxInfo;
+  Flags: UINT;
+  Wnd: HWND;
+  Theme: HTHEME;
+  Size: TSize;
+  Part: Integer;
+  TextLeft, IsEdit: Boolean;
+  L: TLabelCracker;
+begin
+  Result.Bounds := C.BoundsRect;
+  Result.Left := NoTextLine;
+  Result.Base := NoTextLine;
+  if C is TCustomLabel then
+  begin
+    { the label's own layout: DrawText in its client area, centred or at the bottom by the
+      height of all its lines }
+    L := TLabelCracker(C);
+    Flags := DT_EXPANDTABS;
+    if L.WordWrap then Flags := Flags or DT_WORDBREAK;
+    if not L.ShowAccelChar then Flags := Flags or DT_NOPREFIX;
+    R := TextBox(L.Font, TM, L.Caption, L.Width, Flags);
+    case L.Layout of
+      tlTop: Result.Base := TM.tmAscent;
+      tlBottom: Result.Base := L.Height - R.Bottom + TM.tmAscent;
+    else
+      Result.Base := (L.Height - R.Bottom) div 2 + TM.tmAscent;
+    end;
+    if L.Alignment = taLeftJustify then Result.Left := 0
+    else if not L.WordWrap and (Pos(#13, L.Caption) = 0) then
+    begin
+      R := TextBox(L.Font, TM, L.Caption, L.Width, Flags or DT_SINGLELINE);
+      if L.Alignment = taRightJustify then Result.Left := L.Width - R.Right
+      else Result.Left := (L.Width - R.Right) div 2;
+    end;
+    Exit;
+  end;
+  if not (C is TWinControl) or not TWinControl(C).HandleAllocated then Exit;
+  { a window's text: P where its first line's box begins in the client area of Wnd }
+  Wnd := TWinControl(C).Handle;
+  GetWindowRect(Wnd, R);
+  TextBox(TControlCracker(C).Font, TM, '', 0, 0);
+  P := Point(0, 0);
+  TextLeft := True;
+  IsEdit := C is TCustomEdit;
+  if C is TCustomComboBox then
+  begin
+    FillChar(Info, SizeOf(Info), 0);
+    Info.cbSize := SizeOf(Info);
+    if not GetComboBoxInfo(Wnd, Info) then Exit;
+    IsEdit := (Info.hwndItem <> 0) and (Info.hwndItem <> Wnd);
+    if IsEdit then Wnd := Info.hwndItem           // its edit
+    else                                          // a list's: the item centred, 1 px in
+      P := Point(Info.rcItem.Left + 1,
+        (Info.rcItem.Top + Info.rcItem.Bottom - TM.tmHeight) div 2);
+  end
+  else if IsEdit then
+    TextLeft := not (C is TCustomMemo) or (TMemoCracker(C).Alignment = taLeftJustify)
+  else if C is TButtonControl then
+  begin
+    { centred on the height; a check box's or radio button's text after its box and half an
+      average character, on its left when the box is on the right }
+    P.Y := (TWinControl(C).ClientHeight - TM.tmHeight) div 2;
+    if C is TCustomCheckBox then TextLeft := TCheckBoxCracker(C).Alignment = taLeftJustify
+    else if C is TRadioButton then TextLeft := TRadioButton(C).Alignment = taLeftJustify
+    else TextLeft := False;
+    if not TextLeft and not (C is TButton) and ThemeServices.ThemesEnabled then
+    begin
+      if C is TRadioButton then Part := BP_RADIOBUTTON else Part := BP_CHECKBOX;
+      Theme := OpenThemeData(Wnd, 'Button');
+      if Theme <> 0 then
+      begin
+        if GetThemePartSize(Theme, 0, Part, CBS_UNCHECKEDNORMAL, nil, TS_DRAW, Size) = S_OK then
+        begin
+          P.X := Size.cx + TM.tmAveCharWidth div 2;
+          TextLeft := True;
+        end;
+        CloseThemeData(Theme);
+      end;
+    end;
+  end
+  else if C is TCustomStaticText then
+    TextLeft := TStaticTextCracker(C).Alignment = taLeftJustify
+  else if C is TCustomGroupBox then
+  begin
+    if TControlCracker(C).Caption = '' then Exit;
+    TextLeft := False;                            // its caption: on the frame, 8 px in
+  end
+  else
+    Exit;
+  if IsEdit then                                  // an edit's formatting rectangle
+  begin
+    SendMessage(Wnd, EM_GETRECT, 0, Integer(@E));
+    P := E.TopLeft;
+  end;
+  Windows.ClientToScreen(Wnd, P);
+  Result.Base := P.Y - R.Top + TM.tmAscent;
+  if TextLeft then Result.Left := P.X - R.Left;
+end;
+
+{ mmMove: the lines of text of the dragged controls (FDragged's controls, all in one container)
+  and of the controls they may snap to, once for the drag }
+procedure TFormDesigner.PrepareTextSnap;
+var
+  I, N: Integer;
+  Parent: TWinControl;
+  SR: TRect;
+begin
+  SetLength(FDragText, 0);
+  SetLength(FSiblingText, 0);
+  if not DesignEnv.SnapLines or not DesignEnv.SnapText then Exit;
+  Parent := nil;
+  N := 0;
+  while (N < FDragged.Count) and (TObject(FDragged[N]) is TControl) do
+  begin
+    if N = 0 then Parent := TControl(FDragged[0]).Parent
+    else if TControl(FDragged[N]).Parent <> Parent then Exit;
+    Inc(N);
+  end;
+  if Parent = nil then Exit;
+  SetLength(FDragText, N);
+  for I := 0 to N - 1 do FDragText[I] := TextLineOf(TControl(FDragged[I]));
+  for I := 0 to Parent.ControlCount - 1 do
+    if SnapSibling(Self, Parent, I, SR) then
+    begin
+      SetLength(FSiblingText, Length(FSiblingText) + 1);
+      FSiblingText[High(FSiblingText)] := TextLineOf(Parent.Controls[I]);
+    end;
+end;
+
+{ T's text line on the axis (Horz: where its text begins, else its baseline) from its top-left,
+  NoTextLine where it has none }
+function TextAt(const T: TTextLine; Horz: Boolean): Integer;
+begin
+  if Horz then Result := T.Left else Result := T.Base;
+end;
+
+{ the start of R on the axis (Horz: its left) }
+function AxisStart(const R: TRect; Horz: Boolean): Integer;
+begin
+  if Horz then Result := R.Left else Result := R.Top;
+end;
+
+{ mmMove: the nearest text line within DesignEnv.SnapDistance - a dragged control's baseline
+  (Horz False) or where its text begins (Horz True), moved by Offset on the axis, onto another
+  control's; Delta takes it there }
+function TFormDesigner.SnapTextAxis(Horz: Boolean; Offset: Integer; var Delta: Integer): Boolean;
+var
+  I, J, Mine, Theirs, Best: Integer;
+begin
+  Best := MaxInt;
+  for I := 0 to High(FDragText) do
+  begin
+    Mine := TextAt(FDragText[I], Horz);
+    if Mine = NoTextLine then Continue;
+    Inc(Mine, AxisStart(FDragFrom[I], Horz) + Offset);
+    for J := 0 to High(FSiblingText) do
+    begin
+      Theirs := TextAt(FSiblingText[J], Horz);
+      if Theirs = NoTextLine then Continue;
+      Inc(Theirs, AxisStart(FSiblingText[J].Bounds, Horz));
+      if Abs(Theirs - Mine) < Abs(Best) then Best := Theirs - Mine;
+    end;
+  end;
+  Result := Abs(Best) <= DesignEnv.SnapDistance;
+  if Result then Delta := Best;
+end;
+
+{ mmMove: the text lines the dragged controls lie on where the step puts them (MoveSnap's), on
+  the axes that snapped: a baseline across both controls, a line where both texts begin down
+  both }
+procedure TFormDesigner.AddTextLines(Parent: TWinControl; DX, DY: Integer);
+var
+  I, J, Mine, Theirs, Lo, Hi, OLo, OHi, SLo, SHi, SOLo, SOHi: Integer;
+  O, P: TPoint;
+  R: TRect;
+  Horz: Boolean;
+begin
+  O := LineOrigin(Parent);
+  for I := 0 to High(FDragText) do
+  begin
+    P := MovedTo(I, DX, DY);
+    R := FDragFrom[I];
+    OffsetRect(R, P.X - R.Left, P.Y - R.Top);
+    for Horz := False to True do
+    begin
+      Mine := TextAt(FDragText[I], Horz);
+      if (Mine = NoTextLine) or (Horz and not FMoveSnapX) or (not Horz and not FMoveSnapY) then
+        Continue;
+      AxisOf(R, Horz, Lo, Hi, OLo, OHi);
+      Inc(Mine, Lo);
+      for J := 0 to High(FSiblingText) do
+      begin
+        Theirs := TextAt(FSiblingText[J], Horz);
+        if Theirs = NoTextLine then Continue;
+        AxisOf(FSiblingText[J].Bounds, Horz, SLo, SHi, SOLo, SOHi);
+        if SLo + Theirs = Mine then
+          AddLine(AxisLine(Horz, True, Mine, Min(OLo, SOLo), Max(OHi, SOHi)), O, True);
+      end;
+    end;
+  end;
+end;
+
 { mmMove: the dragged controls of one container snap together, by their joint bounds where the
-  drag began; where no line is near, each snaps to the grid as before. The tiles of non-visual
-  components lie on no snap line: they move by the controls' offset }
+  drag began, or by a line of text of one of them (the nearer); where no line is near, each
+  snaps to the grid as before. The tiles of non-visual components lie on no snap line: they
+  move by the controls' offset }
 procedure TFormDesigner.MoveSnap(DX, DY: Integer);
 var
-  I, D: Integer;
+  I: Integer;
   C: TControl;
   Parent: TWinControl;
   U, R: TRect;
+
+  { the axis snapped (Horz: x): Delta moved onto the nearer line, an edge's or a text's (a tie
+    goes to the text) }
+  function Snap(Horz: Boolean; Offset: Integer; var Delta: Integer): Boolean;
+  var
+    D, TD: Integer;
+  begin
+    Result := SnapAxis(Parent, U, Horz, True, True, D);
+    if SnapTextAxis(Horz, Offset, TD) and (not Result or (Abs(TD) <= Abs(D))) then
+    begin
+      Result := True;
+      D := TD;
+    end;
+    if Result then Inc(Delta, D);
+  end;
+
 begin
   FMoveSnapX := False;
   FMoveSnapY := False;
-  SetLength(FLineRects, 0);
+  SetLength(FLines, 0);
   Parent := nil;
   for I := 0 to FDragged.Count - 1 do
   begin
@@ -4093,16 +4418,8 @@ begin
   if Parent = nil then Exit;
   OffsetRect(U, DX, DY);
   FMoveDelta := Point(DX, DY);
-  if SnapAxis(Parent, U, True, True, True, D) then
-  begin
-    FMoveSnapX := True;
-    Inc(FMoveDelta.X, D);
-  end;
-  if SnapAxis(Parent, U, False, True, True, D) then
-  begin
-    FMoveSnapY := True;
-    Inc(FMoveDelta.Y, D);
-  end;
+  FMoveSnapX := Snap(True, DX, FMoveDelta.X);
+  FMoveSnapY := Snap(False, DY, FMoveDelta.Y);
   { the joint bounds where they end up: on the lines, or the grid's place of the first }
   R := U;
   OffsetRect(R, -DX, -DY);
@@ -4111,6 +4428,7 @@ begin
   if not FMoveSnapY then OffsetRect(R, 0, SnapY(R.Top) - R.Top);
   if FMoveSnapX then AddSnapLines(Parent, R, True, True, True);
   if FMoveSnapY then AddSnapLines(Parent, R, False, True, True);
+  AddTextLines(Parent, DX, DY);
 end;
 
 { where the dragged control or tile Index goes (MoveSnap first) }
@@ -4228,6 +4546,7 @@ begin
       if C is TWinControl then BufferTree(TWinControl(C));
     end;
   end;
+  if Mode = mmMove then PrepareTextSnap;
   FMode := Mode;
 end;
 
@@ -4247,7 +4566,7 @@ begin
     { a handle pressed and not moved changes nothing (its edges would go onto the grid) }
     if (DX = 0) and (DY = 0) then
     begin
-      SetLength(FLineRects, 0);
+      SetLength(FLines, 0);
       R := FDragFrom[0];
     end
     else
@@ -4310,6 +4629,8 @@ begin
     else if not EqualRect(DraggedBounds(FDragged[I]), FDragFrom[I]) then Changed := True;
   FDragged.Clear;
   SetLength(FDragFrom, 0);
+  SetLength(FDragText, 0);
+  SetLength(FSiblingText, 0);
   for I := 0 to FBuffered.Count - 1 do TWinControl(FBuffered[I]).DoubleBuffered := False;
   FBuffered.Clear;
   if Changed then Modified;
@@ -4327,6 +4648,11 @@ begin
     FDragged.Delete(I);
     for K := I to High(FDragFrom) - 1 do FDragFrom[K] := FDragFrom[K + 1];
     SetLength(FDragFrom, Length(FDragFrom) - 1);
+    if I <= High(FDragText) then
+    begin
+      for K := I to High(FDragText) - 1 do FDragText[K] := FDragText[K + 1];
+      SetLength(FDragText, Length(FDragText) - 1);
+    end;
   end;
   FBuffered.Remove(AnObject);
 end;
@@ -4336,15 +4662,16 @@ var
   I: Integer;
   W: TSnapLineWnd;
 begin
-  for I := 0 to High(FLineRects) do
+  for I := 0 to High(FLines) do
   begin
     if I >= MaxOutlines then Break;
     if FSnapLines.Count <= I then FSnapLines.Add(TSnapLineWnd.Create(FForm.Handle));
     W := TSnapLineWnd(FSnapLines[I]);
-    with FLineRects[I] do W.SetBounds(Left, Top, Right - Left, Bottom - Top);
+    W.SetText(FLines[I].Text);
+    with FLines[I].R do W.SetBounds(Left, Top, Right - Left, Bottom - Top);
     W.SetVisible(True);
   end;
-  for I := Length(FLineRects) to FSnapLines.Count - 1 do TSnapLineWnd(FSnapLines[I]).SetVisible(False);
+  for I := Length(FLines) to FSnapLines.Count - 1 do TSnapLineWnd(FSnapLines[I]).SetVisible(False);
 end;
 
 procedure TFormDesigner.RefreshGrid;
@@ -4733,7 +5060,7 @@ begin
   if MoveR then Inc(R, DX);
   if MoveT then Inc(T, DY);
   if MoveB then Inc(B, DY);
-  SetLength(FLineRects, 0);
+  SetLength(FLines, 0);
   Parent := nil;
   if C <> FForm then Parent := C.Parent;
   SnappedX := SnapAxis(Parent, Rect(L, T, R, B), True, MoveL, MoveR, D);

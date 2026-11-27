@@ -78,6 +78,7 @@ type
     lbSnapSpacing: TLabel;
     lbSnapMargin: TLabel;
     cbSnapLines: TCheckBox;
+    cbSnapText: TCheckBox;
     ecSnapDistance: TEdit;
     udSnapDistance: TUpDown;
     ecSnapSpacing: TEdit;
@@ -391,6 +392,7 @@ begin
   ecGridSizeX.Text := IntToStr(DesignEnv.GridX);
   ecGridSizeY.Text := IntToStr(DesignEnv.GridY);
   cbSnapLines.Checked := DesignEnv.SnapLines;
+  cbSnapText.Checked := DesignEnv.SnapText;
   udSnapDistance.Position := DesignEnv.SnapDistance;
   udSnapSpacing.Position := DesignEnv.SnapSpacing;
   udSnapMargin.Position := DesignEnv.SnapMargin;
@@ -503,6 +505,7 @@ begin
   if DesignEnv.GridX < 2 then DesignEnv.GridX := 2;
   if DesignEnv.GridY < 2 then DesignEnv.GridY := 2;
   DesignEnv.SnapLines := cbSnapLines.Checked;
+  DesignEnv.SnapText := cbSnapText.Checked;
   DesignEnv.SnapDistance := StrToIntDef(ecSnapDistance.Text, DefSnapDistance);
   DesignEnv.SnapSpacing := StrToIntDef(ecSnapSpacing.Text, DefSnapSpacing);
   DesignEnv.SnapMargin := StrToIntDef(ecSnapMargin.Text, DefSnapMargin);

@@ -10280,6 +10280,34 @@ object AppBuilder: TMainForm
       Hint = 'Move the pane to the bottom, across the whole window'
       OnExecute = ActPane
     end
+    object aPaneCenterLeft: TAction
+      Category = 'Window'
+      Caption = '&Left'
+      GroupIndex = 8
+      Hint = 'Move the pane to the left side of the editor area, under the file tabs'
+      OnExecute = ActPane
+    end
+    object aPaneCenterTop: TAction
+      Category = 'Window'
+      Caption = '&Top'
+      GroupIndex = 8
+      Hint = 'Move the pane to the top of the editor area, under the file tabs'
+      OnExecute = ActPane
+    end
+    object aPaneCenterRight: TAction
+      Category = 'Window'
+      Caption = '&Right'
+      GroupIndex = 8
+      Hint = 'Move the pane to the right side of the editor area, under the file tabs'
+      OnExecute = ActPane
+    end
+    object aPaneCenterBottom: TAction
+      Category = 'Window'
+      Caption = '&Bottom'
+      GroupIndex = 8
+      Hint = 'Move the pane to the bottom of the editor area, beside the pages'
+      OnExecute = ActPane
+    end
     object aPaneFloat: TAction
       Category = 'Window'
       Caption = '&Floating'
@@ -10776,9 +10804,17 @@ object AppBuilder: TMainForm
     end
     object ViewNextWindow: TAction
       Category = 'Window'
-      Caption = 'Next Window'
-      Hint = 'Next Window'
+      Caption = '&Next Tab'
+      Hint = 'Next tab'
       ImageIndex = 155
+      ShortCut = 16393
+      OnExecute = ActView
+    end
+    object aPreviousTab: TAction
+      Category = 'Window'
+      Caption = '&Previous Tab'
+      Hint = 'Previous tab'
+      ShortCut = 24585
       OnExecute = ActView
     end
     object ProjectImportTypeLibraryCommand: TAction
@@ -11742,9 +11778,15 @@ object AppBuilder: TMainForm
       end
     end
     object WindowsMenu: TMenuItem
-      Caption = '&Window'
+      Caption = '&Tabs'
       object ViewNextWindowItem: TMenuItem
         Action = ViewNextWindow
+      end
+      object miPreviousTab: TMenuItem
+        Action = aPreviousTab
+      end
+      object miTabsLine: TMenuItem
+        Caption = '-'
       end
     end
     object HelpMenu: TMenuItem
