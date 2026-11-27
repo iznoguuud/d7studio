@@ -1,0 +1,51 @@
+{**********************************************************}
+{                                                          }
+{     D7 Studio                                            }
+{                                                          }
+{     Copyright (c) 2026 iznoguuud                         }
+{     Licensed under the MIT License: see LICENSE.txt      }
+{                                                          }
+{**********************************************************}
+
+package OtaLegacy;
+
+{ D7 Studio's demo of Delphi 1-3's expert API (ExptIntf, ToolIntf, EditIntf, FileIntf): experts of
+  the four styles registered with RegisterLibraryExpert (OtaLegacyExperts) and the self-test of the
+  API (OtaLegacyTest). The same API in DLLs: OtaLegacyDll.dpr (INITEXPERT0017), OtaVcsDemo.dpr
+  (a version control manager, INITVCS0014). }
+
+{$ALIGN 8}
+{$ASSERTIONS ON}
+{$BOOLEVAL OFF}
+{$DEBUGINFO ON}
+{$EXTENDEDSYNTAX ON}
+{$IMPORTEDDATA ON}
+{$IOCHECKS ON}
+{$LOCALSYMBOLS ON}
+{$LONGSTRINGS ON}
+{$OPENSTRINGS ON}
+{$OPTIMIZATION ON}
+{$OVERFLOWCHECKS OFF}
+{$RANGECHECKS OFF}
+{$REFERENCEINFO ON}
+{$SAFEDIVIDE OFF}
+{$STACKFRAMES OFF}
+{$TYPEDADDRESS OFF}
+{$VARSTRINGCHECKS ON}
+{$WRITEABLECONST OFF}
+{$MINENUMSIZE 1}
+{$IMAGEBASE $400000}
+{$DESCRIPTION 'D7 Studio Delphi 1-3 expert API demo'}
+{$DESIGNONLY}
+{$IMPLICITBUILD OFF}
+
+requires
+  rtl,
+  vcl,
+  designide;
+
+contains
+  OtaLegacyExperts in 'OtaLegacyExperts.pas',
+  OtaLegacyTest in 'OtaLegacyTest.pas';
+
+end.

@@ -90,8 +90,8 @@ they open on and again when moved (`WM_DPICHANGED`).
 - Embedded forms follow their host: a form put on a panel of another form at run time (a docked
   window, a wizard's page) is scaled from its own DPI to the host's, and again when it moves to a
   host on a monitor with another scale.
-- `samples\dpi`: a program that shows all this, with what to know when writing for every DPI
-  (its `README.md`).
+- ModernDemo (`demos\modern` in the project's sources): a program that shows all this - and Unicode, the dialogs, the look and the
+  Windows API -, with what to know when writing for every DPI (its `README.md`).
 - `Graphics`: canvases keep a font's exact pixel height.
 - `StdCtrls`, `ComCtrls`, `Grids`, `ExtCtrls`, `CheckLst`, `ActnMan`, `DBCtrls`, `DBGrids`,
   `FileCtrl`, `Outline`, `Tabs`: control-specific sizes. Tool bars keep their buttons' order and
@@ -112,13 +112,53 @@ they open on and again when moved (`WM_DPICHANGED`).
   premultiplied alpha, for `AlphaBlend`; its transparent colour or alpha kept), `ResampleBGRA`
   resamples raw premultiplied BGRA pixels, `DrawBitmapForDpi` draws a picture made for 96 DPI at its
   size for a DPI, `ImageListSizeAtDpi` tells the size a list's images get at a DPI.
+- `ImgList`: an image list can hold its images drawn at more sizes than its design size - 20, 24,
+  32 pixels for 16-pixel images -, given at run time: `AddImageListResolution(List, Strip)` (as
+  many images as the list, side by side, 32-bit with alpha or with a transparent colour),
+  `LoadImageListResolutions(List, HInstance, 'TOOLBAR')` (resources `TOOLBAR_20`, `TOOLBAR_24` ...:
+  `RCDATA` holding a `.bmp` file - brcc32 takes no 32-bit `BITMAP` - or a `BITMAP`),
+  `ClearImageListResolutions`. At a DPI whose size it has, the list shows those images as drawn;
+  at another it scales the next larger set down. Images added, inserted, moved or deleted at run
+  time follow in every set. Nothing changes in the DFM: the sets come from code.
 - `Themes`, `Menus`: theme parts and popup menus at the DPI of their monitor.
+
+#### Images for every size
+
+An image list keeps the images it was designed with (16 x 16, say) and enlarges them above 100 %,
+which softens them. To show images drawn for 125, 150 and 200 % instead:
+
+1. Design the 16 x 16 images in the image list as always (the IDE's image list editor, the DFM).
+2. Draw each larger size as one strip: all the list's images side by side, in the list's order -
+   20 x 20 each for 125 %, 24 for 150 %, 32 for 200 %. Use 32-bit bitmaps with alpha, or bitmaps
+   with a transparent colour.
+3. Give the list the strips at run time, in `FormCreate`, from resources:
+   ```
+   // toolbar.rc - brcc32 takes no 32-bit BITMAP, so the .bmp files go in as RCDATA
+   TOOLBAR_20 RCDATA "toolbar20.bmp"
+   TOOLBAR_24 RCDATA "toolbar24.bmp"
+   TOOLBAR_32 RCDATA "toolbar32.bmp"
+   ```
+   ```pascal
+   {$R toolbar.res}
+   ...
+   LoadImageListResolutions(ImageList1, HInstance, 'TOOLBAR');
+   ```
+   or from bitmaps: `AddImageListResolution(ImageList1, Strip)` for each strip.
+
+At a scale whose size it has, the list shows those images as drawn; at another it shrinks the next
+larger size. A strip whose count or shape does not match the list's images is refused (the
+function returns False, nothing changes).
+
+To add an image later, add it to the 16 x 16 images, draw it at each size into the strips, and give
+the strips again: a strip of a size the list has replaces it. An image added at run time with
+`Add`, `AddMasked`, `AddIcon`, `Insert` or `Replace` goes into every size too, made from the image
+given - enlarged above its own size, so soft there until it is drawn for that size.
 
 ### Current Windows look and behaviour
 
 - `ModernMan`, `ModernManUtf8` (new): the application manifest — Common Controls 6, Windows Vista
   to 11 compatibility, per-monitor V2 DPI awareness, long paths, `asInvoker`; the second adds the
-  UTF-8 code page. Use one of them instead of `XPMan`.
+  UTF-8 code page. Use one of them instead of `XPMan`. Both manifests are language-neutral.
 - `Dialogs`: `TOpenDialog` / `TSaveDialog` show the Common Item Dialog, `MessageDlg` and
   `ShowMessage` show task dialogs (with Common Controls 6); `TaskMessageDlg*`,
   `ExecuteFolderDialog`; `UseLatestCommonDialogs`.
@@ -126,6 +166,25 @@ they open on and again when moved (`WM_DPICHANGED`).
 - `ComCtrls`: list and tree views double-buffered with Windows Explorer's look; page controls
   switch pages without flicker.
 - `Forms`: `MainFormOnTaskbar`, the Windows 7 taskbar model.
+
+### Building in Delphi 7's IDE
+
+A program has one application manifest, and Delphi 7's IDE writes none. Without one, a program
+built there has the classic look, is stretched by Windows on a monitor scaled above 100 % (blurred
+text), runs in the system code page and is treated as a program from before Windows Vista.
+
+- **`ModernMan`** in the `.dpr`'s uses clause gives it the current manifest above: the program is
+  per-monitor DPI aware and these units scale its forms. It suits any program.
+- **`ModernManUtf8`** adds UTF-8 as the code page. Delphi 7's IDE and its compiler keep the sources
+  in the system code page, so a string literal with characters beyond ASCII comes out wrong in a
+  UTF-8 program; the text of forms is converted (`Classes`), and text the program reads or the user
+  types works. Use it when the literals in code are ASCII. D7 Studio compiles such a program's
+  sources in UTF-8.
+- D7 Studio gives a program the same manifest itself, from its project options, and a program needs
+  neither unit there. For a project built in both IDEs: D7 Studio puts its manifest into the
+  project's `.res`, and a manifest unit used as well makes two. The compiler then reports
+  "Duplicate resource(s): Type 24 (user-defined), ID 1" and keeps one. Compile the project once in
+  D7 Studio, which takes its manifest out of the `.res` when the program uses a manifest unit.
 
 ### Several monitors
 
@@ -143,7 +202,8 @@ Delphi 7 assumed that the desktop starts at 0,0 and that the primary monitor is 
   parameter count or calling convention (`Windows`, `ActiveX`, `Ole2`, `UrlMon`, `WinInet`,
   `Nsapi`, `UxTheme`). A program that used one did not start.
 - Extended with the Windows Vista to 11 additions: `Messages`, `CommCtrl`, `ShlObj`, `UxTheme`,
-  `ShellAPI`, `CommDlg`, `WinSvc`.
+  `ShellAPI`, `CommDlg`, `WinSvc` (`ShellAPI`: Windows' stock icons, `SHGetStockIconInfo`, and an
+  icon at any size, `SHDefExtractIcon`).
 - New: `ShellScaling`, `DwmApi`, `WindowsEx`, `WinSock2`, `ShLwApi`, `BCrypt`, `WtsApi32`,
   `PowrProf`, `UserEnv`.
 - Checked against the Windows SDK 10.0.26100 (record sizes, field offsets and constants with a

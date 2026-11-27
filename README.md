@@ -60,6 +60,9 @@ Setup installs the first four, the notices and the license into Delphi 7's `Bin`
   that it replaces, the difference from Borland's file (`Delta\`); the new units whole (`New\`);
   `manifest.txt` with every file's SHA-256; `patch.ps1`, which applies the patch to an installed
   Delphi 7 and takes it back.
+- `demos\` - two demo programs: `modern` (ModernDemo), a tour of the modernized RTL/VCL - per-monitor
+  DPI, Unicode, the current dialogs and look, the Windows API -, and `ota`, which exercises the Open
+  Tools API in D7 Studio and in Delphi 7's IDE. Each has its README.
 
 The patch holds none of Borland's RTL/VCL files: the ones it changes exist here only as
 differences, which need the copy of Delphi 7 that you own.

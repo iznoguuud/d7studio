@@ -517,6 +517,9 @@ begin
   ddDPLOutputDir.Top := ddOutputDir.Top;
   bDPLOutputDir.Top := bOutputDir.Top;
   drLabel1.Top := drLabel3.Top;
+  { the BPL row is now the first: first in the tab order too (the others move down by one) }
+  ddDPLOutputDir.TabOrder := 0;
+  bDPLOutputDir.TabOrder := 1;
   ddOutputDir.Visible := False;
   bOutputDir.Visible := False;
   drLabel3.Visible := False;

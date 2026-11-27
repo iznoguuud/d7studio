@@ -60,6 +60,9 @@ Setup changes Delphi 7's own folder:
   D7 Studio's license (MIT), which Setup also shows before it installs anything.
 - **D7 Studio's two experts**, the AI assistant and Git, go into `Projects\Bpl`: `AiHarness.bpl`
   and `GitExpert.bpl`, design packages that D7 Studio loads (see "The IDE" below).
+- **Two demos** go into Delphi 7's `Demos` folder, as sources to open and build: `ModernDemo`, a
+  tour of the modernized RTL/VCL, and `OtaDemo`, the Open Tools API demo. Uninstalling removes them
+  with what was built in them.
 - **The UTF-8 compiler** goes into `Bin` too: `dcc32u8.exe`, Delphi 7's own `dcc32.exe` under
   another name (a hard link to it, else a copy), with `dcc32u8.exe.manifest`, which starts it with
   UTF-8 as its code page. D7 Studio compiles your programs that run in UTF-8 with it (see Target
@@ -159,7 +162,8 @@ file, describes them in full: every feature, its switches and what to know. In s
 - **Unicode through UTF-8.** In UTF-8 mode `string` holds UTF-8, so any character works in the
   VCL, file names, the clipboard, sorting and formatting.
 - **Per-monitor DPI.** Forms, fonts, controls, image lists, glyphs and theme parts scale to the
-  monitor and rescale when moved.
+  monitor and rescale when moved. An image list can also be given its images drawn at larger
+  sizes, which it shows at the scales they fit.
 - **Current dialogs and look.** The Common Item Dialog for `TOpenDialog` / `TSaveDialog`, task
   dialogs for `MessageDlg`, the modern folder picker, Explorer-style list and tree views, and the
   Windows 7 taskbar model.

@@ -11,6 +11,34 @@ installing in [README.md](README.md).
 
 ## [Unreleased]
 
+## [1.0.3.2] - 2026-11-27
+
+### Added
+
+- **Setup**: installs two demos into Delphi 7's `Demos` folder: `ModernDemo`, a tour of the
+  modernized RTL/VCL - per-monitor DPI, Unicode, the current dialogs and look, the Windows API -, and
+  `OtaDemo`, the Open Tools API demo. Uninstalling removes them.
+- **Demos**: ModernDemo, in the style of Windows 11's Settings: a sidebar of five areas, each a page of
+  cards, Windows' stock icons drawn at each size, a layout that follows the window. The OTA demo, which
+  exercises the Open Tools API in D7 Studio and in Delphi 7's IDE - Delphi 7's experts in a package
+  and in a DLL, Delphi 1-3's expert API and a version control manager -, is part of the demos too.
+- **RTL/VCL**: an image list can hold its images drawn at more than one size - 20, 24 and 32 pixels
+  for 16-pixel images - and show the ones drawn for the display scale instead of enlarging the
+  16-pixel images: `AddImageListResolution`, `LoadImageListResolutions` (from resources named
+  `NAME_20`, `NAME_24` ...) and `ClearImageListResolutions` in `ImgList`. At a scale without its own
+  size the list makes its images from the next larger size. Forms are unchanged: the images come
+  from code.
+- **RTL/VCL**: `ShellAPI` declares `SHGetStockIconInfo`, Windows' stock icons with their `SIID_`
+  numbers, and `SHDefExtractIcon`, which gives an icon at any size.
+
+### Fixed
+
+- **IDE**: in a package's *Project ▸ Options ▸ Directories/Conditionals*, Tab now goes from top to
+  bottom; it skipped the BPL output directory, which is the first row for a package.
+- **RTL/VCL**: inserting or moving an image in an image list that follows the display scale no
+  longer makes its other images again from their scaled copies, which softened them a little and
+  dropped their alpha.
+
 ## [1.0.3.1] - 2026-11-26
 
 ### Changed
@@ -159,7 +187,8 @@ The first release.
   its settings. It also installs Microsoft's WinHelp viewer, which shows Delphi 7's help on
   Windows 10 and 11.
 
-[Unreleased]: https://github.com/iznoguuud/d7studio/compare/v1.0.3.1...HEAD
+[Unreleased]: https://github.com/iznoguuud/d7studio/compare/v1.0.3.2...HEAD
+[1.0.3.2]: https://github.com/iznoguuud/d7studio/compare/v1.0.3.1...v1.0.3.2
 [1.0.3.1]: https://github.com/iznoguuud/d7studio/compare/v1.0.3.0...v1.0.3.1
 [1.0.3.0]: https://github.com/iznoguuud/d7studio/compare/v1.0.2.2...v1.0.3.0
 [1.0.2.2]: https://github.com/iznoguuud/d7studio/compare/v1.0.2.1...v1.0.2.2
