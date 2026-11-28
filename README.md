@@ -17,7 +17,7 @@ current Windows API.
 <tr>
 <td align="center"><a href="screenshots/06-class-diagram.png"><img src="screenshots/06-class-diagram.png" width="200" alt="The Diagram tab: a unit's classes with their inheritance"></a><br><sub>Class diagram</sub></td>
 <td align="center"><a href="screenshots/07-dock-guides.png"><img src="screenshots/07-dock-guides.png" width="200" alt="Dock guides while a view is dragged, the drop marker on the editor area's left side"></a><br><sub>Docking</sub></td>
-<td align="center"><a href="screenshots/08-designer-zoom.png"><img src="screenshots/08-designer-zoom.png" width="200" alt="The form designer zoomed out to fit a large form: the IDE's own main window with its non-visual components"></a><br><sub>Designer zoom</sub></td>
+<td align="center"><a href="screenshots/08-designer-zoom-out.png"><img src="screenshots/08-designer-zoom-out.png" width="200" alt="The form designer zoomed out to fit a large form: the IDE's own main window with its non-visual components"></a><br><sub>Designer zoom</sub></td>
 <td align="center"><a href="screenshots/09-git.png"><img src="screenshots/09-git.png" width="200" alt="The Git expert: the changes and the commit message, the history of the commits and a diff"></a><br><sub>Git</sub></td>
 </tr>
 </table>
