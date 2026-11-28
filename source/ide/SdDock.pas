@@ -3974,42 +3974,37 @@ begin
   C.Polygon(Tip);
 end;
 
-{ test mode with D7S_GUIDES set to a folder: what a guide window shows, on a light grey ground,
-  as guide<n>.bmp there (a cloaked layered window cannot be captured) }
+{ test mode with D7S_GUIDES set to a folder: what a guide window shows, as guide<n>.bmp there -
+  its pixels as given to UpdateLayeredWindow (32 bits, premultiplied alpha, top-down), so that a
+  picture of the guides can be laid over a capture of the main window (a cloaked layered window
+  cannot be captured) }
 procedure SaveGuideShot(Bits: PCardinal; W, H, Index: Integer);
 var
   Folder: string;
-  B: TBitmap;
-  X, Y: Integer;
-  Px: PCardinal;
-  Row: PByteArray;
-  A, V: Cardinal;
+  F: TFileStream;
+  FH: TBitmapFileHeader;
+  IH: TBitmapInfoHeader;
 begin
   Folder := GetEnvironmentVariable('D7S_GUIDES');
   if (Folder = '') or not UITestMode then Exit;
-  B := TBitmap.Create;
+  FillChar(FH, SizeOf(FH), 0);
+  FillChar(IH, SizeOf(IH), 0);
+  FH.bfType := $4D42;                       // 'BM'
+  FH.bfOffBits := SizeOf(FH) + SizeOf(IH);
+  FH.bfSize := FH.bfOffBits + Cardinal(W * H * 4);
+  IH.biSize := SizeOf(IH);
+  IH.biWidth := W;
+  IH.biHeight := -H;
+  IH.biPlanes := 1;
+  IH.biBitCount := 32;
+  IH.biCompression := BI_RGB;
+  F := TFileStream.Create(IncludeTrailingPathDelimiter(Folder) + 'guide' + IntToStr(Index) + '.bmp', fmCreate);
   try
-    B.PixelFormat := pf24bit;
-    B.Width := W;
-    B.Height := H;
-    Px := Bits;
-    for Y := 0 to H - 1 do
-    begin
-      Row := B.ScanLine[Y];
-      for X := 0 to W - 1 do
-      begin
-        A := Px^ shr 24;
-        { premultiplied colour over the ground $E0 }
-        V := Px^;
-        Row[3 * X] := Byte((V and $FF) + $E0 * (255 - A) div 255);
-        Row[3 * X + 1] := Byte(((V shr 8) and $FF) + $E0 * (255 - A) div 255);
-        Row[3 * X + 2] := Byte(((V shr 16) and $FF) + $E0 * (255 - A) div 255);
-        Inc(Px);
-      end;
-    end;
-    B.SaveToFile(IncludeTrailingPathDelimiter(Folder) + 'guide' + IntToStr(Index) + '.bmp');
+    F.WriteBuffer(FH, SizeOf(FH));
+    F.WriteBuffer(IH, SizeOf(IH));
+    F.WriteBuffer(Bits^, W * H * 4);
   finally
-    B.Free;
+    F.Free;
   end;
 end;
 

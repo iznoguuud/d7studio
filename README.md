@@ -5,7 +5,22 @@ memory of the Delphi 7 IDE, with the look of the running Windows. Its setup also
 installed Delphi 7's RTL and VCL in place: native Unicode, per-monitor DPI awareness and the
 current Windows API.
 
-![D7 Studio with a form in the designer, the Code Explorer, the Object Inspector, the Project Manager and the Components view](screenshot1.png)
+![D7 Studio: code completion between folded routines, with the Code Explorer, the Object Inspector, the Project Manager and the Components view](screenshots/02-code-editor.png)
+
+<table>
+<tr>
+<td align="center"><a href="screenshots/01-form-designer.png"><img src="screenshots/01-form-designer.png" width="200" alt="The form designer at 1:1 with the form positioner open, its snap lines on the monitor the form opens on"></a><br><sub>Form designer</sub></td>
+<td align="center"><a href="screenshots/03-refactorings.png"><img src="screenshots/03-refactorings.png" width="200" alt="A Rename refactoring previewed in the Refactorings view, with its diff, before it is applied"></a><br><sub>Refactorings</sub></td>
+<td align="center"><a href="screenshots/04-file-history.png"><img src="screenshots/04-file-history.png" width="200" alt="The History tab: a file's versions and a side-by-side diff"></a><br><sub>File history</sub></td>
+<td align="center"><a href="screenshots/05-code-metrics.png"><img src="screenshots/05-code-metrics.png" width="200" alt="Code metrics of the whole project, the values outside their limits in red"></a><br><sub>Code metrics</sub></td>
+</tr>
+<tr>
+<td align="center"><a href="screenshots/06-class-diagram.png"><img src="screenshots/06-class-diagram.png" width="200" alt="The Diagram tab: a unit's classes with their inheritance"></a><br><sub>Class diagram</sub></td>
+<td align="center"><a href="screenshots/07-dock-guides.png"><img src="screenshots/07-dock-guides.png" width="200" alt="Dock guides while a view is dragged, the drop marker on the editor area's left side"></a><br><sub>Docking</sub></td>
+<td align="center"><a href="screenshots/08-designer-zoom.png"><img src="screenshots/08-designer-zoom.png" width="200" alt="The form designer zoomed to 150 % with four controls selected and the alignment buttons"></a><br><sub>Designer zoom</sub></td>
+<td align="center"><a href="screenshots/09-git.png"><img src="screenshots/09-git.png" width="200" alt="The Git expert: the changes and the commit message, the history of the commits and a diff"></a><br><sub>Git</sub></td>
+</tr>
+</table>
 
 ## Download
 
@@ -64,6 +79,7 @@ Setup installs the first four, the notices and the license into Delphi 7's `Bin`
 - `demos\` - two demo programs: `modern` (ModernDemo), a tour of the modernized RTL/VCL - per-monitor
   DPI, Unicode, the current dialogs and look, the Windows API -, and `ota`, which exercises the Open
   Tools API in D7 Studio and in Delphi 7's IDE. Each has its README.
+- `screenshots\` - the pictures at the top of this page, full size.
 
 The patch holds none of Borland's RTL/VCL files: the ones it changes exist here only as
 differences, which need the copy of Delphi 7 that you own.
