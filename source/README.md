@@ -18,8 +18,8 @@ Requirements:
 - An installed Delphi 7 with Update 1 (Delphi 7.1: Help | About shows "Version 7.0 (Build 8.1)";
   the Database supplemental may be on it too). Setup finds it through its registry key
   (`RootDir`) and stops, with Delphi 7 unchanged, when there is none, when its runtime packages
-  are not Update 1's, or when one of the 127 files it patches (packages, DCUs, DCPs, sources)
-  is not byte for byte Update 1's file as Borland shipped it.
+  are not Update 1's, or when a file it patches (packages, DCUs, DCPs, sources) is not byte for
+  byte the file of one of the Delphi 7 Update 1 builds the patch is made for, as shipped.
 - No other D7 Studio installed. Setup finds an installed one in Windows' list of programs:
   - A D7 Studio that Setup installed into the same Delphi 7 is updated in place: its settings
     stay (`D7Studio.ini` and the other files it keeps in `Bin`,
@@ -40,13 +40,17 @@ Setup changes Delphi 7's own folder:
 - **The RTL/VCL is patched in place.** Setup carries none of these files, neither Borland's nor
   modernized ones: only the differences. It makes each modernized file from Delphi 7's own and
   its difference (with Windows' `msdelta.dll`), checks both by SHA-256 and puts the result in the
-  original's place. It patches 127 files:
+  original's place. It patches:
   - `Bin`: the six runtime packages (`rtl70.bpl`, `vcl70.bpl`, `vclx70.bpl`, `dbrtl70.bpl`,
     `vcldb70.bpl`, `vclactnband70.bpl`) and `borlndmm.dll`;
   - `Lib`: the DCUs of the changed units and the packages' `.dcp` files; `Lib\Debug`: those DCUs
     with debug information;
   - `Source`: the sources of the changed units (`Rtl\Sys`, `Rtl\Common`, `Rtl\Win`, `Vcl`), the
-    ones the DCUs were compiled from.
+    ones the DCUs were compiled from;
+  - the 32-bit system folder (`SysWOW64`): the six runtime packages, where Delphi 7's installer
+    put them there. Windows looks for a program's packages in that folder before the `PATH`, so a
+    program outside Delphi 7's `Bin` that uses runtime packages - one you build with them, a demo -
+    would otherwise load the unpatched ones. Uninstalling puts them back too.
 
   Only what Delphi 7 does not have comes whole: the new units (`Utf8Mode`, `ModernMan`,
   `ShellScaling`, `WindowsEx`, `FastMM4` ...) with their DCUs and sources, `ModernMan.res` /

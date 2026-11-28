@@ -49,6 +49,7 @@ object OtaDemoWindow: TOtaDemoWindow
     Align = alBottom
     BevelOuter = bvNone
     TabOrder = 2
+    ParentBackground = False
     object RefreshButton: TButton
       Left = 4
       Top = 4

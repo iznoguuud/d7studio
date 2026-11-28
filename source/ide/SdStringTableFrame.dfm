@@ -22,6 +22,7 @@ object StringTableFrame: TStringTableFrame
     DesignSize = (
       520
       30)
+    ParentBackground = False
     object lblFind: TLabel
       Left = 64
       Top = 8

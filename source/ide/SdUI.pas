@@ -398,6 +398,9 @@ procedure UIBufferFlush(Buffer: TBitmap; Canvas: TCanvas);
 { a 32-bit DIB section, top-down (the first row first), Width x Height; Bits: its pixels row after
   row, a Cardinal $AARRGGBB each. 0 (Bits nil) when it cannot be made; the caller deletes it }
 function UICreateDib32(Width, Height: Integer; out Bits: PCardinal): HBITMAP;
+{ W x H px of the 32-bit bitmap Bmp, premultiplied, from SrcX, SrcY laid on DC at X, Y with its
+  transparency, at Opacity per cent (AlphaBlend) }
+procedure UIAlphaDraw(DC: HDC; Bmp: HBITMAP; X, Y, W, H, SrcX, SrcY, Opacity: Integer);
 
 { the docked views' captions and the tabs }
 { the colours of a docked view's caption: Active (the keyboard is in its group) those of
@@ -469,6 +472,9 @@ procedure UIModernToolBar(Bar: TToolBar);
   row, the hints shown, as high as its buttons and two pixels more - on a ground of its own (the
   view's colour, painted in the bar's buffer: no parent has to paint under it) }
 procedure UIViewToolBar(Bar: TToolBar);
+{ a drop-down button's face drops its menu as its arrow does - the VCL's own drop-down, the button
+  pressed while the menu is open }
+procedure UIDropButtonMenu(Button: TToolButton);
 { The images of Images for disabled commands: Disabled, a list with the same indexes (greyed as
   Visual Studio greys its images) - the menus draw a disabled item's image from it,
   the tool bars that show Images get it as their disabled image list. 0: the menus grey Images'
@@ -499,6 +505,9 @@ procedure UIRestoreTreePlace(Tree: TTreeView; const Place: TUITreePlace);
   node's box) }
 procedure UITreeNoDblClickToggle(Tree: TCustomTreeView);
 function UITreeDblClickNode(Tree: TCustomTreeView): TTreeNode;
+{ a tree's node in bold or not: a state of its item in the tree's window, which a new window of the
+  tree does not keep (set it again then) }
+procedure UITreeSetBold(Node: TTreeNode; Bold: Boolean);
 { a report list's header shows the column it is sorted by (-1 none) with the theme's arrow, up for
   Ascending; only the columns that change repaint }
 procedure UIListSortArrow(List: TCustomListView; Column: Integer; Ascending: Boolean);
@@ -516,6 +525,8 @@ procedure UIPassKeyboard(Hidden, Shown: TWinControl);
 function UIOpenClipboard(Wnd: HWND): Boolean;
 function UIClipboardSet(Format: UINT; Data: Pointer; Size: Integer): Boolean;
 function UIClipboardGet(Format: UINT; out Data: string): Boolean;
+{ ... W on it as Unicode text (CF_UNICODETEXT, with its closing zero) }
+function UIClipboardSetText(const W: WideString): Boolean;
 
 { an http:// or https:// address }
 function UIIsUrl(const S: string): Boolean;
@@ -2749,7 +2760,6 @@ type
     function IsEmpty: Boolean;
     procedure Clear;
     procedure DropInk;
-    procedure DrawInk(DC: HDC; X, Y, W, H, SrcX, SrcY, Opacity: Integer);
     procedure PaintPicture(DC: HDC; const R: TRect);
     procedure PaintPhoto(DC: HDC; const R: TRect);
     procedure PaintTo(DC: HDC);
@@ -2780,26 +2790,6 @@ begin
   FInk := 0;
 end;
 
-{ W x H px of FInk from SrcX, SrcY laid on DC at X, Y at Opacity per cent }
-procedure TEmptyView.DrawInk(DC: HDC; X, Y, W, H, SrcX, SrcY, Opacity: Integer);
-var
-  InkDC: HDC;
-  Old: HGDIOBJ;
-  Blend: TBlendFunction;
-begin
-  InkDC := CreateCompatibleDC(DC);
-  Old := SelectObject(InkDC, FInk);
-  try
-    Blend.BlendOp := AC_SRC_OVER;
-    Blend.BlendFlags := 0;
-    Blend.SourceConstantAlpha := (Opacity * 255 + 50) div 100;
-    Blend.AlphaFormat := AC_SRC_ALPHA;
-    AlphaBlend(DC, X, Y, W, H, InkDC, SrcX, SrcY, W, H, Blend);
-  finally
-    SelectObject(InkDC, Old);
-    DeleteDC(InkDC);
-  end;
-end;
 
 function TEmptyView.IsEmpty: Boolean;
 var
@@ -2876,7 +2866,7 @@ begin
       Scaled.Free;
     end;
   end;
-  DrawInk(DC, (R.Right - W) div 2, (R.Bottom - H) div 2, W, H, 0, 0, FOpacity);
+  UIAlphaDraw(DC, FInk, (R.Right - W) div 2, (R.Bottom - H) div 2, W, H, 0, 0, FOpacity);
 end;
 
 { UIEmptyPhoto's picture over the whole of R: as large as covering R needs, what overflows cut
@@ -2884,11 +2874,9 @@ end;
   R's size changes (a resize, another DPI) }
 procedure TEmptyView.PaintPhoto(DC: HDC; const R: TRect);
 var
-  W, H, I: Integer;
+  W, H: Integer;
   Scaled: TSdImage;
   Ink: HBITMAP;
-  Bits: PCardinal;
-  P, A: Cardinal;
 begin
   W := R.Right;
   H := MulDiv(W, FPicture.Height, FPicture.Width);
@@ -2903,18 +2891,8 @@ begin
     DropInk;
     Scaled := ScaleImage(FPicture, W, H, True);
     try
-      Ink := UICreateDib32(W, H, Bits);
+      Ink := ImageToPremultipliedDib(Scaled);
       if Ink = 0 then Exit;
-      for I := 0 to W * H - 1 do
-      begin
-        P := Scaled.Pixels[I];
-        A := P shr 24;
-        if A < 255 then
-          P := A shl 24 or ((P shr 16 and $FF) * A div 255) shl 16 or
-            ((P shr 8 and $FF) * A div 255) shl 8 or (P and $FF) * A div 255;
-        Bits^ := P;
-        Inc(Bits);
-      end;
       FInk := Ink;
       FInkW := W;
       FInkH := H;
@@ -2922,7 +2900,7 @@ begin
       Scaled.Free;
     end;
   end;
-  DrawInk(DC, 0, 0, R.Right, R.Bottom, (W - R.Right) div 2, (H - R.Bottom) div 2, 100);
+  UIAlphaDraw(DC, FInk, 0, 0, R.Right, R.Bottom, (W - R.Right) div 2, (H - R.Bottom) div 2, 100);
 end;
 
 procedure TEmptyView.PaintTo(DC: HDC);
@@ -3177,6 +3155,27 @@ begin
   Clip := Canvas.ClipRect;
   BitBlt(Canvas.Handle, Clip.Left, Clip.Top, Clip.Right - Clip.Left, Clip.Bottom - Clip.Top,
     Buffer.Canvas.Handle, Clip.Left, Clip.Top, SRCCOPY);
+end;
+
+procedure UIAlphaDraw(DC: HDC; Bmp: HBITMAP; X, Y, W, H, SrcX, SrcY, Opacity: Integer);
+var
+  BmpDC: HDC;
+  Old: HGDIOBJ;
+  Blend: TBlendFunction;
+begin
+  if Bmp = 0 then Exit;
+  BmpDC := CreateCompatibleDC(DC);
+  Old := SelectObject(BmpDC, Bmp);
+  try
+    Blend.BlendOp := AC_SRC_OVER;
+    Blend.BlendFlags := 0;
+    Blend.SourceConstantAlpha := (Opacity * 255 + 50) div 100;
+    Blend.AlphaFormat := AC_SRC_ALPHA;
+    AlphaBlend(DC, X, Y, W, H, BmpDC, SrcX, SrcY, W, H, Blend);
+  finally
+    SelectObject(BmpDC, Old);
+    DeleteDC(BmpDC);
+  end;
 end;
 
 function UICreateDib32(Width, Height: Integer; out Bits: PCardinal): HBITMAP;
@@ -5039,6 +5038,14 @@ begin
   TToolBarLook(UIFindHook(Bar, TToolBarLook)).FOwnGround := True;
 end;
 
+type
+  TToolBarAccess = class(TToolBar);     // CheckMenuDropdown
+
+procedure UIDropButtonMenu(Button: TToolButton);
+begin
+  TToolBarAccess(Button.Parent as TToolBar).CheckMenuDropdown(Button);
+end;
+
 procedure SyncBars(C: TWinControl);
 var
   I: Integer;
@@ -5186,6 +5193,19 @@ begin
   if UIFindHook(Tree, TDblClickHook) = nil then TDblClickHook.Create(Tree, True);
 end;
 
+procedure UITreeSetBold(Node: TTreeNode; Bold: Boolean);
+var
+  Item: TTVItem;
+begin
+  if Node = nil then Exit;
+  FillChar(Item, SizeOf(Item), 0);
+  Item.mask := TVIF_STATE or TVIF_HANDLE;
+  Item.hItem := Node.ItemId;
+  Item.stateMask := TVIS_BOLD;
+  if Bold then Item.state := TVIS_BOLD;
+  TreeView_SetItem(Node.TreeView.Handle, Item);
+end;
+
 function UITreeDblClickNode(Tree: TCustomTreeView): TTreeNode;
 var
   H: TDblClickHook;
@@ -5244,6 +5264,11 @@ begin
   { the clipboard owns the memory once it took it }
   Result := SetClipboardData(Format, G) <> 0;
   if not Result then GlobalFree(G);
+end;
+
+function UIClipboardSetText(const W: WideString): Boolean;
+begin
+  Result := UIClipboardSet(CF_UNICODETEXT, PWideChar(W), (Length(W) + 1) * SizeOf(WideChar));
 end;
 
 function UIClipboardGet(Format: UINT; out Data: string): Boolean;

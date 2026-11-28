@@ -112,7 +112,12 @@ type
       Repeatedly, the Macro Library; its Import and Export }
     iiMacroRecord, iiMacroPlay, iiMacroRepeat, iiMacroLibrary, iiImport, iiExport,
     { Project | Metrics and the Metrics view }
-    iiMetrics);
+    iiMetrics,
+    { View | File Explorer and its view: Refresh, Locate Active File, Pin Folder, Unpin Folder, a pinned
+      folder's node, New Folder, the Show drop-down, Follow the Editor; the kinds of file it shows that
+      have no icon above (a program, an archive, a web page, Markdown) }
+    iiFileExplorer, iiRefresh, iiLocateFile, iiPinFolder, iiUnpinFolder, iiPinnedFolder, iiNewFolder,
+    iiFilter, iiFollowEditor, iiExeFile, iiArchiveFile, iiHtmlFile, iiMarkdownFile);
 
 const
   { the icons that also come at 32 x 32 (ICONS32, in this order): File | New | Other's items.

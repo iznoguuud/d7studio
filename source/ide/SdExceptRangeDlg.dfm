@@ -24,6 +24,7 @@ object ExceptRangeDlg: TExceptRangeDlg
     BevelOuter = bvNone
     ParentColor = True
     TabOrder = 0
+    ParentBackground = False
     object LowLabel: TLabel
       Left = 12
       Top = 12

@@ -19,16 +19,21 @@ Uninstalling D7 Studio gives Delphi 7 its own files back.
   units. Most features have a global switch back to Delphi 7's behaviour
   (`UseLatestCommonDialogs`, `PerMonitorDpiScaling`, `DoubleBufferedViews`, `MainFormOnTaskbar`
   ...).
-- **Delphi 7 Update 1.** The RTL/VCL is Update 1's (Delphi 7.1, build 8.1), changed. The patch is
-  made from Update 1's runtime packages only, and D7
-  Studio's installer patches only a Delphi 7 whose runtime packages are Update 1's
-  (`rtl70`, `vcl70`, `vcldb70` 7.0.8.1, `dbrtl70` 7.0.8.2; `vcldb70` 7.0.8.3 with the Database
-  supplemental).
+- **Delphi 7 Update 1.** The RTL/VCL is Borland's Update 1 (Delphi 7.1, build 8.1), changed. D7
+  Studio's installer patches only a Delphi 7 whose runtime packages are Update 1's (`rtl70`,
+  `vcl70`, `vcldb70` 7.0.8.1, `dbrtl70` 7.0.8.2; `vcldb70` 7.0.8.3 with the Database
+  supplemental). The patch comes in two variants, `Update1` and `Update1b`, one for each Delphi 7
+  Update 1 build whose RTL/VCL files differ, built on that Delphi 7 from the same sources; the one
+  whose files the Delphi 7 has is applied. Borland compiled its runtime packages apart from its
+  units in `Lib`, which the patch links as they are: some routines of Borland's packages (in
+  `FMTBcd`, `TypInfo`, `ComObj` ...) therefore differ from the patched packages' in register use and
+  instruction choice, not in what they do. A `TPanel` takes its parent's background while the visual
+  styles are on, as in Delphi 7: give a panel that must show its `Color` `ParentBackground = False`.
 - **Only the differences are shipped.** The installer carries none of Borland's RTL/VCL files: each
   modernized package, DCU, DCP and source that replaces one of Delphi 7's is made on the target
-  from Delphi 7's own file and its difference (Windows' `msdelta.dll`). So every one of those 127
-  files of Delphi 7 must be exactly Update 1's as Borland shipped it, checked by SHA-256 before
-  anything changes; otherwise the installer stops and Delphi 7 stays as it is. The new units and
+  from Delphi 7's own file and its difference (Windows' `msdelta.dll`). So every one of those
+  files of Delphi 7 must be exactly the file of one of those Update 1 builds, as shipped, checked
+  by SHA-256 before anything changes; otherwise the installer stops and Delphi 7 stays as it is. The new units and
   `FastMM_FullDebugMode.dll` come whole. How the patch is made - compiled from source, with no
   decompilation and none of Borland's sources in it - is described in the `README.md` that comes
   with the patch, beside its `patch.ps1`.
@@ -39,8 +44,11 @@ Uninstalling D7 Studio gives Delphi 7 its own files back.
   powershell -File patch.ps1 -Check                                 # only check; nothing changes
   powershell -File "<Delphi 7>\D7Studio\patch.ps1" -Restore         # Delphi 7's own files back
   ```
+  Where Delphi 7's installer put the six runtime packages into the 32-bit system folder
+  (`SysWOW64`), it patches them there too: Windows looks there before the `PATH`, so a program
+  outside Delphi 7's `Bin` built with runtime packages would load the unpatched ones.
   It refuses, with Delphi 7 unchanged, while a program runs from Delphi 7's `Bin` or when a file
-  is not Update 1's, and backs up what it replaces into `<Delphi 7>\D7Studio\Backup`, as the
+  is not Update 1's as shipped, and backs up what it replaces into `<Delphi 7>\D7Studio\Backup`, as the
   installer does (the installer runs this same script). A copy that fails puts Delphi 7 back.
   Run again with a newer patch, it takes the earlier patch back and applies the new one. `-Restore`
   works from the copy of the script it keeps in `<Delphi 7>\D7Studio`, and refuses while D7
@@ -63,7 +71,8 @@ clipboard, sorting and formatting.
 - `Utf8Mode` (new) detects the mode and redirects the A functions Windows does not convert (GDI
   text, `CompareStringA`, the locale functions, the keyboard message loop) to shims that call the
   W functions — in every Delphi module of the process, packages loaded later included. Its font
-  shims create MS Sans Serif as Microsoft Sans Serif.
+  shims create MS Sans Serif as Microsoft Sans Serif. `D7_UTF8_SHIMS=0` in a program's environment
+  leaves all the shims out.
 - Older Windows ignore the manifest's `activeCodePage` and run a `ModernManUtf8` program in the
   legacy code page. A program that cannot do without UTF-8 says so with the comment
   `<!-- requires activeCodePage UTF-8 -->` in its manifest (D7 Studio's *Target Windows*
@@ -204,6 +213,10 @@ Delphi 7 assumed that the desktop starts at 0,0 and that the primary monitor is 
 - Extended with the Windows Vista to 11 additions: `Messages`, `CommCtrl`, `ShlObj`, `UxTheme`,
   `ShellAPI`, `CommDlg`, `WinSvc` (`ShellAPI`: Windows' stock icons, `SHGetStockIconInfo`, and an
   icon at any size, `SHDefExtractIcon`).
+- Added SDK names: `INT_PTR`, `LONG_PTR`, `UINT_PTR`, `ULONG_PTR`, `DWORD_PTR` and `ULONGLONG` in
+  `Windows`; `WM_UNICHAR` and the DWM state messages (`WM_DWMCOMPOSITIONCHANGED` ...) in
+  `Messages`; `INTERNET_RAS_INSTALLED`, `INTERNET_CONNECTION_OFFLINE` and
+  `INTERNET_CONNECTION_CONFIGURED` in `WinInet`.
 - New: `ShellScaling`, `DwmApi`, `WindowsEx`, `WinSock2`, `ShLwApi`, `BCrypt`, `WtsApi32`,
   `PowrProf`, `UserEnv`.
 - Checked against the Windows SDK 10.0.26100 (record sizes, field offsets and constants with a

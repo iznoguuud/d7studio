@@ -180,6 +180,7 @@ object TableOptionsDlg: TTableOptionsDlg
         BevelOuter = bvLowered
         Color = clBlack
         TabOrder = 11
+        ParentBackground = False
       end
     end
     object tsColumns: TTabSheet
@@ -316,6 +317,7 @@ object TableOptionsDlg: TTableOptionsDlg
           BevelOuter = bvLowered
           Color = clBlack
           TabOrder = 6
+          ParentBackground = False
         end
       end
       object xGroupBox4: TGroupBox

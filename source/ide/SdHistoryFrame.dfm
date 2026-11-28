@@ -26,6 +26,7 @@ inherited SdHistoryView: TSdHistoryView
     BevelOuter = bvNone
     Color = clWindow
     TabOrder = 1
+    ParentBackground = False
     object StatusPanel: TPanel
       Left = 0
       Top = 378
@@ -35,6 +36,7 @@ inherited SdHistoryView: TSdHistoryView
       BevelOuter = bvNone
       ParentColor = True
       TabOrder = 0
+      ParentBackground = False
       object StatusLabel: TLabel
         Left = 6
         Top = 3
@@ -54,6 +56,7 @@ inherited SdHistoryView: TSdHistoryView
     TabOrder = 2
     Visible = False
     OnResize = FilterPanelResize
+    ParentBackground = False
     object RoutineBox: TComboBox
       Left = 0
       Top = 0

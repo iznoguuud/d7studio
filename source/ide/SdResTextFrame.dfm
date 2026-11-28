@@ -19,6 +19,7 @@ object ResTextFrame: TResTextFrame
     Align = alTop
     BevelOuter = bvNone
     TabOrder = 0
+    ParentBackground = False
     object lblFind: TLabel
       Left = 6
       Top = 8
@@ -65,6 +66,7 @@ object ResTextFrame: TResTextFrame
     BevelOuter = bvNone
     ParentColor = True
     TabOrder = 1
+    ParentBackground = False
   end
   object StatusPanel: TPanel
     Left = 0
@@ -75,6 +77,7 @@ object ResTextFrame: TResTextFrame
     BevelOuter = bvNone
     ParentColor = True
     TabOrder = 2
+    ParentBackground = False
     object lblPos: TLabel
       Left = 8
       Top = 3

@@ -71,6 +71,7 @@ object RefactoringsView: TRefactoringsView
     BevelOuter = bvNone
     ParentColor = True
     TabOrder = 2
+    ParentBackground = False
   end
   object Actions: TActionList
     OnUpdate = ActionsUpdate

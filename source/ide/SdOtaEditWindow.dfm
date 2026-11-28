@@ -22,5 +22,6 @@ object EditWindow: TEditWindow
     Align = alClient
     BevelOuter = bvNone
     TabOrder = 0
+    ParentBackground = False
   end
 end

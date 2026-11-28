@@ -79,6 +79,8 @@ function DisplayPath(const Path: string): WideString;
 { the real name has characters the system code page does not have }
 function NeedsUnicode(const Path: string): Boolean;
 function WideFileName(const W: WideString): WideString;          // the part after the last '\'
+{ Path lies in the folder Folder (its trailing backslash or none) or below it - not Folder itself }
+function PathIsUnder(const Path, Folder: string): Boolean;
 function WideChangeFileExt(const W: WideString; const Ext: WideString): WideString;
 { file access for usable names (marked ones too) }
 function ExpandPathU(const Path: string): string;                // ExpandFileName
@@ -104,6 +106,17 @@ function TempFolder: string;
 procedure RemoveTree(const Dir: string);
 { an Explorer window on the folder of FileName with the file selected (a folder: the folder itself) }
 procedure ShowInExplorer(const FileName: string);
+{ the file or folder Path to the Recycle Bin, without Windows' questions and progress; False when
+  it could not go there (in use, no access, gone) }
+function RecycleFileU(const Path: string): Boolean;
+{ the file Path opened by the program Windows has for its kind; False: none, or it failed }
+function ShellOpenU(const Path: string): Boolean;
+{ a command prompt (%ComSpec%) whose current folder is Dir }
+procedure CommandPromptAt(const Dir: string);
+{ the files Files (usable names, all in one folder) dragged as Windows Explorer drags them: into an
+  Explorer window, onto a window that takes dropped files. The effect of the drop (DROPEFFECT_NONE:
+  none) }
+function DragFilesOut(Files: TStrings): Integer;
 { the files of a drop (WM_DROPFILES) and of the command line, as usable names }
 procedure DroppedFiles(Drop: HDROP; L: TStrings);
 { the names an Open/Save dialog returned in its buffer (one; with MultiSelect the folder, #0, the
@@ -116,6 +129,9 @@ procedure DrawTextUnicode(Canvas: TCanvas; const W: WideString; var R: TRect; Fl
 function TextWidthUnicode(Canvas: TCanvas; const W: WideString): Integer;
 
 implementation
+
+uses
+  ActiveX, ShlObj;
 
 function GetLongPathNameW(lpszShortPath, lpszLongPath: PWideChar; cchBuffer: DWORD): DWORD; stdcall;
   external kernel32 name 'GetLongPathNameW';
@@ -214,6 +230,14 @@ begin
   I := Length(W);
   while (I > 0) and (W[I] <> '\') and (W[I] <> ':') do Dec(I);
   Result := Copy(W, I + 1, MaxInt);
+end;
+
+function PathIsUnder(const Path, Folder: string): Boolean;
+var
+  F: string;
+begin
+  F := IncludeTrailingPathDelimiter(Folder);
+  Result := (Length(Path) > Length(F)) and SameText(Copy(Path, 1, Length(F)), F);
 end;
 
 function WideChangeFileExt(const W: WideString; const Ext: WideString): WideString;
@@ -583,6 +607,114 @@ begin
   if DirectoryExists(FileName) then Args := '"' + FileName + '"'
   else Args := '/select,"' + FileName + '"';
   ShellExecute(0, 'open', 'explorer.exe', PChar(Args), nil, SW_SHOWNORMAL);
+end;
+
+function RecycleFileU(const Path: string): Boolean;
+var
+  Op: TSHFileOpStructW;
+  From: WideString;
+begin
+  { a list of names, each ended by #0, the list by a second #0: the string's own }
+  From := WidePath(ExcludeTrailingPathDelimiter(Path)) + #0;
+  FillChar(Op, SizeOf(Op), 0);
+  Op.wFunc := FO_DELETE;
+  Op.pFrom := PWideChar(From);
+  Op.fFlags := FOF_ALLOWUNDO or FOF_NOCONFIRMATION or FOF_SILENT or FOF_NOERRORUI;
+  Result := (SHFileOperationW(Op) = 0) and not Op.fAnyOperationsAborted;
+end;
+
+function ShellOpenU(const Path: string): Boolean;
+var
+  W: WideString;
+begin
+  W := WidePath(Path);
+  Result := ShellExecuteW(0, nil, PWideChar(W), nil, PWideChar(WidePath(ExtractFileDir(Path))),
+    SW_SHOWNORMAL) > 32;
+end;
+
+procedure CommandPromptAt(const Dir: string);
+var
+  Shell: string;
+begin
+  Shell := GetEnvironmentVariable('ComSpec');
+  if Shell = '' then Shell := 'cmd.exe';
+  ShellExecuteW(0, nil, PWideChar(ToWide(Shell, CP_ACP)), nil, PWideChar(WidePath(Dir)), SW_SHOWNORMAL);
+end;
+
+{ ---------------------------------------------------------------- dragging files out }
+
+type
+  { the source of the drag: it drops when the button is released, Esc cancels, Windows' cursors }
+  TFileDropSource = class(TInterfacedObject, IDropSource)
+    function QueryContinueDrag(fEscapePressed: BOOL; grfKeyState: Longint): HResult; stdcall;
+    function GiveFeedback(dwEffect: Longint): HResult; stdcall;
+  end;
+
+function TFileDropSource.QueryContinueDrag(fEscapePressed: BOOL; grfKeyState: Longint): HResult;
+begin
+  if fEscapePressed then Result := DRAGDROP_S_CANCEL
+  else if grfKeyState and (MK_LBUTTON or MK_RBUTTON) = 0 then Result := DRAGDROP_S_DROP
+  else Result := S_OK;
+end;
+
+function TFileDropSource.GiveFeedback(dwEffect: Longint): HResult;
+begin
+  Result := DRAGDROP_S_USEDEFAULTCURSORS;
+end;
+
+{ the drag with the shell's own data object of the files (their folder's IShellFolder): Explorer
+  takes it as its own, a window that takes dropped files (DragAcceptFiles) gets WM_DROPFILES from
+  its CF_HDROP. Its interfaces are released before the caller ends OLE. }
+function DragShellFiles(Files: TStrings): Integer;
+var
+  Desktop, Folder: IShellFolder;
+  Data: IDataObject;
+  Eaten, Attr: ULONG;
+  FolderId: PItemIDList;
+  Ids: array of PItemIDList;
+  I, N: Integer;
+  Effect: Longint;
+begin
+  Result := DROPEFFECT_NONE;
+  if Failed(SHGetDesktopFolder(Desktop)) then Exit;
+  FolderId := nil;
+  Attr := 0;
+  if Failed(Desktop.ParseDisplayName(0, nil, PWideChar(WidePath(ExtractFileDir(Files[0]))), Eaten, FolderId,
+    Attr)) then
+    Exit;
+  SetLength(Ids, Files.Count);
+  N := 0;
+  try
+    if Failed(Desktop.BindToObject(FolderId, nil, IID_IShellFolder, Folder)) then Exit;
+    for I := 0 to Files.Count - 1 do
+    begin
+      Attr := 0;
+      if Succeeded(Folder.ParseDisplayName(0, nil, PWideChar(WideFileName(WidePath(Files[I]))), Eaten, Ids[N],
+        Attr)) then
+        Inc(N);
+    end;
+    if (N = 0) or Failed(Folder.GetUIObjectOf(0, N, Ids[0], IDataObject, nil, Data)) then Exit;
+    if DoDragDrop(Data, TFileDropSource.Create, DROPEFFECT_COPY or DROPEFFECT_LINK, Effect) = DRAGDROP_S_DROP then
+      Result := Effect;
+  finally
+    for I := 0 to N - 1 do CoTaskMemFree(Ids[I]);
+    CoTaskMemFree(FolderId);
+  end;
+end;
+
+function DragFilesOut(Files: TStrings): Integer;
+var
+  Ole: Boolean;
+begin
+  Result := DROPEFFECT_NONE;
+  if Files.Count = 0 then Exit;
+  { DoDragDrop needs OLE on the thread (S_FALSE: it is there already; each call is ended) }
+  Ole := Succeeded(OleInitialize(nil));
+  try
+    Result := DragShellFiles(Files);
+  finally
+    if Ole then OleUninitialize;
+  end;
 end;
 
 procedure RemoveTree(const Dir: string);

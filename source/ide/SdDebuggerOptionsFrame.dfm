@@ -498,6 +498,7 @@ object DebuggerOptionsFrame: TDebuggerOptionsFrame
     BevelOuter = bvNone
     ParentColor = True
     TabOrder = 1
+    ParentBackground = False
     object cbIntegratedDebugging: TCheckBox
       Left = 9
       Top = 0

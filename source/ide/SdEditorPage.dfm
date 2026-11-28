@@ -15,6 +15,7 @@ object EditorPage: TEditorPage
     ParentColor = True
     TabOrder = 0
     Visible = False
+    ParentBackground = False
   end
   object AutoTimer: TTimer
     Enabled = False

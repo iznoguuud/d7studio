@@ -29,7 +29,7 @@ uses
   SdPackageAddDlg, SdNavHistory, SdOptionsDlg, SdOtaCore, SdMessageView, SdResourceViewFrame, SdResources,
   SdResImage, SdResPage, SdOtaPalette, SdOtaViews, SdOtaToDo, SdNavBar, SdPageBar, SdZoom, SdHistory,
   SdHistoryFrame, SdUpdate, SdRefactor, SdRefactorGen, SdRefactorClean, SdRefactorMove, SdRefactorView, SdMetrics, SdMetricsView,
-  SdRefactorDlg, SdRefactorListDlg, SdChangeParamsDlg, SdMacros, SdMacrosView, SdMacroPlayDlg;
+  SdRefactorDlg, SdRefactorListDlg, SdChangeParamsDlg, SdMacros, SdMacrosView, SdMacroPlayDlg, SdFileExplorer, SdRichView;
 
 const
   WM_SDTESTKEY = WM_APP + 76;          // test mode: the postkey command's key, from the message loop (CMTestKey)
@@ -117,6 +117,8 @@ type
     function CIKeyPress(Page: TEditorPage; var Key: Char): Boolean; override;
     procedure CIChanged(Page: TEditorPage); override;
     procedure CICancel(Page: TEditorPage); override;
+    procedure OpenLink(Page: TEditorPage; const FileName: string; const Anchor: WideString); override;
+    procedure PreviewViewMade(View: TSdRichView); override;
   end;
 
   TMainForm = class(TForm)
@@ -291,6 +293,9 @@ type
     aHistGotoCode: TAction;
     aHistCopy: TAction;
     aHistRoutine: TAction;
+    aPreviewOpenLink: TAction;
+    aPreviewCopyLink: TAction;
+    aPreviewShowCode: TAction;
     aBrowseBack: TAction;
     aBrowseForward: TAction;
     aFileList: TAction;
@@ -592,8 +597,6 @@ type
     SetDebugDesktop1: TMenuItem;
     N15: TMenuItem;
     ViewToggleFormItem: TMenuItem;
-    miViewDiagram: TMenuItem;
-    miViewHistory: TMenuItem;
     ViewUnitItem: TMenuItem;
     ViewFormItem: TMenuItem;
     ViewTypeLibraryItem: TMenuItem;
@@ -733,6 +736,14 @@ type
     pmHistComparePrev: TMenuItem;
     pmHistSideBySide: TMenuItem;
     pmHistIgnoreBlanks: TMenuItem;
+    PreviewMenu: TPopupMenu;
+    pmPreviewOpenLink: TMenuItem;
+    pmPreviewCopyLink: TMenuItem;
+    pmPreviewSep1: TMenuItem;
+    pmPreviewCopy: TMenuItem;
+    pmPreviewSelectAll: TMenuItem;
+    pmPreviewSep2: TMenuItem;
+    pmPreviewShowCode: TMenuItem;
     HistoryTimer: TTimer;
     aAlignLeftEdges: TAction;
     aAlignHCenters: TAction;
@@ -767,6 +778,7 @@ type
     mcLibrary: TMenuItem;
     miMacroMenu: TMenuItem;
     miViewMacros: TMenuItem;
+    miViewFileExplorer: TMenuItem;
     miViewMetrics: TMenuItem;
     miProjectMetrics: TMenuItem;
     ThreadList: TListView;
@@ -804,6 +816,7 @@ type
     aPlayMacro: TAction;
     aPlayMacroRepeat: TAction;
     aViewMacros: TAction;
+    aViewFileExplorer: TAction;
     aViewMetrics: TAction;
     aProjectMetrics: TAction;
     aMacroMenu: TAction;
@@ -1112,6 +1125,8 @@ type
     procedure ActView(Sender: TObject);
     procedure ActHistory(Sender: TObject);
     procedure HistoryMenuPopup(Sender: TObject);
+    procedure ActPreview(Sender: TObject);
+    procedure PreviewMenuPopup(Sender: TObject);
     procedure HistoryTimerTick(Sender: TObject);
     procedure ActProject(Sender: TObject);
     procedure ActPackage(Sender: TObject);
@@ -1242,6 +1257,9 @@ type
     FMacros: TSdMacroLibrary;        // the keystroke macros kept (SdMacros), [Macros] of the settings
     FMacroView: TMacrosView;         // ... the Macro Library view (SdMacrosView)
     FMacroPanel: TSdDockPanel;       // ... its view of the dock
+    FFileExp: TFileExplorerView;     // View | File Explorer (SdFileExplorer) ...
+    FFileExpHost: TFileExplorerHost; // ... what it asks of the IDE
+    FFileExpPanel: TSdDockPanel;     // ... its view of the dock
     FMetricsView: TMetricsView;      // Project | Metrics: the results (SdMetricsView)
     FMetricsPanel: TSdDockPanel;     // ... its view of the dock
     FMetricsCancel: Boolean;         // ... Esc pressed while they are computed
@@ -1426,6 +1444,15 @@ type
     { a resource script (a .rc) into P: its $R with the .res of the same name beside it (Delphi
       7's Add to Project of a .rc); one that is there already is True and changes nothing }
     function ProjectAddResScriptTo(P: TSdProject; const FileName: string): Boolean;
+    { a unit or a resource script (by its extension) into the active project: Project | Add to
+      Project's, the File Explorer's, a file dropped on the Project Manager }
+    procedure AddFileToProject(const FileName: string);
+    { files dropped on the Project Manager: units and resource scripts into the active project, any
+      other file opened }
+    procedure ProjFilesDropped(Control: TControl; Files: TStrings);
+    { the File Explorer's questions about a file: of the group, open, changed }
+    function FileExpState(const FileName: string): TFxFileStates;
+    procedure FileExpRenamed(const OldName, NewName: string; Folder: Boolean);
     procedure UpdateActionStates;
     procedure UpdateStatus;
     procedure UpdateErrorInsight;
@@ -1613,6 +1640,7 @@ type
     function DesignWindowOrigin: TPoint;
     function DesignWindowShown(Root: TComponent): Boolean;
     function ActiveDesigner: TFormDesigner;
+    function ActivePreview: TSdRichView;      // the active page's Preview tab while it is shown (nil: none)
     function FindPage(const FileName: string): TEditorPage;
     function FileOfGroup(const FileName: string): Boolean;
     function OpenFile(const FileName: string; Activate: Boolean): TEditorPage;
@@ -2603,6 +2631,97 @@ type
     procedure ExpertsChanged; override;
   end;
 
+{ ---------------------------------------------------------------- the File Explorer's host }
+
+type
+  TFileExpMainHost = class(TFileExplorerHost)
+  private
+    FMain: TMainForm;
+  public
+    function ProjectFolder: string; override;
+    function ActiveFile: string; override;
+    function FileState(const FileName: string): TFxFileStates; override;
+    function HasOpenFiles(const Folder: string): Boolean; override;
+    function CanAddToProject(const FileName: string): Boolean; override;
+    procedure AddToProject(const FileName: string); override;
+    procedure OpenFile(const FileName: string); override;
+    procedure RenameUnit(const FileName: string); override;
+    procedure Renamed(const OldName, NewName: string; Folder: Boolean); override;
+    procedure FindInFolder(const Folder: string); override;
+  end;
+
+function TFileExpMainHost.ProjectFolder: string;
+begin
+  if FMain.FProject <> nil then Result := ExcludeTrailingPathDelimiter(FMain.FProject.Dir) else Result := '';
+end;
+
+function TFileExpMainHost.ActiveFile: string;
+var
+  P: TEditorPage;
+begin
+  P := FMain.ActivePage;
+  if (P <> nil) and not P.Untitled then Result := P.FileName else Result := '';
+end;
+
+function TFileExpMainHost.FileState(const FileName: string): TFxFileStates;
+begin
+  Result := FMain.FileExpState(FileName);
+end;
+
+function TFileExpMainHost.HasOpenFiles(const Folder: string): Boolean;
+var
+  I: Integer;
+begin
+  Result := True;
+  for I := 0 to FMain.FPages.Count - 1 do
+    if PathIsUnder(FMain.Pages[I].FileName, Folder) then Exit;
+  Result := False;
+end;
+
+{ a unit or a resource script the active project does not have yet }
+function TFileExpMainHost.CanAddToProject(const FileName: string): Boolean;
+var
+  P: TSdProject;
+begin
+  P := FMain.FProject;
+  Result := (P <> nil) and IsProjectAddable(FileName) and (P.FindUnit(FileName) = nil) and (P.FindResScript(FileName) = nil);
+end;
+
+procedure TFileExpMainHost.AddToProject(const FileName: string);
+begin
+  FMain.AddFileToProject(FileName);
+end;
+
+procedure TFileExpMainHost.OpenFile(const FileName: string);
+begin
+  FMain.OpenAny(FileName);
+end;
+
+{ the unit's code shown, then Refactor | Rename Unit on it }
+procedure TFileExpMainHost.RenameUnit(const FileName: string);
+var
+  P: TEditorPage;
+begin
+  P := FMain.OpenFile(FileName, True);
+  if P = nil then Exit;
+  P.ShowDesign(False);
+  FMain.aRefRenameUnit.Execute;
+end;
+
+procedure TFileExpMainHost.Renamed(const OldName, NewName: string; Folder: Boolean);
+begin
+  FMain.FileExpRenamed(OldName, NewName, Folder);
+end;
+
+{ Search | Find in Files, the folder and those below it chosen in the dialog }
+procedure TFileExpMainHost.FindInFolder(const Folder: string);
+begin
+  FMain.FFindFiles.Where := 2;
+  FMain.FFindFiles.Directory := Folder;
+  FMain.FFindFiles.Recurse := True;
+  FMain.DoFindInFiles;
+end;
+
 function TTodoMainHost.CanEdit(Item: TSdTodoItem): Boolean;
 begin
   Result := FMain.TodoCanEdit(Item);
@@ -2911,6 +3030,27 @@ end;
 procedure TMainServices.CICancel(Page: TEditorPage);
 begin
   OtaCICancel(Page);
+end;
+
+procedure TMainServices.PreviewViewMade(View: TSdRichView);
+begin
+  View.PopupMenu := FMain.PreviewMenu;
+end;
+
+{ a Markdown file opens in its Preview tab at the heading, any other file as File | Open opens it }
+procedure TMainServices.OpenLink(Page: TEditorPage; const FileName: string; const Anchor: WideString);
+var
+  P: TEditorPage;
+begin
+  if LanguageFromFileName(FileName) <> slMarkdown then
+  begin
+    FMain.OpenAny(FileName);
+    Exit;
+  end;
+  P := FMain.OpenFile(FileName, True);
+  if (P = nil) or not P.CanPreview then Exit;
+  P.ShowPreview(True);
+  if Anchor <> '' then P.Preview.GotoAnchor(Anchor);
 end;
 
 procedure TMainServices.EditorCommand(Page: TEditorPage; Cmd: TEdCmd; Arg: Integer);
@@ -3280,6 +3420,23 @@ begin
   FObjTreePanel.FocusControl := FObjTree.Tree;
   { an arrangement saved with the Structure view of before: the Object TreeView in its place }
   FObjTreePanel.FormerName := 'Structure';
+  { View | File Explorer: the files of the project's folder and the pinned ones, a tab of the
+    Project Manager's group }
+  FFileExpHost := TFileExpMainHost.Create;
+  TFileExpMainHost(FFileExpHost).FMain := Self;
+  FFileExp := TFileExplorerView.Create(Self);
+  FFileExp.Host := FFileExpHost;
+  FFileExp.OnMenuPopup := PaneMenuPopup;
+  FFileExp.Load(Settings);
+  FFileExpPanel := FDock.AddTab(FFileExp, 'FileExplorer', 'File Explorer', FProjPanel);
+  FFileExpPanel.ToolBar := FFileExp.Bar;
+  FFileExpPanel.FocusControl := FFileExp.Tree;
+  FFileExpPanel.PopupMenu := FFileExp.FxPopup;
+  FFileExpPanel.ShowStatus := True;
+  FFileExp.Panel := FFileExpPanel;
+  FFileExp.ProjectChanged;
+  { files dropped on the Project Manager: into the active project }
+  AcceptFileDrops(FProjView.Tree, ProjFilesDropped);
   FInspPanel := FDock.AddPanel(FInspector, 'ObjectInspector', 'Object Inspector', FRightArea);
   { the Components view (after Component Bar) in place of Delphi's component palette }
   FCompBar := TSdComponentBar.Create(Self);
@@ -3524,7 +3681,7 @@ begin
   FBottomPanels[BT_TODO].PopupMenu := FTodoView.TodoPopup;
   AddDockItems([FProjView.ProjPopup, FCodeExp.ExpPopup, FObjTree.ObjTreePopup, FInspector.InspPopup, FCompBar.CompPopup, FWatchView.WatchPopup, FDebugInsp.DebugInspPopup,
     MsgHintsPopup, FBrowser.BrowserPopup, FTypeLibView.TypeLibPopup, FResView.ResPopup, MsgPopup, FBreakView.BreakPopup,
-    FBreakView.BreakItemPopup, StackPopup, LocalsPopup, LogPopup, FTodoView.TodoPopup, FCpuView.CpuPopup, FRefView.RefPopup, FMacroView.MacroPopup, FMetricsView.MetricsPopup, DockPopup]);
+    FBreakView.BreakItemPopup, StackPopup, LocalsPopup, LogPopup, FTodoView.TodoPopup, FCpuView.CpuPopup, FRefView.RefPopup, FMacroView.MacroPopup, FMetricsView.MetricsPopup, FFileExp.FxPopup, DockPopup]);
   { a view without a menu of its own - an expert's, made later too - has the dock's commands alone
     on its caption, its tab and its auto-hide tab (TSdDock.CaptionMenu) }
   FDock.CaptionMenu := DockPopup;
@@ -4498,6 +4655,7 @@ begin
   { a new window of the tree (its group floated or docked) keeps the nodes, not the active
     project's bold }
   else if Panel = FProjPanel then FProjView.MarkActive
+  else if Panel = FFileExpPanel then FFileExp.Shown
   else if Panel = FObjTreePanel then RefreshObjTree(True)
   else if Panel = FBottomPanels[BT_TODO] then
   begin
@@ -4563,6 +4721,7 @@ begin
   FDebug.Free;
   FTodo.Free;
   FTodoHost.Free;
+  FFileExpHost.Free;
   FMacros.Free;
   ClearTodoTexts;
   FTodoTexts.Free;
@@ -5276,7 +5435,9 @@ begin
     if P <> nil then
     begin
       L.Add('page=' + P.FileName);
-      L.Add('view=' + LowerCase(P.ViewTab));       // code, design, diagram, history
+      L.Add('view=' + LowerCase(P.ViewTab));       // code, design, diagram, history, preview
+      { the Preview tab: SdRichView.StateText; its selected text in [previewsel] }
+      if P.Preview <> nil then L.Add('preview=' + P.Preview.StateText) else L.Add('preview=-');
       { the Diagram tab: boxes|selected|scroll x,y|size; the boxes in [diagram] }
       if P.Diagram <> nil then L.Add('diagram=' + P.Diagram.StateText);
       { the History tab: SdHistoryFrame.StateText; its rows in [filehistory], its diff's lines in
@@ -5465,6 +5626,8 @@ begin
     OtaLegacyState(L);
     L.Add('[diagram]');
     if (ActivePage <> nil) and (ActivePage.Diagram <> nil) then ActivePage.Diagram.BoxesText(L);
+    L.Add('[previewsel]');
+    if (ActivePage <> nil) and (ActivePage.Preview <> nil) then L.Add(WideToIde(ActivePage.Preview.SelectedText));
     L.Add('[filehistory]');
     if (ActivePage <> nil) and (ActivePage.History <> nil) then ActivePage.History.RowsText(L);
     L.Add('[filehistorydiff]');
@@ -5642,6 +5805,7 @@ begin
   Settings.WriteInteger('Layout', 'ResourceColumnWidth', FResView.ColumnWidth);
   WriteOptions(HistorySwitchTable, Settings, 'Layout');
   if FTodo <> nil then FTodo.Save(Settings);
+  FFileExp.Save(Settings);
   Settings.WriteString(CompSection, 'Used', FCompBar.Used.CommaText);
   SaveEditorOptions(Settings);
   SaveDebuggerOptions(Settings);
@@ -5938,6 +6102,11 @@ begin
   EditCopyCommand.Enabled := EditCutCommand.Enabled;
   EditPasteCommand.Enabled := ((Ed <> nil) and Ed.CanPaste) or ((D <> nil) and D.CanPasteNow);
   EditSelectAllCommand.Enabled := P <> nil;
+  { the Preview tab: its selection copied }
+  if ActivePreview <> nil then EditCopyCommand.Enabled := ActivePreview.HasSelection;
+  aPreviewShowCode.Enabled := ActivePreview <> nil;
+  aPreviewOpenLink.Enabled := aPreviewShowCode.Enabled;
+  aPreviewCopyLink.Enabled := aPreviewShowCode.Enabled;
   { a resource's page: its editor's commands (an edit box with the keyboard takes them itself) }
   if R <> nil then
   begin
@@ -6000,7 +6169,8 @@ begin
   aComplete.Enabled := Pas;
   aTemplates.Enabled := (Ed <> nil);
   aParams.Enabled := Pas;
-  ViewToggleFormCommand.Enabled := (P <> nil) and P.HasForm;
+  { F12: a form unit's code and form; a Markdown file's code and preview }
+  ViewToggleFormCommand.Enabled := (P <> nil) and (P.HasForm or P.CanPreview);
   aViewDiagram.Enabled := (P <> nil) and P.CanDiagram;
   aViewDiagram.Checked := aViewDiagram.Enabled and P.DiagramView;
   { the Diagram tab's tool bar }
@@ -7513,16 +7683,6 @@ begin
   ShowDockPanel(FRefPanel, True);
 end;
 
-type
-  TToolBarAccess = class(TToolBar);     // CheckMenuDropdown
-
-{ a drop-down button's face drops its menu as its arrow does - the VCL's own drop-down, the button
-  pressed while the menu is open }
-procedure DropButtonMenu(Button: TToolButton);
-begin
-  TToolBarAccess(Button.Parent as TToolBar).CheckMenuDropdown(Button);
-end;
-
 procedure TMainForm.ActRefactor(Sender: TObject);
 var
   P: TEditorPage;
@@ -7538,7 +7698,7 @@ begin
   { the code view's Refactor button: its menu under it }
   if Sender = aRefMenu then
   begin
-    DropButtonMenu(tbRefactor);
+    UIDropButtonMenu(tbRefactor);
     Exit;
   end;
   if Sender = aRefSyncEdit then
@@ -9334,6 +9494,8 @@ begin
     FPageTabs.Tabs[Idx] := Caption;
   FPageTabs.SetTabModified(Idx, DocModified(Page));
   if FPageTabs.MultiLine then FitTabRow;        // a tab more or a longer title: maybe a row more
+  { the File Explorer's green dot of an open file with unsaved changes }
+  if FFileExp <> nil then FFileExp.FilesChanged;
   if P = nil then Exit;
   { a name outside the code page: the tab gets the real one }
   if NeedsUnicode(P.FileName) then FPageTabs.SetTabTextW(Idx, P.TabCaptionW);
@@ -9378,6 +9540,14 @@ var
 begin
   P := ActivePage;
   if (P <> nil) and P.DesignView then Result := P.Designer else Result := nil;
+end;
+
+function TMainForm.ActivePreview: TSdRichView;
+var
+  P: TEditorPage;
+begin
+  P := ActivePage;
+  if (P <> nil) and P.PreviewView then Result := P.Preview else Result := nil;
 end;
 
 { a package goes: the Object Inspector's rows may hold property editors of its classes - they go
@@ -9731,6 +9901,7 @@ begin
   if not FClosing and not FClosingAll and (CodeInsightProject <> FCIProject) then ConfigureCodeInsight;
   if P.CodeView and P.Editor.CanFocus and Active then P.Editor.SetFocus;
   OtaModules.PageActivated(P);
+  if not FClosing and (FFileExp <> nil) then FFileExp.ActiveFileChanged;
 end;
 
 procedure TMainForm.TabsChange(Sender: TObject);
@@ -10124,6 +10295,7 @@ begin
     if FPageTabs.MultiLine then FitTabRow;
   end;
   Page.Free;
+  if (FFileExp <> nil) and not FClosing then FFileExp.FilesChanged;
 end;
 
 { Environment Options | Object Inspector, for the inspector (SdObjInsp keeps its own copy: the
@@ -10206,7 +10378,7 @@ begin
   for I := 0 to FPages.Count - 1 do
   begin
     Pages[I].Editor.ApplyOptions;
-    Pages[I].HistoryOptionsChanged;          // Display | Keep file history: the tab, its windows
+    Pages[I].ViewOptionsChanged;             // the views: Keep file history's tab, the Preview tab's code
     Pages[I].ApplyNavigationBar;             // Display | Navigation bar, a file type's language
     if Pages[I].Designer <> nil then
     begin
@@ -11145,6 +11317,7 @@ procedure TMainForm.RefreshProjectTree;
 begin
   try
     FProjView.ShowGroup(FProject);
+    if FFileExp <> nil then FFileExp.ProjectChanged;
   finally
     RefreshPackageViews;
     if FResPanel.Showing then RefreshResourceView;
@@ -11893,19 +12066,19 @@ end;
 { the drop-down at the end of the file tabs' row, the open files as a list to choose from }
 procedure TMainForm.ActFileList(Sender: TObject);
 begin
-  DropButtonMenu(tbFileList);
+  UIDropButtonMenu(tbFileList);
 end;
 
 { the drop-down at the right end of the code view's page bar: the minimap's switches }
 procedure TMainForm.ActMinimapMenu(Sender: TObject);
 begin
-  DropButtonMenu(tbMinimap);
+  UIDropButtonMenu(tbMinimap);
 end;
 
 { the code view's Macros drop-down: Record (Stop), Play, Play Repeatedly, the Macro Library }
 procedure TMainForm.ActMacroMenu(Sender: TObject);
 begin
-  DropButtonMenu(tbMacro);
+  UIDropButtonMenu(tbMacro);
 end;
 
 { A recording of the IDE's macro ended: with keys it goes to the top of the Macro Library as the
@@ -15015,6 +15188,11 @@ begin
     else if Sender = EditPasteCommand then D.PasteFromClipboard
     else if Sender = EditDeleteCommand then D.DeleteSelected
     else if Sender = EditSelectAllCommand then D.SelectAll;
+  end
+  else if ActivePreview <> nil then
+  begin
+    if Sender = EditCopyCommand then ActivePreview.CopySelection
+    else if Sender = EditSelectAllCommand then ActivePreview.SelectAll;
   end;
 end;
 
@@ -16131,6 +16309,30 @@ begin
   UpdateActionStates;
 end;
 
+{ the Preview tab's menu: the link's commands only when it opens on a link }
+procedure TMainForm.PreviewMenuPopup(Sender: TObject);
+var
+  OnLink: Boolean;
+begin
+  OnLink := (ActivePreview <> nil) and (ActivePreview.ContextLink <> '');
+  pmPreviewOpenLink.Visible := OnLink;
+  pmPreviewCopyLink.Visible := OnLink;
+  pmPreviewSep1.Visible := OnLink;
+  UpdateActionStates;
+end;
+
+{ the Preview tab's commands, at the place its menu opened on }
+procedure TMainForm.ActPreview(Sender: TObject);
+var
+  V: TSdRichView;
+begin
+  V := ActivePreview;
+  if V = nil then Exit;
+  if Sender = aPreviewOpenLink then V.FollowTarget(V.ContextLink)
+  else if Sender = aPreviewCopyLink then V.CopyText(V.ContextLink)
+  else if Sender = aPreviewShowCode then ActivePage.ShowSourceLine(V.ContextLine);
+end;
+
 { every few minutes: the unsaved text of each page, when it changed since its last version (one
   Unsaved version per file, replaced each time, gone with the save) }
 procedure TMainForm.HistoryTimerTick(Sender: TObject);
@@ -16242,6 +16444,7 @@ begin
   else if Sender = aViewMessages then ViewDockPanel(FBottomPanels[BT_MESSAGES])
   else if Sender = aViewRefactorings then ViewDockPanel(FRefPanel)
   else if Sender = aViewMacros then ViewDockPanel(FMacroPanel)
+  else if Sender = aViewFileExplorer then ViewDockPanel(FFileExpPanel)
   else if Sender = aViewMetrics then ViewDockPanel(FMetricsPanel)
   else if Sender = aViewErrorList then ViewDockPanel(FBottomPanels[BT_ERRORS])
   else if Sender = DebugBreakPointsCommand then ViewDockPanel(FBottomPanels[BT_BREAKS])
@@ -17340,6 +17543,66 @@ begin
   Result := ProjectAddUnitTo(FProject, FileName, UnitFormName(FileName));
 end;
 
+procedure TMainForm.AddFileToProject(const FileName: string);
+begin
+  if SameText(ExtractFileExt(FileName), '.rc') then ProjectAddResScriptTo(FProject, FileName)
+  else ProjectAddUnit(FileName);
+end;
+
+procedure TMainForm.ProjFilesDropped(Control: TControl; Files: TStrings);
+var
+  I: Integer;
+begin
+  for I := 0 to Files.Count - 1 do
+    if (FProject <> nil) and IsProjectAddable(Files[I]) then
+      AddFileToProject(Files[I])
+    else
+      OpenAny(Files[I]);
+end;
+
+{ a project file, a unit or its form, a resource script of a project of the group, or the group's
+  file; its page, and that page's unsaved changes }
+function TMainForm.FileExpState(const FileName: string): TFxFileStates;
+var
+  P: TEditorPage;
+  Ext: string;
+  I: Integer;
+begin
+  Result := [];
+  Ext := ExtractFileExt(FileName);
+  if FileOfGroup(FileName) or ProjectIsOpen(FileName) or
+    (SameText(Ext, '.dfm') and FileOfGroup(ChangeFileExt(FileName, '.pas'))) then
+    Include(Result, fxInGroup)
+  else if SameText(Ext, '.rc') then
+    for I := 0 to FGroup.AllCount - 1 do
+      if (FGroup.AllProject(I) <> nil) and (FGroup.AllProject(I).FindResScript(FileName) <> nil) then
+      begin
+        Include(Result, fxInGroup);
+        Break;
+      end;
+  P := FindPage(FileName);
+  if P <> nil then
+  begin
+    Include(Result, fxOpen);
+    if P.Modified then Include(Result, fxModified);
+  end;
+end;
+
+{ a file or folder renamed in the File Explorer: the pages of its files take the new names }
+procedure TMainForm.FileExpRenamed(const OldName, NewName: string; Folder: Boolean);
+var
+  I: Integer;
+  F: string;
+begin
+  for I := FPages.Count - 1 downto 0 do
+  begin
+    F := Pages[I].FileName;
+    if SameText(F, OldName) then RenamePageOnly(Pages[I], NewName)
+    else if Folder and PathIsUnder(F, OldName) then
+      RenamePageOnly(Pages[I], NewName + Copy(F, Length(OldName) + 1, MaxInt));
+  end;
+end;
+
 { a unit into P, a project of the group (the active one, or another: the Open Tools API's
   IOTAProject.AddFile, a creator's owner) - its uses clause, a package's contains clause }
 function TMainForm.ProjectAddUnitTo(P: TSdProject; const FileName, FormName: string): Boolean;
@@ -17473,9 +17736,7 @@ begin
     try
       if not BrowseFiles('Add to Project', 'Delphi unit (*.pas)|*.pas|Resource script (*.rc)|*.rc', L,
         FProject.Dir) then Exit;
-      for I := 0 to L.Count - 1 do
-        if SameText(ExtractFileExt(L[I]), '.rc') then ProjectAddResScriptTo(FProject, L[I])
-        else ProjectAddUnit(L[I]);
+      for I := 0 to L.Count - 1 do AddFileToProject(L[I]);
     finally
       L.Free;
     end;

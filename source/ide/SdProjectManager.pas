@@ -86,7 +86,6 @@ type
     function GroupNode: TTreeNode;
     function ProjectIndexOf(N: TTreeNode): Integer;
     function ProjectNodeIndex(N: TTreeNode): Integer;
-    procedure SetBold(N: TTreeNode);
   protected
     procedure CreateParams(var Params: TCreateParams); override;
     procedure WMEraseBkgnd(var Message: TWMEraseBkgnd); message WM_ERASEBKGND;
@@ -279,23 +278,9 @@ begin
   aPMStatusBar.Checked := (FPanel <> nil) and FPanel.ShowStatus;
 end;
 
-{ N in bold: a state of its item in the tree's window, which a new window does not keep }
-procedure TProjectManagerView.SetBold(N: TTreeNode);
-var
-  Item: TTVItem;
-begin
-  if N = nil then Exit;
-  FillChar(Item, SizeOf(Item), 0);
-  Item.mask := TVIF_STATE or TVIF_HANDLE;
-  Item.hItem := N.ItemId;
-  Item.stateMask := TVIS_BOLD;
-  Item.state := TVIS_BOLD;
-  TreeView_SetItem(Tree.Handle, Item);
-end;
-
 procedure TProjectManagerView.MarkActive;
 begin
-  if FActiveFile <> '' then SetBold(ProjectNode(FTreeProjects.IndexOf(FActiveFile)));
+  if FActiveFile <> '' then UITreeSetBold(ProjectNode(FTreeProjects.IndexOf(FActiveFile)), True);
 end;
 
 procedure TProjectManagerView.ShowGroup(Active: TSdProject);
@@ -354,7 +339,7 @@ var
       ByName.AddStrings(P.Requires);
       for I := 0 to ByName.Count - 1 do Child(Req, ByName[I] + '.dcp', iiPmSource, 2);
     end;
-    if P = Active then SetBold(PN);
+    if P = Active then UITreeSetBold(PN, True);
     { open as it was - activating opens or closes no node, as in Delphi; a project new in the
       tree opens when it is the active one }
     if (Opened.IndexOf(FileName) >= 0) or ((P = Active) and (Known.IndexOf(FileName) < 0)) then

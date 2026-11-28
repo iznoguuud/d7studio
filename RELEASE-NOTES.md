@@ -11,6 +11,39 @@ installing in [README.md](source/README.md).
 
 ## [Unreleased]
 
+## [1.0.6.1] - 2026-11-28
+
+### Added
+
+- **IDE**: a *File Explorer* view (*View ▸ File Explorer*, a tab beside the Project Manager): the files and folders
+  of the active project's folder and of folders you pin, with a filter box and *Show* switches for Delphi's files
+  only, the build output and hidden files. The project group's files are in bold, open files with unsaved changes
+  carry the file tabs' green dot, and files made, renamed or deleted on the disk show at once. A double click opens a
+  file - a project as a project, a program, image or archive with its program in Windows. Its menu adds a unit or
+  resource script to the active project, makes files and folders, renames (a unit through *Rename Unit*), deletes to
+  the Recycle Bin, copies the path, shows the file in Explorer, opens a command prompt in the folder and searches it
+  with *Find in Files*; *Locate Active File* and *Follow the Editor* choose the file the editor shows. A file dragged
+  out of it goes where one from Explorer would.
+- **IDE**: files dropped on the Project Manager go into the active project (units and resource scripts; other files
+  open).
+- **IDE**: a *Preview* tab on Markdown files (`.md`, `.markdown`) beside *Code*: the file rendered as it is in the
+  editor, unsaved changes included - headings, emphasis, lists and task lists, quotes, tables, rules, pictures beside
+  the file, and code blocks coloured as the code editor colours them. A link to a heading scrolls there, one to another
+  Markdown file opens its preview, one to another file opens it in the IDE, a web address opens in the browser. Text
+  can be selected and copied (*Edit ▸ Copy*, *Select All*), the zoom bar and Ctrl + wheel zoom it, F12 switches
+  between the code and the preview. Its menu opens or copies the link under the pointer and *Show Code* goes to the
+  line of the Markdown it shows.
+- **Code editor**: Markdown files are highlighted - headings, emphasis, code, links and the marks of lists and quotes.
+
+### Changed
+
+- **IDE**: *Help ▸ Check for Updates* shows a release's notes with their links as their text, a numbered list's items one a
+  line and a table's cells a tab apart.
+
+### Removed
+
+- **IDE**: *View ▸ Diagram* and *View ▸ History*: the *Diagram* and *History* tabs under a file's page show them.
+
 ## [1.0.6.0] - 2026-11-28
 
 ### Added
@@ -410,7 +443,8 @@ The first release.
   its settings. It also installs Microsoft's WinHelp viewer, which shows Delphi 7's help on
   Windows 10 and 11.
 
-[Unreleased]: https://github.com/iznoguuud/d7studio/compare/v1.0.6.0...HEAD
+[Unreleased]: https://github.com/iznoguuud/d7studio/compare/v1.0.6.1...HEAD
+[1.0.6.1]: https://github.com/iznoguuud/d7studio/compare/v1.0.6.0...v1.0.6.1
 [1.0.6.0]: https://github.com/iznoguuud/d7studio/compare/v1.0.5.1...v1.0.6.0
 [1.0.5.1]: https://github.com/iznoguuud/d7studio/compare/v1.0.5.0...v1.0.5.1
 [1.0.5.0]: https://github.com/iznoguuud/d7studio/compare/v1.0.4.1...v1.0.5.0

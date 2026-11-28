@@ -142,7 +142,7 @@ type
     the words, the line comment). Code insight, the block structure and smart indent are
     Pascal's only; the others are highlighted and folded. }
   TSciLanguage = (slNone, slPascal, slDfm, slExpert, slCpp, slCSharp, slResource, slIdl, slXml,
-    slHtml, slIni, slSql, slBatch, slMake);
+    slHtml, slIni, slSql, slBatch, slMake, slMarkdown);
 
   { a syntax highlighter of the Open Tools API as the editor calls it (SdOtaHighlight): one line
     at a time - its bytes without the line break, at most 1024 of them -, and the class the line
@@ -939,6 +939,15 @@ function ScintillaLoadError: string;
 { a name by kind's number, Type 0 .. Unit 8: its indicator IND_NAMES + it, its style STYLE_NAMES + it }
 function NameKind(E: TEditorElement): Integer;
 function LanguageFromFileName(const FileName: string): TSciLanguage;
+{ the file name whose extension gives the language Name stands for: a language's usual name
+  ('pascal', 'delphi', 'c++', 'csharp', 'xml', 'sql', 'batch' ...) or an extension with or
+  without its dot ('pas', '.ini'); 'code.txt' - plain text - for one the editor has no lexer of }
+function CodeFileNameFor(const Name: string): string;
+{ Code (IDE text) coloured as the editor colours a file of the language Language (CodeFileNameFor):
+  its lexer's styles in the colours and font styles of the editor's theme, a line of runs for each
+  of its lines, its tabs as blanks - the runs' text IDE text, Code True. Plain text in the theme's
+  plain text colour for a language without a lexer, and when Scintilla is not to be had }
+function HighlightCode(const Code, Language: string): TTipLines;
 function IsPascalKeyword(const S: string): Boolean;
 { Editor Options | Zoom on every editor that takes the editors' zoom (OnZoom: a file's page, a text
   resource's) }
@@ -1309,13 +1318,16 @@ const
       Folds: False),
     { project groups are make files }
     (Lexer: 'makefile'; Exts: ' .bpg .mak .mk '; Words: ''; Comment: '#'; NoCase: False;
+      Folds: False),
+    { Markdown has no line comment; its lexer folds nothing }
+    (Lexer: 'markdown'; Exts: ' .md .markdown .mdown .mkd '; Words: ''; Comment: ''; NoCase: False;
       Folds: False));
 
   SciPascal = [slPascal, slDfm];
   SciCFamily = [slCpp, slCSharp, slResource, slIdl];
   SciMarkup = [slXml, slHtml];
 
-  SciLexStyles: array[0..104] of TSciLexStyle = (
+  SciLexStyles: array[0..127] of TSciLexStyle = (
     (Langs: SciPascal; Style: SCE_PAS_DEFAULT; Element: eePlainText),
     (Langs: SciPascal; Style: SCE_PAS_IDENTIFIER; Element: eeIdentifier),
     (Langs: SciPascal; Style: SCE_PAS_COMMENT; Element: eeComment),
@@ -1423,7 +1435,32 @@ const
     (Langs: [slMake]; Style: SCE_MAKE_PREPROCESSOR; Element: eeDirective),
     (Langs: [slMake]; Style: SCE_MAKE_IDENTIFIER; Element: eeVariable),
     (Langs: [slMake]; Style: SCE_MAKE_TARGET; Element: eeReservedWord),
-    (Langs: [slMake]; Style: SCE_MAKE_OPERATOR; Element: eeSymbol));
+    (Langs: [slMake]; Style: SCE_MAKE_OPERATOR; Element: eeSymbol),
+    { Markdown: headings as reserved words, strong text as numbers, emphasis as characters, the
+      marks of lists, quotes and rules as symbols, code as strings, links as directives }
+    (Langs: [slMarkdown]; Style: SCE_MARKDOWN_STRONG1; Element: eeNumber),
+    (Langs: [slMarkdown]; Style: SCE_MARKDOWN_STRONG2; Element: eeNumber),
+    (Langs: [slMarkdown]; Style: SCE_MARKDOWN_EM1; Element: eeCharacter),
+    (Langs: [slMarkdown]; Style: SCE_MARKDOWN_EM2; Element: eeCharacter),
+    (Langs: [slMarkdown]; Style: SCE_MARKDOWN_HEADER1; Element: eeReservedWord),
+    (Langs: [slMarkdown]; Style: SCE_MARKDOWN_HEADER2; Element: eeReservedWord),
+    (Langs: [slMarkdown]; Style: SCE_MARKDOWN_HEADER3; Element: eeReservedWord),
+    (Langs: [slMarkdown]; Style: SCE_MARKDOWN_HEADER4; Element: eeReservedWord),
+    (Langs: [slMarkdown]; Style: SCE_MARKDOWN_HEADER5; Element: eeReservedWord),
+    (Langs: [slMarkdown]; Style: SCE_MARKDOWN_HEADER6; Element: eeReservedWord),
+    (Langs: [slMarkdown]; Style: SCE_MARKDOWN_PRECHAR; Element: eeSymbol),
+    (Langs: [slMarkdown]; Style: SCE_MARKDOWN_ULIST_ITEM; Element: eeSymbol),
+    (Langs: [slMarkdown]; Style: SCE_MARKDOWN_OLIST_ITEM; Element: eeSymbol),
+    (Langs: [slMarkdown]; Style: SCE_MARKDOWN_BLOCKQUOTE; Element: eeComment),
+    (Langs: [slMarkdown]; Style: SCE_MARKDOWN_STRIKEOUT; Element: eeComment),
+    (Langs: [slMarkdown]; Style: SCE_MARKDOWN_HRULE; Element: eeSymbol),
+    (Langs: [slMarkdown]; Style: SCE_MARKDOWN_LINK; Element: eeDirective),
+    (Langs: [slMarkdown]; Style: SCE_MARKDOWN_CODE; Element: eeString),
+    (Langs: [slMarkdown]; Style: SCE_MARKDOWN_CODE2; Element: eeString),
+    (Langs: [slMarkdown]; Style: SCE_MARKDOWN_CODEBK; Element: eeString),
+    (Langs: [slMarkdown]; Style: SCE_MARKDOWN_FRONT_MARK; Element: eeSymbol),
+    (Langs: [slMarkdown]; Style: SCE_MARKDOWN_FRONT; Element: eeComment),
+    (Langs: [slMarkdown]; Style: SCE_MARKDOWN_FRONT_KEY; Element: eeDirective));
 
 function LanguageFromFileName(const FileName: string): TSciLanguage;
 var
@@ -1439,6 +1476,71 @@ begin
       Result := L;
       Exit;
     end;
+end;
+
+const
+  { the languages' names that are no extension of theirs: name=extension }
+  CodeNameExts: array[0..19] of string = (
+    'pascal=.pas', 'delphi=.pas', 'objectpascal=.pas', 'object-pascal=.pas', 'freepascal=.pas',
+    'c++=.cpp', 'csharp=.cs', 'c#=.cs', 'xhtml=.html', 'svg=.xml', 'batch=.bat', 'dosbatch=.bat',
+    'make=.mak', 'makefile=.mak', 'markdown=.md', 'properties=.properties', 'dosini=.ini',
+    'resource=.rc', 'midl=.idl', 'tsql=.sql');
+
+function CodeFileNameFor(const Name: string): string;
+var
+  N: string;
+  I: Integer;
+begin
+  N := LowerCase(Trim(Name));
+  if (N <> '') and (N[1] = '.') then Delete(N, 1, 1);
+  Result := 'code.txt';
+  if N = '' then Exit;
+  for I := Low(CodeNameExts) to High(CodeNameExts) do
+    if System.Copy(CodeNameExts[I], 1, Pos('=', CodeNameExts[I]) - 1) = N then
+    begin
+      Result := 'code' + System.Copy(CodeNameExts[I], Pos('=', CodeNameExts[I]) + 1, MaxInt);
+      Exit;
+    end;
+  if LanguageFromFileName('code.' + N) <> slNone then Result := 'code.' + N;
+end;
+
+var
+  { the editor HighlightCode colours its code in: no window of its own, the worker shows it }
+  SciHighlighter: TSciEdit = nil;
+
+function HighlightCode(const Code, Language: string): TTipLines;
+var
+  L: Integer;
+  Plain: TStringList;
+  Runs: TTipRuns;
+begin
+  Result := nil;
+  if not ScintillaAvailable then
+  begin
+    { no lexer to be had: the lines in the plain text's colour (an empty one a blank, as StyledRuns) }
+    Plain := TStringList.Create;
+    try
+      Plain.Text := Code;
+      for L := 0 to Plain.Count - 1 do
+      begin
+        Runs := nil;
+        if Plain[L] = '' then AddTipRun(Runs, ' ', ElementFore(EditorOptions.Colors, eePlainText), [], True)
+        else AddTipRun(Runs, Plain[L], ElementFore(EditorOptions.Colors, eePlainText), [], True);
+        AddTipLine(Result, Runs);
+      end;
+    finally
+      Plain.Free;
+    end;
+    Exit;
+  end;
+  if SciHighlighter = nil then SciHighlighter := TSciEdit.Create(nil);
+  SciHighlighter.SetLanguageFromFile(CodeFileNameFor(Language));
+  SciHighlighter.LoadFromStringAs(Code, IdeEncoding);
+  SciHighlighter.StyleTo(-1);
+  for L := 0 to SciHighlighter.LineCount - 1 do
+    AddTipLine(Result, SciHighlighter.StyledRuns(L, MaxInt div 8));
+  { the text goes: the next code needs no undo of it, and nothing keeps a copy }
+  SciHighlighter.LoadFromStringAs('', IdeEncoding);
 end;
 
 type
@@ -3642,7 +3744,7 @@ begin
       W := PWideChar(Pointer(Old)) + W;
     end;
     EmptyClipboard;
-    UIClipboardSet(CF_UNICODETEXT, PWideChar(W), (Length(W) + 1) * SizeOf(WideChar));
+    UIClipboardSetText(W);
     if not Append then
     begin
       Kind := Ord(FBlockMode);
@@ -7089,6 +7191,8 @@ begin
   end;
   if FLanguage in SciPascal then
     SetProp('lexer.pascal.smart.highlighting', IntToStr(Ord(FLanguage = slPascal)));
+  { a Markdown heading coloured to its line's end, not its marks alone }
+  if FLanguage = slMarkdown then SetProp('lexer.markdown.header.eolfill', '1');
   { a Pascal text's folds are D7 Studio's, from its block structure (ApplyFoldLevels) }
   SetProp('fold', IntToStr(Ord(FLanguage <> slPascal)));
   SetProp('fold.compact', '0');
@@ -8165,6 +8269,7 @@ initialization
 
 finalization
   SciEnding := True;
+  FreeAndNil(SciHighlighter);
   { the worker goes with its parent; an editor it showed keeps no window }
   FreeAndNil(SciWorkHost);
   FreeAndNil(SciEdits);

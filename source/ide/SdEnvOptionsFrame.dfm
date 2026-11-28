@@ -794,6 +794,7 @@ object EnvOptionsFrame: TEnvOptionsFrame
         Caption = 'ToolListPanel'
         ParentColor = True
         TabOrder = 1
+        ParentBackground = False
         object ToolListHeader: THeaderControl
           Left = 0
           Top = 0
@@ -1162,6 +1163,7 @@ object EnvOptionsFrame: TEnvOptionsFrame
         BevelOuter = bvNone
         ParentColor = True
         TabOrder = 0
+        ParentBackground = False
         object frGroupBox1: TGroupBox
           Left = 9
           Top = 9
@@ -1185,6 +1187,7 @@ object EnvOptionsFrame: TEnvOptionsFrame
             BevelOuter = bvNone
             ParentColor = True
             TabOrder = 0
+            ParentBackground = False
             object lvSystemVars: TListView
               Left = 0
               Top = 0

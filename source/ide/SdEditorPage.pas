@@ -19,7 +19,7 @@ uses
   Windows, Messages, SysUtils, Classes, Controls, Forms, ExtCtrls, SdTabStrip,
   TypInfo, SdSciDefs, SdSciEdit, SdEncoding, SdCodeInsight, SdFormSrc, SdCompletion, SdDesignHost, SdKeymaps,
   SdFormDesigner, SdDesignUndo, SdDiagram, SdFileNames, SdHints, SdDbgEval, SdPageBar, SdZoom, SdHistory,
-  SdHistoryFrame;
+  SdHistoryFrame, SdRichView;
 
 const
   CM_SD_DESIGNSTEP = WM_APP + 120;    // a change of the designer is over: one undo step
@@ -95,6 +95,11 @@ type
     function CIKeyPress(Page: TEditorPage; var Key: Char): Boolean; virtual;
     procedure CIChanged(Page: TEditorPage); virtual;
     procedure CICancel(Page: TEditorPage); virtual;
+    { a link of Page's Preview tab to the file FileName (it is there): opened - a Markdown file in
+      its Preview tab at the heading Anchor ('' its top) -; the default does nothing }
+    procedure OpenLink(Page: TEditorPage; const FileName: string; const Anchor: WideString); virtual;
+    { a page's Preview tab is made: its menu (the main form's) }
+    procedure PreviewViewMade(View: TSdRichView); virtual;
   end;
 
   TPageBridge = class(TSdSourceBridge)
@@ -137,6 +142,46 @@ type
     procedure GotoLine(Line: Integer); override;
   end;
 
+  { the views of a page, under its tabs in this order }
+  TPageViewKind = (pvCode, pvDesign, pvDiagram, pvPreview, pvHistory);
+
+  { what entering a view did: it is to be shown; the code is to be shown in its place (the designer
+    could not be made); nothing is to change (the form shows on another page) }
+  TPageViewEntry = (veShow, veCode, veStay);
+
+  { One view of a page under its tab: its caption, whether the page's file has it, the control that
+    shows it (made when it is first shown), what is brought up to date when it is entered, the
+    keyboard, its zoom, its bars on the page bar, and what it does when the page's text is replaced,
+    the file renamed or Editor Options change. A page has one of each kind and shows one at a time
+    (TEditorPage.ShowPageView): a new tab is a kind and a class of its own. The defaults: nothing to
+    bring up to date, the keyboard to FocusControl, the editors' zoom, the zoom bar alone, and a
+    view shown that the file no longer has gives way to the code }
+  TPageView = class
+  private
+    FPage: TEditorPage;
+  protected
+    function IsShown: Boolean;
+    function Kind: TPageViewKind;
+    procedure Refresh;
+    property Page: TEditorPage read FPage;
+  public
+    constructor Create(APage: TEditorPage); virtual;
+    function Tab: string; virtual; abstract;
+    function Available: Boolean; virtual; abstract;
+    function Control: TControl; virtual; abstract;          // nil: not made yet
+    function Enter: TPageViewEntry; virtual;
+    { it is shown: the keyboard to it when TakeFocus and the page's form is Active }
+    procedure Activate(TakeFocus, Active: Boolean); virtual;
+    procedure Shown; virtual;                               // after the page reported the change
+    function FocusControl: TWinControl; virtual;
+    function ZoomView: ISdZoomView; virtual;
+    procedure ArrangeBar; virtual;
+    procedure TextReplaced(FromDisk: Boolean); virtual;     // FromDisk: the file was read again
+    procedure Renamed; virtual;
+    procedure OptionsChanged; virtual;
+  end;
+  TPageViewClass = class of TPageView;
+
   { the page of a file: a frame, reused - one per open file (SdEditorPage.dfm: the design panel,
     the timers and their events); the editor, the Code / Design / Diagram tabs and the diagram,
     D7 Studio's own controls, are made in code. The editor is the file's text without a window of
@@ -162,14 +207,10 @@ type
     FPageBar: TSdPageBar;            // the page's tool bar (SdPageBar)
     FCodeArea: TWinControl;          // the code view: the slot
     FSlot: TSciSlot;                 // where the editor is shown
-    FViewTabs: TSdTabStrip;          // Code / Design / Diagram (themed tabs, as the dock's)
-    FDiagram: TSdDiagramView;        // the Diagram tab (made when it is first shown)
-    FDiagramView: Boolean;
-    FDiagramShown: Boolean;          // ... it was shown before: its selection and place stay
-    FHistory: TSdHistoryView;        // the History tab (made when it is first shown)
-    FHistoryView: Boolean;
-    FHistoryHost: TPageHistoryHost;
-    FKeptVersion: Integer;           // the text's TextVersion its last Unsaved version was taken of
+    FViewTabs: TSdTabStrip;          // the tabs of the views (themed tabs, as the dock's)
+    FViews: array[TPageViewKind] of TPageView;
+    FView: TPageViewKind;            // the view shown
+    FKeptVersion: Integer;          // the text's TextVersion its last Unsaved version was taken of
     FDesigner: TFormDesigner;
     FBridge: TPageBridge;
     FHasForm: Boolean;
@@ -182,7 +223,6 @@ type
       uses clause when the module is saved or compiled (AddPlacedUnits), not as they are placed }
     FPlacedUnits: TStringList;
     FEncodingChanged: Boolean;    // converted to another encoding, not saved yet
-    FDesignView: Boolean;
     FDesignFailed: Boolean;
     FFormTextPage: TEditorPage;  // View as Text: the page that shows this unit's form as text
     FFormOwner: TEditorPage;     // ... this page is it: the unit whose form it shows
@@ -228,6 +268,15 @@ type
     { a form's text as its file holds it: binary when the file is }
     function FormBytesOf(const Dfm: string): string;
     procedure DiagramGoto(Sender: TObject; Line, Col: Integer);
+    procedure PreviewLink(Sender: TObject; const Target: WideString);
+    procedure ShowViewOf(Kind: TPageViewKind; Value, TakeFocus: Boolean);
+    function GetDesignView: Boolean;
+    function GetDiagramView: Boolean;
+    function GetHistoryView: Boolean;
+    function GetPreviewView: Boolean;
+    function GetDiagram: TSdDiagramView;
+    function GetHistory: TSdHistoryView;
+    function GetPreview: TSdRichView;
     procedure EditorCharAdded(Sender: TObject; Ch: Integer);
     procedure EditorUpdateUI(Sender: TObject; Updated: Integer);
     procedure EditorViewApplied(Sender: TObject);
@@ -397,20 +446,28 @@ type
       the old class - and the page keeps the form's new text (NewDfm, as CurrentDfm gives it);
       the design view makes the designer again }
     procedure FormClassRenamed(const NewClass, NewDfm: string);
-    { Value: the design view; else the code (also from the Diagram tab) }
+    { the view Kind shown (its tab chosen), when the file has it; False: it is not shown (the code
+      may be in its place: the designer could not be made) }
+    function ShowPageView(Kind: TPageViewKind; TakeFocus: Boolean = True): Boolean;
+    { Value: the design view; else the code (also from the other views) }
     procedure ShowDesign(Value: Boolean; TakeFocus: Boolean = True);
-    { the Diagram tab: Value - the unit's classes, made again from its text; else
-      the code }
+    { the Diagram tab: Value - the unit's classes, made again from its text; else the code }
     procedure ShowDiagram(Value: Boolean; TakeFocus: Boolean = True);
     function CanDiagram: Boolean;          // a Pascal unit, program or package
     { the History tab: Value - the file's versions against its text now; else the code }
     procedure ShowHistory(Value: Boolean; TakeFocus: Boolean = True);
     { the file has a History tab: a file of the disk while Editor Options keep the files' history }
     function CanHistory: Boolean;
+    { the Preview tab: Value - the Markdown file rendered from its text as it is now; else the code }
+    procedure ShowPreview(Value: Boolean; TakeFocus: Boolean = True);
+    function CanPreview: Boolean;          // a Markdown file
+    { the code at the source's line Line (0-based; -1: as it is): the Code tab, the caret there }
+    procedure ShowSourceLine(Line: Integer);
     { the versions of the page's file or its form file changed (SdHistory.OnHistoryChanged) }
     procedure HistoryChanged;
-    { Editor Options changed: the History tab comes or goes, its windows take the options }
-    procedure HistoryOptionsChanged;
+    { Editor Options changed: each view takes them (the History tab comes or goes, the Preview tab's
+      code takes the editor's font and colours), the tabs follow }
+    procedure ViewOptionsChanged;
     { the text in the editor kept as a version of Kind (hkUnsaved, hkClosed, hkReloaded) - the
       unit's and its form's, each when it has changes not saved; hkUnsaved only when the text
       changed since the last one }
@@ -418,8 +475,8 @@ type
     { the unit and its form as the disk has them: a version of each that another program changed
       since its newest (SdHistory.HistoryCheckDisk) }
     procedure CheckHistoryDisk;
-    function CodeView: Boolean;            // the editor is shown (neither design, diagram nor history)
-    { the tab of the view shown: Code, Design, Diagram or History }
+    function CodeView: Boolean;            // the editor is shown (neither design, diagram, history nor preview)
+    { the tab of the view shown: Code, Design, Diagram, Preview or History }
     function ViewTab: string;
     { the navigation boxes over the code: on a Pascal file while Editor Options shows them }
     function NavigationWanted: Boolean;
@@ -478,11 +535,14 @@ type
     property Slot: TSciSlot read FSlot;
     property Designer: TFormDesigner read FDesigner;
     property HasForm: Boolean read FHasForm;
-    property DesignView: Boolean read FDesignView;
-    property DiagramView: Boolean read FDiagramView;
-    property Diagram: TSdDiagramView read FDiagram;      // nil until the tab was first shown
-    property HistoryView: Boolean read FHistoryView;
-    property History: TSdHistoryView read FHistory;      // nil until the tab was first shown
+    property View: TPageViewKind read FView;
+    property DesignView: Boolean read GetDesignView;
+    property DiagramView: Boolean read GetDiagramView;
+    property Diagram: TSdDiagramView read GetDiagram;    // nil until the tab was first shown
+    property HistoryView: Boolean read GetHistoryView;
+    property History: TSdHistoryView read GetHistory;    // nil until the tab was first shown
+    property PreviewView: Boolean read GetPreviewView;
+    property Preview: TSdRichView read GetPreview;       // nil until the tab was first shown
     property FormClass: string read FFormClass;
     property FormModified: Boolean read FFormModified;
     { the form file is text, else binary (the designer's Text DFM): a change is saved with the form }
@@ -527,8 +587,8 @@ implementation
 {$R *.dfm}
 
 uses
-  Proxies, Graphics, SdUI, SdProject, SdSettings, SdPasParser, SdEditorThemes, SdEditorOptions, SdCodeTemplates,
-  SdFormatter, SdFormatterOptions, SdPageFileSystem;
+  Proxies, Graphics, ShellAPI, SdUI, SdProject, SdSettings, SdPasParser, SdEditorThemes, SdEditorOptions,
+  SdCodeTemplates, SdFormatter, SdFormatterOptions, SdPageFileSystem, SdRichDoc, SdMarkdown;
 
 const
   MaxIdentText = 1024 * 1024;      // a larger text: the word's places by text, not by code insight
@@ -550,6 +610,7 @@ const
   DesignTab = 'Design';
   DiagramTab = 'Diagram';
   HistoryTab = 'History';
+  PreviewTab = 'Preview';
 
 type
   { the views of a page inside the views' flat 1 px frame: the page bar at the top, under it the
@@ -572,6 +633,83 @@ type
     procedure Paint; override;
   end;
 
+  { the page's views (TPageView): the code, the form designer, the Diagram, Preview and History tabs }
+  TCodePageView = class(TPageView)
+  public
+    function Tab: string; override;
+    function Available: Boolean; override;
+    function Control: TControl; override;
+    procedure Activate(TakeFocus, Active: Boolean); override;
+    procedure ArrangeBar; override;
+  end;
+
+  TDesignPageView = class(TPageView)
+  public
+    function Tab: string; override;
+    function Available: Boolean; override;
+    function Control: TControl; override;
+    function Enter: TPageViewEntry; override;
+    procedure Activate(TakeFocus, Active: Boolean); override;
+    function ZoomView: ISdZoomView; override;
+    procedure ArrangeBar; override;
+  end;
+
+  TDiagramPageView = class(TPageView)
+  private
+    FDiagram: TSdDiagramView;
+    FWasShown: Boolean;          // shown before: its selection and place stay
+  public
+    destructor Destroy; override;
+    function Tab: string; override;
+    function Available: Boolean; override;
+    function Control: TControl; override;
+    function Enter: TPageViewEntry; override;
+    function FocusControl: TWinControl; override;
+    function ZoomView: ISdZoomView; override;
+    procedure ArrangeBar; override;
+    procedure TextReplaced(FromDisk: Boolean); override;
+  end;
+
+  TPreviewPageView = class(TPageView)
+  private
+    FPreview: TSdRichView;
+    FWasShown: Boolean;          // shown before: its place stays
+    FVersion: Integer;           // the page's TextVersion it shows (-1: to be read again)
+  public
+    constructor Create(APage: TEditorPage); override;
+    destructor Destroy; override;
+    function Tab: string; override;
+    function Available: Boolean; override;
+    function Control: TControl; override;
+    function Enter: TPageViewEntry; override;
+    function FocusControl: TWinControl; override;
+    function ZoomView: ISdZoomView; override;
+    procedure TextReplaced(FromDisk: Boolean); override;
+    procedure Renamed; override;
+    procedure OptionsChanged; override;
+  end;
+
+  THistoryPageView = class(TPageView)
+  private
+    FHistory: TSdHistoryView;
+    FHost: TPageHistoryHost;
+  public
+    destructor Destroy; override;
+    function Tab: string; override;
+    function Available: Boolean; override;
+    function Control: TControl; override;
+    function Enter: TPageViewEntry; override;
+    procedure Shown; override;
+    function FocusControl: TWinControl; override;
+    procedure ArrangeBar; override;
+    procedure TextReplaced(FromDisk: Boolean); override;
+    procedure Renamed; override;
+    procedure OptionsChanged; override;
+  end;
+
+const
+  PageViewClasses: array[TPageViewKind] of TPageViewClass = (TCodePageView, TDesignPageView,
+    TDiagramPageView, TPreviewPageView, THistoryPageView);
 procedure TViewFrame.CreateParams(var Params: TCreateParams);
 begin
   inherited CreateParams(Params);
@@ -750,6 +888,14 @@ begin
 end;
 
 procedure TIDEServices.CICancel(Page: TEditorPage);
+begin
+end;
+
+procedure TIDEServices.OpenLink(Page: TEditorPage; const FileName: string; const Anchor: WideString);
+begin
+end;
+
+procedure TIDEServices.PreviewViewMade(View: TSdRichView);
 begin
 end;
 
@@ -1026,6 +1172,8 @@ end;
 { ---------------------------------------------------------------- TEditorPage }
 
 constructor TEditorPage.Create(AOwner: TComponent);
+var
+  K: TPageViewKind;
 begin
   inherited Create(AOwner);
   ControlStyle := ControlStyle - [csAcceptsControls] + [csOpaque];
@@ -1037,6 +1185,7 @@ begin
   FIdentAt := -1;
   FNamesVersion := -1;
   FErrorsVersion := -1;
+  for K := Low(TPageViewKind) to High(TPageViewKind) do FViews[K] := PageViewClasses[K].Create(Self);
   FViewTabs := TSdTabStrip.Create(Self);
   FViewTabs.Parent := Self;
   FViewTabs.Align := alBottom;
@@ -1080,6 +1229,8 @@ begin
 end;
 
 destructor TEditorPage.Destroy;
+var
+  K: TPageViewKind;
 begin
   DetachFormText;
   CloseCodePopups;
@@ -1090,9 +1241,8 @@ begin
   FUndo.Free;
   FRootExtra.Free;
   FPlacedUnits.Free;
-  { the History tab goes with the page's components (inherited): it asks its host nothing then }
-  FreeAndNil(FHistory);
-  FHistoryHost.Free;
+  { the views first, each with its control: the History tab must ask its host nothing then }
+  for K := Low(TPageViewKind) to High(TPageViewKind) do FreeAndNil(FViews[K]);
   inherited;
 end;
 
@@ -1456,6 +1606,7 @@ end;
 
 procedure TEditorPage.LoadFromFile(const AFileName: string);
 var
+  K: TPageViewKind;
   Dfm, N, C: string;
   E: TSdEncoding;
 begin
@@ -1498,9 +1649,7 @@ begin
   FKeptVersion := FTextVersion;
   UpdateViewTabs;
   FFormModified := False;
-  if FDiagramView then ShowDiagram(CanDiagram, False);    // the file was read again
-  if FHistoryView then
-    if CanHistory then FHistory.HistoryChanged else ShowDesign(False, False);
+  for K := Low(TPageViewKind) to High(TPageViewKind) do FViews[K].TextReplaced(True);   // the file was read again
 end;
 
 { a form file is text in the editor: a file system of files gives it as it is on the disk,
@@ -1547,6 +1696,8 @@ end;
   file's encoding) as the file's, not modified }
 procedure TEditorPage.TakeText(const AFileName, AFileSystem, Text: string; E: TSdEncoding;
   RO: Boolean; Age: Integer; Binary: Boolean);
+var
+  K: TPageViewKind;
 begin
   FFileName := AFileName;
   FUntitled := False;
@@ -1564,8 +1715,7 @@ begin
   FFormClass := '';
   UpdateViewTabs;
   FFormModified := False;
-  if FDiagramView then ShowDiagram(CanDiagram, False);
-  if FHistoryView and not CanHistory then ShowDesign(False, False);
+  for K := Low(TPageViewKind) to High(TPageViewKind) do FViews[K].TextReplaced(False);
 end;
 
 { an existing file shown with a text that is not read from it - a creator's of an existing file
@@ -1646,7 +1796,7 @@ begin
   if FUntitled then Exit;
   { the changes the reload lets go are kept as a version }
   if Modified then KeepVersion(hkReloaded);
-  Design := FDesignView;
+  Design := FView = pvDesign;
   if FDesigner <> nil then
   begin
     { the field is nil before the view changes: the page change ShowDesign reports must not
@@ -2209,6 +2359,7 @@ end;
   renamed module leaves the file system). Not the form's text of a unit (it is saved with its unit) }
 procedure TEditorPage.Rename(const NewFileName: string);
 var
+  K: TPageViewKind;
   Src, Old, NewName: string;
 begin
   if FFormOwner <> nil then Exit;
@@ -2229,8 +2380,7 @@ begin
   if FFormTextPage <> nil then FFormTextPage.FFileName := FormFileName;
   if FHasForm then FFormModified := True;
   FEditor.SetLanguageFromFile(FFileName);
-  if FDiagramView and not CanDiagram then ShowDesign(False);
-  if FHistoryView then FHistory.HistoryChanged;        // the versions of the file of the new name
+  for K := Low(TPageViewKind) to High(TPageViewKind) do FViews[K].Renamed;
   UpdateViewTabs;
   MarkModified;
 end;
@@ -2384,21 +2534,49 @@ begin
   end;
 end;
 
+function TEditorPage.ShowPageView(Kind: TPageViewKind; TakeFocus: Boolean): Boolean;
+var
+  Shown: TPageViewKind;
+begin
+  Result := False;
+  if not FViews[Kind].Available then Exit;
+  Shown := Kind;
+  case FViews[Kind].Enter of
+    veStay: Exit;
+    veCode: Shown := pvCode;
+  end;
+  CloseCodePopups;
+  FView := Shown;
+  ShowView(TakeFocus);
+  FViews[Shown].Shown;
+  Result := Shown = Kind;
+end;
+
 procedure TEditorPage.ShowDesign(Value: Boolean; TakeFocus: Boolean);
 begin
-  if Value and not FHasForm then Exit;
-  if Value and (FFormTextPage <> nil) then
-  begin
-    if IDE <> nil then IDE.ShowPage(FFormTextPage);
-    Exit;
-  end;
-  if Value and not EnsureDesigner then Value := False;
-  if Value then FollowAncestors;
-  CloseCodePopups;
-  FDesignView := Value;
-  FDiagramView := False;
-  FHistoryView := False;
-  ShowView(TakeFocus);
+  if Value then ShowPageView(pvDesign, TakeFocus) else ShowPageView(pvCode, TakeFocus);
+end;
+
+{ the view Kind shown (Value), or the code in its place while it is shown }
+procedure TEditorPage.ShowViewOf(Kind: TPageViewKind; Value, TakeFocus: Boolean);
+begin
+  if Value then ShowPageView(Kind, TakeFocus)
+  else if FView = Kind then ShowPageView(pvCode, TakeFocus);
+end;
+
+procedure TEditorPage.ShowDiagram(Value: Boolean; TakeFocus: Boolean);
+begin
+  ShowViewOf(pvDiagram, Value, TakeFocus);
+end;
+
+procedure TEditorPage.ShowHistory(Value: Boolean; TakeFocus: Boolean);
+begin
+  ShowViewOf(pvHistory, Value, TakeFocus);
+end;
+
+procedure TEditorPage.ShowPreview(Value: Boolean; TakeFocus: Boolean);
+begin
+  ShowViewOf(pvPreview, Value, TakeFocus);
 end;
 
 function TEditorPage.CanDiagram: Boolean;
@@ -2406,88 +2584,107 @@ begin
   Result := IsPascal and IsUnitFile;
 end;
 
-function TEditorPage.CodeView: Boolean;
-begin
-  Result := not FDesignView and not FDiagramView and not FHistoryView;
-end;
-
-procedure TEditorPage.ShowDiagram(Value: Boolean; TakeFocus: Boolean);
-var
-  Root: TCIStructNode;
-begin
-  if Value and not CanDiagram then Exit;
-  if not Value then
-  begin
-    if FDiagramView then ShowDesign(False, TakeFocus);
-    Exit;
-  end;
-  CloseCodePopups;
-  if FDiagram = nil then
-  begin
-    FDiagram := TSdDiagramView.Create(Self);
-    FDiagram.Visible := False;
-    FDiagram.Parent := FViewFrame;
-    FDiagram.Align := alClient;
-    FDiagram.OnGoto := DiagramGoto;
-  end;
-  { the classes of the text as it is now - it may have changed since the tab was last shown }
-  Root := nil;
-  if (IDE <> nil) and (IDE.CodeInsight <> nil) then Root := IDE.CodeInsight.GetStructure(FFileName, GetSource);
-  try
-    FDiagram.ShowStructure(Root, UnitName, FDiagramShown);
-  finally
-    Root.Free;
-  end;
-  FDiagramShown := True;
-  FDesignView := False;
-  FHistoryView := False;
-  FDiagramView := True;
-  ShowView(TakeFocus);
-end;
-
 function TEditorPage.CanHistory: Boolean;
 begin
   Result := HistoryEnabled and not FUntitled and (FFileSystem = '');
 end;
 
-procedure TEditorPage.ShowHistory(Value: Boolean; TakeFocus: Boolean);
+function TEditorPage.CanPreview: Boolean;
 begin
-  if Value and not CanHistory then Exit;
-  if not Value then
+  Result := FEditor.Language = slMarkdown;
+end;
+
+function TEditorPage.CodeView: Boolean;
+begin
+  Result := FView = pvCode;
+end;
+
+function TEditorPage.GetDesignView: Boolean;
+begin
+  Result := FView = pvDesign;
+end;
+
+function TEditorPage.GetDiagramView: Boolean;
+begin
+  Result := FView = pvDiagram;
+end;
+
+function TEditorPage.GetHistoryView: Boolean;
+begin
+  Result := FView = pvHistory;
+end;
+
+function TEditorPage.GetPreviewView: Boolean;
+begin
+  Result := FView = pvPreview;
+end;
+
+function TEditorPage.GetDiagram: TSdDiagramView;
+begin
+  Result := TDiagramPageView(FViews[pvDiagram]).FDiagram;
+end;
+
+function TEditorPage.GetHistory: TSdHistoryView;
+begin
+  Result := THistoryPageView(FViews[pvHistory]).FHistory;
+end;
+
+function TEditorPage.GetPreview: TSdRichView;
+begin
+  Result := TPreviewPageView(FViews[pvPreview]).FPreview;
+end;
+
+procedure TEditorPage.ViewOptionsChanged;
+var
+  K: TPageViewKind;
+begin
+  for K := Low(TPageViewKind) to High(TPageViewKind) do FViews[K].OptionsChanged;
+  UpdateViewTabs;
+end;
+procedure TEditorPage.ShowSourceLine(Line: Integer);
+begin
+  ShowDesign(False);
+  if Line >= 0 then GotoLine(Line + 1, 1);
+  if FEditor.CanFocus then FEditor.SetFocus;
+end;
+
+{ a link of the Preview tab (not one to a heading of its own, which it follows itself): an address
+  of the web in the browser, a file beside the Markdown file in the IDE (another Markdown file in
+  its Preview tab), a folder in Explorer }
+procedure TEditorPage.PreviewLink(Sender: TObject; const Target: WideString);
+var
+  Path: string;
+  Anchor: WideString;
+begin
+  if UIIsUrl(WideToIde(Target)) then
   begin
-    if FHistoryView then ShowDesign(False, TakeFocus);
+    UIOpenUrl(WideToIde(Target));
     Exit;
   end;
-  CloseCodePopups;
-  if FHistory = nil then
+  if WideLowerCase(Copy(Target, 1, 7)) = 'mailto:' then
   begin
-    FHistoryHost := TPageHistoryHost.Create;
-    FHistoryHost.FPage := Self;
-    FHistory := TSdHistoryView.Create(Self);
-    FHistory.Visible := False;
-    FHistory.Host := FHistoryHost;
-    FHistory.Parent := FViewFrame;
-    FHistory.Align := alClient;
-    if IDE <> nil then IDE.HistoryViewMade(FHistory);
+    ShellExecuteW(0, 'open', PWideChar(Target), nil, nil, SW_SHOWNORMAL);
+    Exit;
   end;
-  FDesignView := False;
-  FDiagramView := False;
-  FHistoryView := True;
-  ShowView(TakeFocus);
-  { the versions and the text now as they are (both may have changed since it was last shown) }
-  FHistory.Shown;
+  Path := RichLocalPath(ExtractFilePath(FFileName), Target, Anchor);
+  if Path = '' then Exit;
+  if SameText(Path, FFileName) then
+  begin
+    if Anchor <> '' then Preview.GotoAnchor(Anchor);
+  end
+  else if FileExistsU(Path) then
+  begin
+    if IDE <> nil then IDE.OpenLink(Self, Path, Anchor);
+  end
+  else if DirectoryExists(Path) then
+    ShowInExplorer(Path)
+  else if IDE <> nil then
+    IDE.ShowStatus('Not found: ' + Path);
 end;
 
 procedure TEditorPage.HistoryChanged;
 begin
-  if FHistory <> nil then FHistory.HistoryChanged;
-end;
-
-procedure TEditorPage.HistoryOptionsChanged;
-begin
-  if FHistory <> nil then FHistory.OptionsChanged;
-  if FHistoryView and not CanHistory then ShowDesign(False, False);
-  UpdateViewTabs;
+  if History <> nil then History.HistoryChanged;
 end;
 
 procedure TEditorPage.KeepVersion(Kind: THistoryKind);
@@ -2529,63 +2726,25 @@ begin
   if FDfmBinary then Result := DfmTextToBinary(Dfm) else Result := Dfm;
 end;
 
-{ the controls of the view chosen (FDesignView, FDiagramView, FHistoryView, else the code): the new
-  one is shown before the old ones go, so that the page's ground never shows between them }
+{ the control of the view chosen (FView): shown before the others go, so that the page's ground never
+  shows between them; the keyboard to it (the view's Activate) }
 procedure TEditorPage.ShowView(TakeFocus: Boolean);
 var
-  Views: array[0..3] of TControl;
+  K: TPageViewKind;
   Shown: TControl;
-  Focus: TWinControl;
-  I: Integer;
-  Active: Boolean;
 begin
-  { the view's control and what takes the keyboard when TakeFocus: the diagram, the timeline - the
-    code's editor at any rate, the designer's surface through the designer }
-  Focus := nil;
-  if FDesignView then Shown := DesignPanel
-  else if FDiagramView then
-  begin
-    Shown := FDiagram;
-    Focus := FDiagram;
-  end
-  else if FHistoryView then
-  begin
-    Shown := FHistory;
-    Focus := FHistory.Timeline;
-  end
-  else Shown := FCodeArea;
-  Views[0] := FCodeArea;
-  Views[1] := DesignPanel;
-  Views[2] := FDiagram;
-  Views[3] := FHistory;
+  Shown := FViews[FView].Control;
   Shown.Visible := True;
-  for I := 0 to High(Views) do
-    if (Views[I] <> nil) and (Views[I] <> Shown) then Views[I].Visible := False;
-  Active := (GetParentForm(Self) <> nil) and GetParentForm(Self).Active;
-  if Shown = FCodeArea then
-  begin
-    if FEditor.CanFocus and Active then FEditor.SetFocus;
-  end
-  else if FDesignView then
-  begin
-    if FDesigner <> nil then
-    begin
-      FDesigner.UpdateHelpers;
-      if TakeFocus then FDesigner.FocusSurface;
-    end;
-  end
-  else if TakeFocus and Focus.CanFocus and Active then
-    Focus.SetFocus;
+  for K := Low(TPageViewKind) to High(TPageViewKind) do
+    if (FViews[K].Control <> nil) and (FViews[K].Control <> Shown) then FViews[K].Control.Visible := False;
+  FViews[FView].Activate(TakeFocus, (GetParentForm(Self) <> nil) and GetParentForm(Self).Active);
   FViewTabs.TabIndex := FViewTabs.Tabs.IndexOf(ViewTab);
   if IDE <> nil then IDE.PageChanged(Self);
 end;
 
 function TEditorPage.ViewTab: string;
 begin
-  if FDesignView then Result := DesignTab
-  else if FDiagramView then Result := DiagramTab
-  else if FHistoryView then Result := HistoryTab
-  else Result := CodeTab;
+  Result := FViews[FView].Tab;
 end;
 
 function TEditorPage.NavigationWanted: Boolean;
@@ -2595,42 +2754,25 @@ end;
 
 function TEditorPage.ZoomView: ISdZoomView;
 begin
-  if FDesignView then Result := FDesigner
-  else if FDiagramView then Result := FDiagram
-  else Result := SdZoom.EditorZoom;          // the code, and the History tab's diff
+  Result := FViews[FView].ZoomView;
 end;
 
 procedure TEditorPage.ArrangePageBar;
-var
-  Nav: TWinControl;
 begin
-  if IDE = nil then Exit;
-  if FDesignView then
-    FPageBar.Arrange([IDE.ZoomBar, IDE.DesignerBar], nil)
-  else if FDiagramView then
-    FPageBar.Arrange([IDE.ZoomBar, IDE.DiagramBar], nil)
-  else if FHistoryView then
-    FPageBar.Arrange([IDE.ZoomBar, IDE.HistoryBar, FHistory.FilterBar], FHistory.FilterBar)
-  else
-  begin
-    if NavigationWanted then Nav := IDE.NavigationBar else Nav := nil;
-    FPageBar.Arrange([IDE.ZoomBar, IDE.CodeBar, Nav, IDE.MinimapBar], Nav);
-  end;
+  if IDE <> nil then FViews[FView].ArrangeBar;
 end;
 
-{ the tabs below the page: Code, Design for a unit with a form, Diagram for a Pascal unit,
-  program or package, History for a file of the disk while the files' history is kept; none for
-  one view alone. The navigation bar follows the file's kind too }
+{ the tabs below the page: those of the views the file has (TPageView.Available), in the kinds'
+  order; none for one view alone. The navigation bar follows the file's kind too }
 procedure TEditorPage.UpdateViewTabs;
 var
   Tabs: TStringList;
+  K: TPageViewKind;
 begin
   Tabs := TStringList.Create;
   try
-    Tabs.Add(CodeTab);
-    if FHasForm then Tabs.Add(DesignTab);
-    if CanDiagram then Tabs.Add(DiagramTab);
-    if CanHistory then Tabs.Add(HistoryTab);
+    for K := Low(TPageViewKind) to High(TPageViewKind) do
+      if FViews[K].Available then Tabs.Add(FViews[K].Tab);
     if not Tabs.Equals(FViewTabs.Tabs) then
     begin
       FViewTabs.Tabs.Assign(Tabs);
@@ -2656,33 +2798,27 @@ begin
   if FEditor.CanFocus then FEditor.SetFocus;
 end;
 
-{ F12: from the code to the design view and back; from the diagram or the history to the code }
+{ F12: from the code to the design view and back; from any other view to the code; from a Markdown
+  file's code to its preview }
 procedure TEditorPage.ToggleView;
 begin
-  if FDiagramView or FHistoryView then ShowDesign(False)
-  else if FHasForm then ShowDesign(not FDesignView);
+  if not (FView in [pvCode, pvDesign]) then ShowPageView(pvCode)
+  else if FHasForm then ShowDesign(FView <> pvDesign)
+  else ShowPageView(pvPreview);
 end;
 
-{ a click on a tab (ShowDesign chooses the tab of the view it could show) }
+{ a click on a tab: its view (ShowPageView chooses the tab of the view it could show) }
 procedure TEditorPage.ViewTabsChange(Sender: TObject);
 var
-  Tab: string;
+  K: TPageViewKind;
 begin
   if FViewTabs.TabIndex < 0 then Exit;
-  Tab := FViewTabs.Tabs[FViewTabs.TabIndex];
-  if Tab = DiagramTab then
-  begin
-    if not FDiagramView then ShowDiagram(True);
-  end
-  else if Tab = HistoryTab then
-  begin
-    if not FHistoryView then ShowHistory(True);
-  end
-  else if Tab = DesignTab then
-  begin
-    if not FDesignView then ShowDesign(True);
-  end
-  else if not CodeView then ShowDesign(False);
+  for K := Low(TPageViewKind) to High(TPageViewKind) do
+    if FViews[K].Tab = FViewTabs.Tabs[FViewTabs.TabIndex] then
+    begin
+      if K <> FView then ShowPageView(K);
+      Exit;
+    end;
 end;
 { --- code insight --- }
 
@@ -2851,7 +2987,7 @@ var
   S, I, Exact, N: Integer;
   Word, ID: string;
 begin
-  if FDesignView or (CompletionPopup = nil) then Exit;
+  if DesignView or (CompletionPopup = nil) then Exit;
   S := FEditor.CaretPos;
   while (S > 0) and FEditor.IsIdentChar(FEditor.CharAt(S - 1)) do Dec(S);
   Word := FEditor.GetRange(S, FEditor.CaretPos);
@@ -2938,7 +3074,7 @@ var
   S, P, LineStart: Integer;
 begin
   AutoTimer.Enabled := False;
-  if not EditorOptions.AutoComplete or FDesignView or not Visible or not IsPascal then Exit;
+  if not EditorOptions.AutoComplete or DesignView or not Visible or not IsPascal then Exit;
   if (CompletionPopup = nil) or CompletionPopup.Active then Exit;
   W := AutoPrefixAtCaret(S);
   if (Length(W) < 2) or IsPascalKeyword(W) or (S = FAutoDismissed) then Exit;
@@ -3682,6 +3818,388 @@ begin
     IDE.EditorContextMenu(Self, FEditor.ClientToScreen(Point(X, Y)));
 end;
 
+{ ---------------------------------------------------------------- the page's views }
+
+constructor TPageView.Create(APage: TEditorPage);
+begin
+  inherited Create;
+  FPage := APage;
+end;
+
+function TPageView.IsShown: Boolean;
+begin
+  Result := FPage.FViews[FPage.FView] = Self;
+end;
+
+function TPageView.Kind: TPageViewKind;
+var
+  K: TPageViewKind;
+begin
+  Result := pvCode;
+  for K := Low(TPageViewKind) to High(TPageViewKind) do
+    if FPage.FViews[K] = Self then Result := K;
+end;
+
+{ shown, made again from the page's text as it is now - or the code in its place when the file no
+  longer has it }
+procedure TPageView.Refresh;
+begin
+  if not IsShown then Exit;
+  if Available then FPage.ShowPageView(Kind, False) else FPage.ShowPageView(pvCode, False);
+end;
+
+function TPageView.Enter: TPageViewEntry;
+begin
+  Result := veShow;
+end;
+
+procedure TPageView.Activate(TakeFocus, Active: Boolean);
+var
+  F: TWinControl;
+begin
+  F := FocusControl;
+  if TakeFocus and Active and (F <> nil) and F.CanFocus then F.SetFocus;
+end;
+
+procedure TPageView.Shown;
+begin
+end;
+
+function TPageView.FocusControl: TWinControl;
+begin
+  Result := nil;
+end;
+
+function TPageView.ZoomView: ISdZoomView;
+begin
+  Result := SdZoom.EditorZoom;
+end;
+
+procedure TPageView.ArrangeBar;
+begin
+  FPage.FPageBar.Arrange([IDE.ZoomBar], nil);
+end;
+
+procedure TPageView.TextReplaced(FromDisk: Boolean);
+begin
+  if IsShown and not Available then FPage.ShowPageView(pvCode, False);
+end;
+
+procedure TPageView.Renamed;
+begin
+  if IsShown and not Available then FPage.ShowPageView(pvCode);
+end;
+
+procedure TPageView.OptionsChanged;
+begin
+  if IsShown and not Available then FPage.ShowPageView(pvCode, False);
+end;
+
+{ the code: the editor over the page's slot, the navigation boxes over a Pascal file's code }
+
+function TCodePageView.Tab: string;
+begin
+  Result := CodeTab;
+end;
+
+function TCodePageView.Available: Boolean;
+begin
+  Result := True;
+end;
+
+function TCodePageView.Control: TControl;
+begin
+  Result := FPage.FCodeArea;
+end;
+
+{ the editor takes the keyboard whenever the page's form is active }
+procedure TCodePageView.Activate(TakeFocus, Active: Boolean);
+begin
+  if FPage.FEditor.CanFocus and Active then FPage.FEditor.SetFocus;
+end;
+
+procedure TCodePageView.ArrangeBar;
+var
+  Nav: TWinControl;
+begin
+  if FPage.NavigationWanted then Nav := IDE.NavigationBar else Nav := nil;
+  FPage.FPageBar.Arrange([IDE.ZoomBar, IDE.CodeBar, Nav, IDE.MinimapBar], Nav);
+end;
+
+{ the form designer of a unit with a form; the form shown as text on another page is shown there }
+
+function TDesignPageView.Tab: string;
+begin
+  Result := DesignTab;
+end;
+
+function TDesignPageView.Available: Boolean;
+begin
+  Result := FPage.FHasForm;
+end;
+
+function TDesignPageView.Control: TControl;
+begin
+  Result := FPage.DesignPanel;
+end;
+
+function TDesignPageView.Enter: TPageViewEntry;
+begin
+  if FPage.FFormTextPage <> nil then
+  begin
+    if IDE <> nil then IDE.ShowPage(FPage.FFormTextPage);
+    Result := veStay;
+  end
+  else if not FPage.EnsureDesigner then
+    Result := veCode
+  else
+  begin
+    FPage.FollowAncestors;
+    Result := veShow;
+  end;
+end;
+
+procedure TDesignPageView.Activate(TakeFocus, Active: Boolean);
+begin
+  if FPage.FDesigner = nil then Exit;
+  FPage.FDesigner.UpdateHelpers;
+  if TakeFocus then FPage.FDesigner.FocusSurface;
+end;
+
+function TDesignPageView.ZoomView: ISdZoomView;
+begin
+  Result := FPage.FDesigner;
+end;
+
+procedure TDesignPageView.ArrangeBar;
+begin
+  FPage.FPageBar.Arrange([IDE.ZoomBar, IDE.DesignerBar], nil);
+end;
+
+{ the Diagram tab: the unit's classes, made again from its text whenever it is shown }
+
+destructor TDiagramPageView.Destroy;
+begin
+  FreeAndNil(FDiagram);
+  inherited Destroy;
+end;
+
+function TDiagramPageView.Tab: string;
+begin
+  Result := DiagramTab;
+end;
+
+function TDiagramPageView.Available: Boolean;
+begin
+  Result := FPage.CanDiagram;
+end;
+
+function TDiagramPageView.Control: TControl;
+begin
+  Result := FDiagram;
+end;
+
+function TDiagramPageView.Enter: TPageViewEntry;
+var
+  Root: TCIStructNode;
+begin
+  if FDiagram = nil then
+  begin
+    FDiagram := TSdDiagramView.Create(FPage);
+    FDiagram.Visible := False;
+    FDiagram.Parent := FPage.FViewFrame;
+    FDiagram.Align := alClient;
+    FDiagram.OnGoto := FPage.DiagramGoto;
+  end;
+  { the classes of the text as it is now - it may have changed since the tab was last shown }
+  Root := nil;
+  if (IDE <> nil) and (IDE.CodeInsight <> nil) then Root := IDE.CodeInsight.GetStructure(FPage.FFileName, FPage.GetSource);
+  try
+    FDiagram.ShowStructure(Root, FPage.UnitName, FWasShown);
+  finally
+    Root.Free;
+  end;
+  FWasShown := True;
+  Result := veShow;
+end;
+
+function TDiagramPageView.FocusControl: TWinControl;
+begin
+  Result := FDiagram;
+end;
+
+function TDiagramPageView.ZoomView: ISdZoomView;
+begin
+  Result := FDiagram;
+end;
+
+procedure TDiagramPageView.ArrangeBar;
+begin
+  FPage.FPageBar.Arrange([IDE.ZoomBar, IDE.DiagramBar], nil);
+end;
+
+procedure TDiagramPageView.TextReplaced(FromDisk: Boolean);
+begin
+  Refresh;
+end;
+
+{ the Preview tab of a Markdown file: the editor's text read again only when it changed (or the file
+  was read again or moved) }
+
+constructor TPreviewPageView.Create(APage: TEditorPage);
+begin
+  inherited Create(APage);
+  FVersion := -1;
+end;
+
+destructor TPreviewPageView.Destroy;
+begin
+  FreeAndNil(FPreview);
+  inherited Destroy;
+end;
+
+function TPreviewPageView.Tab: string;
+begin
+  Result := PreviewTab;
+end;
+
+function TPreviewPageView.Available: Boolean;
+begin
+  Result := FPage.CanPreview;
+end;
+
+function TPreviewPageView.Control: TControl;
+begin
+  Result := FPreview;
+end;
+
+function TPreviewPageView.Enter: TPageViewEntry;
+begin
+  if FPreview = nil then
+  begin
+    FPreview := TSdRichView.Create(FPage);
+    FPreview.Visible := False;
+    FPreview.Parent := FPage.FViewFrame;
+    FPreview.Align := alClient;
+    FPreview.OnLink := FPage.PreviewLink;
+    if IDE <> nil then IDE.PreviewViewMade(FPreview);
+  end;
+  if (FPreview.Document = nil) or (FVersion <> FPage.FTextVersion) or
+    (FPreview.BaseFolder <> ExtractFilePath(FPage.FFileName)) then
+  begin
+    FPreview.BaseFolder := ExtractFilePath(FPage.FFileName);
+    FPreview.SetDocument(ParseMarkdown(EditorToWide(FPage.GetSource, FPage.Encoding)), FWasShown);
+    FVersion := FPage.FTextVersion;
+  end;
+  FWasShown := True;
+  Result := veShow;
+end;
+
+function TPreviewPageView.FocusControl: TWinControl;
+begin
+  Result := FPreview;
+end;
+
+function TPreviewPageView.ZoomView: ISdZoomView;
+begin
+  Result := FPreview;
+end;
+
+procedure TPreviewPageView.TextReplaced(FromDisk: Boolean);
+begin
+  FVersion := -1;
+  Refresh;
+end;
+
+{ its pictures and links from the new folder }
+procedure TPreviewPageView.Renamed;
+begin
+  Refresh;
+end;
+
+{ its code takes the editor's font and colours }
+procedure TPreviewPageView.OptionsChanged;
+begin
+  if FPreview <> nil then FPreview.OptionsChanged;
+  inherited OptionsChanged;
+end;
+
+{ the History tab: the file's versions against its text now }
+
+destructor THistoryPageView.Destroy;
+begin
+  { the view first: it must ask its host nothing then }
+  FreeAndNil(FHistory);
+  FHost.Free;
+  inherited Destroy;
+end;
+
+function THistoryPageView.Tab: string;
+begin
+  Result := HistoryTab;
+end;
+
+function THistoryPageView.Available: Boolean;
+begin
+  Result := FPage.CanHistory;
+end;
+
+function THistoryPageView.Control: TControl;
+begin
+  Result := FHistory;
+end;
+
+function THistoryPageView.Enter: TPageViewEntry;
+begin
+  if FHistory = nil then
+  begin
+    FHost := TPageHistoryHost.Create;
+    FHost.FPage := FPage;
+    FHistory := TSdHistoryView.Create(FPage);
+    FHistory.Visible := False;
+    FHistory.Host := FHost;
+    FHistory.Parent := FPage.FViewFrame;
+    FHistory.Align := alClient;
+    if IDE <> nil then IDE.HistoryViewMade(FHistory);
+  end;
+  Result := veShow;
+end;
+
+{ the versions and the text now as they are (both may have changed since it was last shown) }
+procedure THistoryPageView.Shown;
+begin
+  FHistory.Shown;
+end;
+
+function THistoryPageView.FocusControl: TWinControl;
+begin
+  Result := FHistory.Timeline;
+end;
+
+procedure THistoryPageView.ArrangeBar;
+begin
+  FPage.FPageBar.Arrange([IDE.ZoomBar, IDE.HistoryBar, FHistory.FilterBar], FHistory.FilterBar);
+end;
+
+procedure THistoryPageView.TextReplaced(FromDisk: Boolean);
+begin
+  if not IsShown then Exit;
+  if not Available then FPage.ShowPageView(pvCode, False)
+  else if FromDisk then FHistory.HistoryChanged;
+end;
+
+{ the versions of the file of the new name }
+procedure THistoryPageView.Renamed;
+begin
+  if IsShown then FHistory.HistoryChanged;
+end;
+
+{ its windows take the options; the tab goes when the files' history is no longer kept }
+procedure THistoryPageView.OptionsChanged;
+begin
+  if FHistory <> nil then FHistory.OptionsChanged;
+  inherited OptionsChanged;
+end;
 initialization
   HistoryTextOf := HistoryText;
 end.

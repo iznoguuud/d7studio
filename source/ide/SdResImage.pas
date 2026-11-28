@@ -118,6 +118,9 @@ function PictureToImage(const Data: string): TSdImage;
 { a 32-bit DIB with a BITMAPV5HEADER and an alpha mask - the clipboard's CF_DIBV5, which other
   programs read with its transparency }
 function ImageToDibV5(Img: TSdImage): string;
+{ the image as a 32-bit DIB section of its pixels premultiplied by their alpha - what AlphaBlend and
+  UIAlphaDraw take; 0 when it cannot be made. The caller deletes it }
+function ImageToPremultipliedDib(Img: TSdImage): HBITMAP;
 
 { the image at another size, as a new image of its format: Smooth averages the pixels it covers
   (with their alpha) when it gets smaller and interpolates when it gets larger, else each pixel
@@ -1211,6 +1214,28 @@ begin
   else
     E.Data := Data;
   EntryInfo(E);
+end;
+
+{ ---------------------------------------------------------------- premultiplied pixels }
+
+function ImageToPremultipliedDib(Img: TSdImage): HBITMAP;
+var
+  Bits: PCardinal;
+  I: Integer;
+  P, A: Cardinal;
+begin
+  Result := UICreateDib32(Img.Width, Img.Height, Bits);
+  if Result = 0 then Exit;
+  for I := 0 to Img.Width * Img.Height - 1 do
+  begin
+    P := Img.Pixels[I];
+    A := P shr 24;
+    if A < 255 then
+      P := A shl 24 or ((P shr 16 and $FF) * A div 255) shl 16 or
+        ((P shr 8 and $FF) * A div 255) shl 8 or (P and $FF) * A div 255;
+    Bits^ := P;
+    Inc(Bits);
+  end;
 end;
 
 { ---------------------------------------------------------------- the clipboard's DIB }

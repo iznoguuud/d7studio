@@ -81,7 +81,7 @@ var
 implementation
 
 uses
-  CommCtrl, SdUI, SdDelphiDir, SdRepository, SdOtaServices, SdOtaLegacy;
+  CommCtrl, SdUI, SdDelphiDir, SdFileNames, SdRepository, SdOtaServices, SdOtaLegacy;
 
 {$R *.dfm}
 
@@ -109,12 +109,6 @@ const
     (N: 'Service Application'; I: iiServiceApp),
     (N: 'Web Server Application'; I: iiWebServerApp),
     (N: 'XML Data Binding'; I: iiXmlBinding));
-
-{ a file of the folder Folder (with its trailing backslash) or below it }
-function InFolder(const FileName, Folder: string): Boolean;
-begin
-  Result := (FileName <> '') and SameText(Copy(ExpandFileName(FileName), 1, Length(Folder)), Folder);
-end;
 
 { the icon for a wizard of one of Delphi 7's own packages (its code in a package of Delphi's Bin - a
   Delphi 1-3 expert's that D7 Studio wraps too); False for any other wizard, which keeps its glyph }
@@ -181,7 +175,7 @@ begin
       It.Description := R.Values['Description'];
       { an icon file of Delphi's folder is Delphi's own: the item gets D7 Studio's }
       It.IconFile := ExpandDelphiMacros(R.Values['Icon']);
-      if InFolder(It.IconFile, DelphiRoot) then It.IconFile := '';
+      if (It.IconFile <> '') and PathIsUnder(ExpandFileName(It.IconFile), DelphiRoot) then It.IconFile := '';
       if Pages.IndexOf(It.Page) < 0 then Pages.Add(It.Page);
       Items.Add(It);
     end;

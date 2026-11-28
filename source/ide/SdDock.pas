@@ -528,7 +528,9 @@ type
     function AddColumn(Base: TSdDockArea): TSdDockArea;
     procedure PlaceColumn(A: TSdDockArea; Loading: Boolean);
     function ColumnRect(A: TSdDockArea): TRect;
+    {$HINTS OFF}
     function EdgeBand(const R: TRect; Edge: TSdDockEdge): TRect;
+    {$HINTS ON}
     function DragWhole: TSdDockGroup;
     function ColumnNamed(const AName: string): TSdDockArea;
     procedure DropEmptyColumns;

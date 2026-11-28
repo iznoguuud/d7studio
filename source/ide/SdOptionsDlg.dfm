@@ -109,6 +109,7 @@ object OptionsDlg: TOptionsDlg
     BevelOuter = bvNone
     TabOrder = 1
     ParentColor = True
+    ParentBackground = False
   end
   object pnlFooter: TPanel
     Left = 0

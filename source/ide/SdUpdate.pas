@@ -85,8 +85,9 @@ function ParseRelease(const Json: string; out R: TSdRelease): Boolean;
   (False: none), its Notes those of every published release newer than Since up to it, newest first,
   each under its title and without what follows its rule ('---': the release's files) }
 function ParseReleases(const Json, Since: string; out Latest: TSdRelease): Boolean;
-{ release notes in Markdown as plain text: the lines of a paragraph or a list item joined, headings
-  and items without their marks, no emphasis or code marks, rules as blank lines }
+{ release notes in Markdown as plain text (SdMarkdown): the lines of a paragraph or a list item
+  joined, headings without their marks, items after "- ", no emphasis or code marks, links as their
+  text, a blank line between the blocks }
 function MarkdownToText(const Notes: string): string;
 { the SHA-256 of the file in lowercase hex; '' when it cannot be read }
 function FileSha256(const FileName: string): string;
@@ -104,7 +105,7 @@ function RunUpdateSetup(const FileName: string): Boolean;
 implementation
 
 uses
-  ShellAPI, BCrypt, SdSettings, SdEnvOptions, SdFileNames, SdEncoding, SdUI, SdAboutDlg;
+  ShellAPI, BCrypt, SdSettings, SdEnvOptions, SdFileNames, SdEncoding, SdUI, SdAboutDlg, SdMarkdown;
 
 function CurrentVersion: string;
 begin
@@ -533,59 +534,8 @@ end;
 { ---------------------------------------------------------------- notes }
 
 function MarkdownToText(const Notes: string): string;
-var
-  L, Out: TStringList;
-  Para, T: string;
-  I: Integer;
-
-  procedure Flush;
-  begin
-    if Para <> '' then Out.Add(Para);
-    Para := '';
-  end;
-
-  procedure Blank;
-  begin
-    Flush;
-    if (Out.Count > 0) and (Out[Out.Count - 1] <> '') then Out.Add('');
-  end;
-
 begin
-  L := TStringList.Create;
-  Out := TStringList.Create;
-  try
-    L.Text := Notes;
-    Para := '';
-    for I := 0 to L.Count - 1 do
-    begin
-      T := Trim(L[I]);
-      if (T = '') or (T = '---') or (T = '***') or (T = '___') then
-        Blank
-      else if T[1] = '#' then
-      begin
-        Flush;
-        while (T <> '') and (T[1] = '#') do Delete(T, 1, 1);
-        Out.Add(Trim(T));
-      end
-      else if (Length(T) > 1) and (T[1] in ['-', '*', '+']) and (T[2] = ' ') then
-      begin
-        Flush;
-        Para := '- ' + Trim(Copy(T, 3, MaxInt));
-      end
-      else if Para <> '' then
-        Para := Para + ' ' + T
-      else
-        Para := T;
-    end;
-    Flush;
-    while (Out.Count > 0) and (Out[Out.Count - 1] = '') do Out.Delete(Out.Count - 1);
-    Result := Out.Text;
-  finally
-    Out.Free;
-    L.Free;
-  end;
-  Result := StringReplace(Result, '**', '', [rfReplaceAll]);
-  Result := StringReplace(Result, '`', '', [rfReplaceAll]);
+  Result := WideToIde(MarkdownToPlainText(IdeTextToWide(Notes)));
 end;
 
 { ---------------------------------------------------------------- files }

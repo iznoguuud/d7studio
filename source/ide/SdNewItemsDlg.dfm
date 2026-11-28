@@ -43,6 +43,7 @@ object NewItemsDlg: TNewItemsDlg
       BevelOuter = bvNone
       ParentColor = True
       TabOrder = 0
+      ParentBackground = False
       object RReference: TRadioButton
         Left = 151
         Top = 6

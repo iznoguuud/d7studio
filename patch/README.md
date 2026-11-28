@@ -4,6 +4,11 @@ The patch turns an installed Delphi 7 (Update 1) into the modernized RTL/VCL. It
 `out\Patch\`, and `build.ps1` writes it from scratch on every run. This document explains where
 each of its bytes comes from. Paths are relative to the project's `modern` folder.
 
+It comes in two **variants**, `Update1` and `Update1b`, one for each Delphi 7 Update 1 build it
+installs into. Their RTL/VCL binaries, and the interfaces of some of their units, differ, so compiled
+units and packages made on one do not fit the other's `Lib`: the build runs every step below once
+for each, on that Delphi 7, from the same `source\`.
+
 **There is no decompilation step.** No part of the build decompiles, disassembles or
 reverse-engineers Borland's code:
 
@@ -26,10 +31,11 @@ Borland's files with the patched ones on your own disk, and reports the audit ma
 
 | Item | What it is |
 |---|---|
-| `Delta\<path>.delta` | For each modernized file that replaces one of Delphi 7 Update 1's: the difference that turns Borland's file into the modernized one. `<path>` is relative to Delphi 7's folder (`Bin\rtl70.bpl`, `Lib\Forms.dcu`, `Source\Vcl\Forms.pas` ...). |
-| `New\<path>` | Files Delphi 7 does not have, whole: this project's new units, as sources and compiled, with the resources and DLLs built from them. None of them is part of Delphi 7. |
-| `manifest.txt` | One line per file: its kind, its path, the SHA-256 of the Borland file it is made from (deltas only), its own SHA-256 and its size. |
-| `patch.ps1` | Applies the patch to an installed Delphi 7 and takes it back. |
+| `Update1\`, `Update1b\` | The two variants, each with the three items below. |
+| `<variant>\Delta\<path>.delta` | For each modernized file that replaces one of that Delphi 7's: the difference that turns its file into the modernized one. `<path>` is relative to Delphi 7's folder (`Bin\rtl70.bpl`, `Lib\Forms.dcu`, `Source\Vcl\Forms.pas` ...). |
+| `<variant>\New\<path>` | Files Delphi 7 does not have, whole: this project's new units, as sources and compiled, with the resources and DLLs built from them. None of them is part of Delphi 7. |
+| `<variant>\manifest.txt` | One line per file: its kind, its path, the SHA-256 of the file of that Delphi 7 it is made from (deltas only), its own SHA-256 and its size. |
+| `patch.ps1` | Applies the variant whose files the installed Delphi 7 has, and takes the patch back. |
 | `README.md` | This document. |
 | `MODERNIZATION.md` | What the patch installs: the modernized RTL/VCL's features and what a developer should know. D7 Studio's Setup installs it into Delphi 7's `Bin`. |
 | `PATCH-AUDIT.md` | How to check the patch yourself: since it cannot carry Borland's code, you compare Borland's files with the patched ones on your own disk, with an AI agent and a ready-made prompt; then the report of the audit made that way. D7 Studio's Setup installs it into Delphi 7's `Bin`. |
@@ -62,29 +68,30 @@ compiled units, packages or DLLs.
 
 ## The inputs
 
-1. **`source\`**: the modernized source files: Borland's RTL/VCL sources, changed, and new
-   units.
-2. **The installed Delphi 7**: its compiler (`dcc32`), its resource compiler (`brcc32`), its
-   compiled units in `Lib`, and the source of `SysInit` (`Source\Rtl\Sys\SysInit.pas`), which
-   `System` must be compiled with.
-3. **`original\`**: Delphi 7 Update 1's own copies of the files that the build replaces, kept
-   so that the deltas are always made against the same files. `update1.sha256` lists them with
-   their SHA-256.
+1. **`source\`**: the modernized source files: Borland's Delphi 7 Update 1 RTL/VCL sources,
+   changed, and new units. The same for both variants.
+2. **Each variant's installed Delphi 7**: its compiler (`dcc32`, run with a `dcc32.cfg` of the
+   build's own that names that installation's `Lib`), its resource compiler (`brcc32`), its
+   compiled units and resources in `Lib`, and the source of `SysInit`
+   (`Source\Rtl\Sys\SysInit.pas`), which `System` must be compiled with.
+3. **`original\<variant>\`**: that Delphi 7's own copies of the files that the build replaces,
+   kept so that the deltas are always made against the same files. A list per variant names them
+   with their SHA-256.
 
 ## The steps
 
 ### 1. Check the originals
 
-Every file in `update1.sha256` must be in `original\` with exactly its listed SHA-256. A missing
-file is copied from the installation first. The six runtime packages (`rtl70.bpl`, `vcl70.bpl`,
-`vclx70.bpl`, `dbrtl70.bpl`, `vcldb70.bpl`, `vclactnband70.bpl`) must also carry Borland's version
-information with Update 1's file versions. If any check fails, the build stops before anything is
+Every file in a variant's list must be in `original\<variant>\` with exactly its listed SHA-256. A
+missing file is copied from that installation first. The six runtime packages (`rtl70.bpl`,
+`vcl70.bpl`, `vclx70.bpl`, `dbrtl70.bpl`, `vcldb70.bpl`, `vclactnband70.bpl`) must also carry
+Borland's version information with Update 1's file versions. If any check fails, the build stops before anything is
 written.
 
 ### 2. Compile the units
 
-Delphi 7's compiler compiles `source\` twice: once without debug information (into `out\Lib`) and
-once with it (into `out\Lib\Debug`). It uses the same switches as Borland's own RTL makefile, with
+Delphi 7's compiler compiles `source\` twice: once without debug information (into
+`out\<variant>\Lib`) and once with it (into `out\<variant>\Lib\Debug`). It uses the same switches as Borland's own RTL makefile, with
 assertions off as in Borland's shipped units. `System` is compiled first, together with `SysInit`'s
 source. The other units follow, and the units that `source\` does not change come from the
 installation's `Lib`, already compiled. The resource scripts (the manifests) are compiled into
@@ -100,11 +107,15 @@ them. A Delphi package carries two resources that describe it:
 - `DESCRIPTION`: its description text.
 
 Together with the load address in the file header, that is everything a `.dpk` declares. The build
-reads these values from Borland's package in `original\Bin` and writes a `.dpk` that lists the same
-units in the same order, and adds some of the new units to the `rtl` package.
+reads these values from the installation's package in `original\<variant>\Bin` and writes a `.dpk`
+that lists the same units in the same order, and adds some of the new units to the `rtl` package.
 
-The compiler then builds each package from the units compiled in step 2. Borland's compiled units
-are used for the units that `source\` does not change.
+The compiler then builds each package from the units compiled in step 2. The installation's compiled
+units are used for the units that `source\` does not change. Borland's Delphi 7 ships two units of
+its `rtl70.bpl`, `VarHlpr` and `StrHlpr` (helpers for C++Builder), neither compiled nor as source:
+they exist there only inside the package. Where a variant's Delphi 7 lacks them, they are compiled
+from Borland's sources of them that the other variant's Delphi 7 ships, into the package and its
+`.dcp` only, as Borland's package holds them.
 
 Two checks follow:
 
@@ -120,38 +131,47 @@ from their project files in `source\Rtl\Sys`.
 
 ### 5. Copy the sources
 
-`source\` is copied to `out\Source\`, so that the sources installed in Delphi 7's `Source` are the
-ones the compiled units were made from.
+`source\` is copied to `out\Source\` (once, for both variants), so that the sources installed in
+Delphi 7's `Source` are the ones the compiled units were made from.
 
 ### 6. Make the deltas and the manifest
 
-Every file in `out\Bin`, `out\Lib` and `out\Source` is handled in one of three ways:
+For each variant, every file in `out\<variant>\Bin`, `out\<variant>\Lib` and `out\Source` is
+handled in one of four ways, into `out\Patch\<variant>\`:
 
-- **It replaces a file listed in `update1.sha256`.** Windows' delta compression (`msdelta.dll`)
-  records how it differs from Borland's file in `original\`. For packages and DLLs it uses its
+- **It replaces a file listed in the variant's list.** Windows' delta compression (`msdelta.dll`)
+  records how it differs from that Delphi 7's file in `original\<variant>\`. For packages and DLLs it uses its
   executable mode, which allows for addresses that shift between two builds of a program, so that
   a routine that moved does not make every reference to it a difference. The result is a smaller
   delta, not a description of the code. The delta is then applied to Borland's file at once, and
   the result must equal the compiled file byte for byte. If it does not, the build fails.
 - **It is new to Delphi 7.** It is copied whole to `New\`.
-- **It would replace a Borland file that `update1.sha256` does not list.** The build stops,
-  because the patch would otherwise contain a Borland file's replacement whole. With
-  `-CopyOriginal`, that Borland file is taken into `original\` and the list, and the file gets a
-  delta like the others.
+- **It would replace a Borland file that the list does not name.** The build stops, because the
+  patch would otherwise contain a Borland file's replacement whole. With `-CopyOriginal`, that
+  Borland file is taken into `original\<variant>\` and the list, and the file gets a delta like the
+  others.
+- **It is the compiled unit of a Borland unit that this Delphi 7 ships as source only** (`Ole2` in
+  Borland's Delphi 7). It is left out: no whole file compiled from Borland's sources goes into the
+  patch.
 
-Last, `manifest.txt` is written, and `patch.ps1`, this `README.md`, `MODERNIZATION.md` and `PATCH-AUDIT.md` are copied next to it.
+Last, each variant's `manifest.txt` is written, and `patch.ps1`, this `README.md`,
+`MODERNIZATION.md` and `PATCH-AUDIT.md` are copied beside the variants' folders.
 
 ## Applying it
 
 `patch.ps1` runs on the user's machine, and D7 Studio's installer runs the same script. Before it
 changes anything, it:
 
-- checks that the six packages are Update 1's;
-- checks that each Borland file it applies a delta to has the SHA-256 the manifest names;
-- applies every delta in a temporary folder and checks each result's SHA-256.
+- checks that the six packages have Update 1's versions;
+- picks the variant whose manifest names, for every file it applies a delta to, the SHA-256 that
+  Delphi 7's file has;
+- applies every delta of that variant in a temporary folder and checks each result's SHA-256.
 
 Only then does it back up the Borland files into `<Delphi 7>\D7Studio\Backup` and write the new
-ones. `patch.ps1 -Restore` puts the backup back.
+ones. The six runtime packages are also replaced in the 32-bit system folder (`SysWOW64`) when
+Delphi 7's installer put them there, as Windows looks for packages in that folder before the
+`PATH`; their originals go to `Backup\System`. `patch.ps1 -Restore` puts the backup back.
 
-A Delphi 7 whose files are not exactly Update 1's is refused and left unchanged. A delta made
+A Delphi 7 whose files are not exactly those of one of the variants' Delphi 7 is refused and left
+unchanged. A delta made
 against one file cannot rebuild another.

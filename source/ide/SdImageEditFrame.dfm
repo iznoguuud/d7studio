@@ -153,6 +153,7 @@ object ImageEditFrame: TImageEditFrame
     BevelOuter = bvNone
     ParentColor = True
     TabOrder = 1
+    ParentBackground = False
     object Tools: TToolBar
       Left = 0
       Top = 0
@@ -279,6 +280,7 @@ object ImageEditFrame: TImageEditFrame
     BevelOuter = bvNone
     ParentColor = True
     TabOrder = 3
+    ParentBackground = False
     object StatusPanel: TPanel
       Left = 0
       Top = 62
@@ -291,6 +293,7 @@ object ImageEditFrame: TImageEditFrame
       DesignSize = (
         840
         22)
+      ParentBackground = False
       object lblStatus: TLabel
         Left = 8
         Top = 3

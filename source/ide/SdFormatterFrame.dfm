@@ -1441,6 +1441,7 @@ object FormatterFrame: TFormatterFrame
     DesignSize = (
       638
       35)
+    ParentBackground = False
     object lbPreset: TLabel
       Left = 9
       Top = 5

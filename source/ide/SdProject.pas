@@ -346,6 +346,8 @@ function HasHighLiteral(const Text: string): Boolean;
 function DfmBeyondAscii(const Dfm: string): Boolean;
 function IsProjectFile(const FileName: string): Boolean;  // a program/library (.dpr) or package (.dpk)
 function IsPackageFile(const FileName: string): Boolean;  // a package (.dpk)
+{ what Project | Add to Project takes: a unit (.pas) or a resource script (.rc) }
+function IsProjectAddable(const FileName: string): Boolean;
 function IsAbsolutePath(const Path: string): Boolean;     // "C:..." or "\..."
 { a project source that is a library's: its first word, comments skipped, is "library" }
 function SourceIsLibrary(const Source: string): Boolean;
@@ -2216,6 +2218,11 @@ end;
 function IsPackageFile(const FileName: string): Boolean;
 begin
   Result := SameText(ExtractFileExt(FileName), '.dpk');
+end;
+
+function IsProjectAddable(const FileName: string): Boolean;
+begin
+  Result := SameText(ExtractFileExt(FileName), '.pas') or SameText(ExtractFileExt(FileName), '.rc');
 end;
 
 function IsAbsolutePath(const Path: string): Boolean;

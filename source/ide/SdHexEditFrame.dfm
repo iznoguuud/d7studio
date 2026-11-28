@@ -60,6 +60,7 @@ object HexEditFrame: THexEditFrame
     BevelOuter = bvNone
     ParentColor = True
     TabOrder = 1
+    ParentBackground = False
   end
   object StatusPanel: TPanel
     Left = 0
@@ -73,6 +74,7 @@ object HexEditFrame: THexEditFrame
     DesignSize = (
       700
       22)
+    ParentBackground = False
     object lblStatus: TLabel
       Left = 8
       Top = 3

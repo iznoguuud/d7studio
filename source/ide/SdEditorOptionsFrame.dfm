@@ -722,6 +722,7 @@ object EditorOptionsFrame: TEditorOptionsFrame
         Caption = 'AaBbYyZz'
         ParentColor = True
         TabOrder = 5
+        ParentBackground = False
         object shpFontSample: TShape
           Left = 0
           Top = 0

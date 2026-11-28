@@ -175,6 +175,7 @@ begin
   inherited Create;
   FPages := TList.Create;
   FHost := TPanel.Create(Form);
+  FHost.ParentBackground := False;
   FHost.Visible := False;
   FHost.Parent := Form;
   FTabs := TTabControl.Create(Form);

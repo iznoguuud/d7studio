@@ -152,6 +152,7 @@ object ProjOptionsFrame: TProjOptionsFrame
           BevelOuter = bvNone
           ParentColor = True
           TabOrder = 3
+          ParentBackground = False
           object shpIcon: TShape
             Left = 0
             Top = 0
@@ -1030,6 +1031,7 @@ object ProjOptionsFrame: TProjOptionsFrame
         BevelOuter = bvLowered
         ParentColor = True
         TabOrder = 1
+        ParentBackground = False
         object ModVerGroup: TGroupBox
           Left = 9
           Top = 12
@@ -1299,6 +1301,7 @@ object ProjOptionsFrame: TProjOptionsFrame
           BevelOuter = bvNone
           ParentColor = True
           TabOrder = 1
+          ParentBackground = False
           object shpPackageFile: TShape
             Left = 0
             Top = 0
@@ -1399,6 +1402,7 @@ object ProjOptionsFrame: TProjOptionsFrame
     BevelOuter = bvNone
     ParentColor = True
     TabOrder = 1
+    ParentBackground = False
     object chkDefault: TCheckBox
       Left = 9
       Top = 0

@@ -156,6 +156,8 @@ begin
   FDivider := TPanel.Create(Self);
   FDivider.BevelOuter := bvNone;
   FDivider.Color := clBtnShadow;
+  { under themes a panel takes its parent's background, which would hide Color }
+  FDivider.ParentBackground := False;
   FDivider.Visible := False;
   FDivider.Parent := Self;
 end;

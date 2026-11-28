@@ -41,6 +41,7 @@ checks its SHA-256 and starts it. Uninstalling D7 Studio gives Delphi 7 its own 
 
 - **The IDE**: one main window with docked, tabbed views; Delphi 7's form designer with
   Borland's design-time packages; the Object Inspector and Code Explorer in Delphi 7's layout; a
+  File Explorer of the project's folders; a Markdown preview; a
   Scintilla code editor with code insight, names coloured by kind, Error Insight, a minimap,
   refactorings (Rename, Extract Method, Change Parameters ...), code metrics and a source formatter; the debugger; light and dark themes. It loads Delphi 7's experts and design packages.
 - **Two experts of its own**: an AI assistant and Git, as docked views of the IDE.
@@ -72,10 +73,11 @@ Setup installs the first four, the notices and the license into Delphi 7's `Bin`
   experts (`experts\aiharness`, `experts\git`, with the code they share in `experts\kit`);
   `README.md` and `FEATURES.md` with a copy of `patch\MODERNIZATION.md` beside them, as Setup
   installs them into Delphi 7's `Bin` with the release notes, `RELEASE-NOTES.md` at the root.
-- `patch\` - the modernized RTL/VCL as Setup installs it: for each of Delphi 7 Update 1's files
-  that it replaces, the difference from Borland's file (`Delta\`); the new units whole (`New\`);
-  `manifest.txt` with every file's SHA-256; `patch.ps1`, which applies the patch to an installed
-  Delphi 7 and takes it back.
+- `patch\` - the modernized RTL/VCL as Setup installs it, in two variants, `Update1\` and
+  `Update1b\`, each built on a Delphi 7 Update 1 whose files differ: for each of its files that the
+  patch replaces, the difference from it (`Delta\`); the new units whole (`New\`); `manifest.txt`
+  with every file's SHA-256. Beside them `patch.ps1`, which applies the variant whose files an
+  installed Delphi 7 has and takes the patch back.
 - `demos\` - two demo programs: `modern` (ModernDemo), a tour of the modernized RTL/VCL - per-monitor
   DPI, Unicode, the current dialogs and look, the Windows API -, and `ota`, which exercises the Open
   Tools API in D7 Studio and in Delphi 7's IDE. Each has its README.

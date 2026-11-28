@@ -59,6 +59,7 @@ object CompileDlg: TCompileDlg
     BevelOuter = bvNone
     ParentColor = True
     TabOrder = 0
+    ParentBackground = False
     object shpLine: TShape
       Left = 0
       Top = 0
@@ -93,6 +94,7 @@ object CompileDlg: TCompileDlg
     BevelOuter = bvNone
     ParentColor = True
     TabOrder = 1
+    ParentBackground = False
     object shpTotal: TShape
       Left = 0
       Top = 0
@@ -127,6 +129,7 @@ object CompileDlg: TCompileDlg
     BevelOuter = bvNone
     ParentColor = True
     TabOrder = 2
+    ParentBackground = False
     object shpHints: TShape
       Left = 0
       Top = 0
@@ -161,6 +164,7 @@ object CompileDlg: TCompileDlg
     BevelOuter = bvNone
     ParentColor = True
     TabOrder = 3
+    ParentBackground = False
     object shpWarnings: TShape
       Left = 0
       Top = 0
@@ -195,6 +199,7 @@ object CompileDlg: TCompileDlg
     BevelOuter = bvNone
     ParentColor = True
     TabOrder = 4
+    ParentBackground = False
     object shpErrors: TShape
       Left = 0
       Top = 0

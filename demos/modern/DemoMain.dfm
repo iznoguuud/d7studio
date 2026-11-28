@@ -96,6 +96,7 @@ object MainForm: TMainForm
     BorderWidth = 16
     ParentColor = True
     TabOrder = 2
+    ParentBackground = False
     object Header: TPanel
       Left = 16
       Top = 16
@@ -105,6 +106,7 @@ object MainForm: TMainForm
       BevelOuter = bvNone
       ParentColor = True
       TabOrder = 0
+      ParentBackground = False
       object TitleLabel: TLabel
         Left = 0
         Top = 0
@@ -159,6 +161,7 @@ object MainForm: TMainForm
       BevelOuter = bvNone
       Color = clWindow
       TabOrder = 1
+      ParentBackground = False
       object LogTitle: TLabel
         Left = 16
         Top = 10
@@ -200,6 +203,7 @@ object MainForm: TMainForm
       BevelOuter = bvNone
       ParentColor = True
       TabOrder = 2
+      ParentBackground = False
     end
     object DisplayPage: TPanel
       Tag = 10
@@ -211,6 +215,7 @@ object MainForm: TMainForm
       BevelOuter = bvNone
       ParentColor = True
       TabOrder = 3
+      ParentBackground = False
       object FactsCard: TPanel
         Tag = 1
         Left = 0
@@ -221,6 +226,7 @@ object MainForm: TMainForm
         BevelOuter = bvNone
         Color = clWindow
         TabOrder = 0
+        ParentBackground = False
         object FactsTitle: TLabel
           Left = 16
           Top = 12
@@ -243,6 +249,7 @@ object MainForm: TMainForm
           BevelOuter = bvNone
           ParentColor = True
           TabOrder = 0
+          ParentBackground = False
         end
       end
       object PanelCard: TPanel
@@ -255,6 +262,7 @@ object MainForm: TMainForm
         BevelOuter = bvNone
         Color = clWindow
         TabOrder = 1
+        ParentBackground = False
         object PanelTitle: TLabel
           Left = 16
           Top = 12
@@ -276,6 +284,7 @@ object MainForm: TMainForm
           BevelOuter = bvNone
           ParentColor = True
           TabOrder = 0
+          ParentBackground = False
         end
       end
       object IconsCard: TPanel
@@ -288,6 +297,7 @@ object MainForm: TMainForm
         BevelOuter = bvNone
         Color = clWindow
         TabOrder = 2
+        ParentBackground = False
         object IconsTitle: TLabel
           Left = 16
           Top = 12
@@ -320,6 +330,7 @@ object MainForm: TMainForm
         BevelOuter = bvNone
         Color = clWindow
         TabOrder = 3
+        ParentBackground = False
         object RulerTitle: TLabel
           Left = 16
           Top = 12
@@ -341,6 +352,7 @@ object MainForm: TMainForm
           BevelOuter = bvNone
           ParentColor = True
           TabOrder = 0
+          ParentBackground = False
         end
       end
     end
@@ -355,6 +367,7 @@ object MainForm: TMainForm
       ParentColor = True
       TabOrder = 4
       Visible = False
+      ParentBackground = False
       object TextCard: TPanel
         Tag = 1
         Left = 0
@@ -365,6 +378,7 @@ object MainForm: TMainForm
         BevelOuter = bvNone
         Color = clWindow
         TabOrder = 0
+        ParentBackground = False
         object TextTitle: TLabel
           Left = 16
           Top = 12
@@ -441,6 +455,7 @@ object MainForm: TMainForm
         BevelOuter = bvNone
         Color = clWindow
         TabOrder = 1
+        ParentBackground = False
         object SortTitle: TLabel
           Left = 16
           Top = 12
@@ -503,6 +518,7 @@ object MainForm: TMainForm
       ParentColor = True
       TabOrder = 5
       Visible = False
+      ParentBackground = False
       object DialogsCard: TPanel
         Tag = 1
         Left = 0
@@ -513,6 +529,7 @@ object MainForm: TMainForm
         BevelOuter = bvNone
         Color = clWindow
         TabOrder = 0
+        ParentBackground = False
         object DialogsTitle: TLabel
           Left = 16
           Top = 12
@@ -654,6 +671,7 @@ object MainForm: TMainForm
       ParentColor = True
       TabOrder = 6
       Visible = False
+      ParentBackground = False
       object ViewsCard: TPanel
         Tag = 1
         Left = 0
@@ -664,6 +682,7 @@ object MainForm: TMainForm
         BevelOuter = bvNone
         Color = clWindow
         TabOrder = 0
+        ParentBackground = False
         object ViewsTitle: TLabel
           Left = 16
           Top = 12
@@ -721,6 +740,7 @@ object MainForm: TMainForm
         BevelOuter = bvNone
         Color = clWindow
         TabOrder = 1
+        ParentBackground = False
         object DarkTitle: TCheckBox
           Left = 16
           Top = 18
@@ -743,6 +763,7 @@ object MainForm: TMainForm
       ParentColor = True
       TabOrder = 7
       Visible = False
+      ParentBackground = False
       object SystemCard: TPanel
         Tag = 1
         Left = 0
@@ -753,6 +774,7 @@ object MainForm: TMainForm
         BevelOuter = bvNone
         Color = clWindow
         TabOrder = 0
+        ParentBackground = False
         object SystemTitle: TLabel
           Left = 16
           Top = 12
@@ -775,6 +797,7 @@ object MainForm: TMainForm
           BevelOuter = bvNone
           ParentColor = True
           TabOrder = 0
+          ParentBackground = False
         end
       end
     end
