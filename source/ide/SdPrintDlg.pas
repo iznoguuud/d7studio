@@ -168,7 +168,7 @@ begin
   UIFreezeRedraw(W, True);
   try
     { the line numbers are printed with the line number margin - every line's number: the editor's
-      text margin of every 10th line holds only the lines in view }
+      text margin of every 5th line holds only the lines in view }
     Ed.Sci(SCI_SETMARGINTYPEN, 0, SC_MARGIN_NUMBER);
     if not Opts.LineNumbers then Ed.Sci(SCI_SETMARGINWIDTHN, 0, 0);
     if not Opts.SyntaxPrint then

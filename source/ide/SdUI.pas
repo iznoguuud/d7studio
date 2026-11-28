@@ -102,6 +102,8 @@ procedure UITrackListWidth(List: TCustomListBox);
 procedure UIListRowWidth(List: TCustomListBox; Right: Integer);
 { a header control above the list (in a parent that clips it) scrolls with the list's rows }
 procedure UIListHeader(List: TCustomListBox; Header: TWinControl);
+{ a list view's item chosen and given the caret; Show: scrolled into view }
+procedure UIChooseItem(It: TListItem; Show: Boolean = True);
 { a list that fits its rows itself (the completion list, the inspector's drop-down) or shortens
   them (the Components view): no tracking }
 procedure UINoListTracking(List: TCustomListBox);
@@ -146,6 +148,12 @@ procedure UICentreChildren(Strip: TWinControl; H: Integer);
 { a combo box or an edit framed by the flat border of the views' lists (UIDrawBorder) instead of
   the theme's }
 procedure UIFlatBorder(Control: TWinControl);
+{ an edit box's grey hint while it is empty (EM_SETCUEBANNER), set again with each new window;
+  Focused: also while the box has the focus (one that takes the focus when its dialog opens) }
+procedure UICueBanner(Edit: TCustomEdit; const Cue: WideString; Focused: Boolean = False);
+{ the hint of a filter box over a list (SdCompBar.TSdNameFilter's text or mask) }
+const
+  UIFilterCue = 'Filter (* and ? for a mask)';
 function UITestOrigin(var X, Y: Integer): Boolean;   // D7S_POS=x,y places windows for automated UI tests
 function UITestMode: Boolean;                        // True for the cloaked test instance (D7S_POS set)
 procedure UITestYieldForeground;                     // test instance: never keep the user's keyboard
@@ -2207,6 +2215,13 @@ begin
   T.Grow(Right);
 end;
 
+procedure UIChooseItem(It: TListItem; Show: Boolean);
+begin
+  It.Selected := True;
+  It.Focused := True;
+  if Show then It.MakeVisible(False);
+end;
+
 procedure UIListHeader(List: TCustomListBox; Header: TWinControl);
 var
   T: TListTracker;
@@ -4056,6 +4071,39 @@ begin
   if UIFindHook(Control, TFlatBorder) = nil then TFlatBorder.Create(Control, True);
   if Control.HandleAllocated then
     RedrawWindow(Control.Handle, nil, 0, RDW_INVALIDATE or RDW_FRAME);
+end;
+
+type
+  TCueBanner = class(TUIWindowHook)
+  private
+    FCue: WideString;
+    FFocused: Boolean;
+    procedure Apply;
+  protected
+    procedure Hook(var Message: TMessage); override;
+  end;
+
+procedure TCueBanner.Apply;
+begin
+  if FControl.HandleAllocated then
+    SendMessage(FControl.Handle, EM_SETCUEBANNER, Ord(FFocused), LPARAM(PWideChar(FCue)));
+end;
+
+procedure TCueBanner.Hook(var Message: TMessage);
+begin
+  FOldProc(Message);
+  if Message.Msg = WM_CREATE then Apply;
+end;
+
+procedure UICueBanner(Edit: TCustomEdit; const Cue: WideString; Focused: Boolean = False);
+var
+  H: TCueBanner;
+begin
+  H := TCueBanner(UIFindHook(Edit, TCueBanner));
+  if H = nil then H := TCueBanner.Create(Edit, True);
+  H.FCue := Cue;
+  H.FFocused := Focused;
+  H.Apply;
 end;
 
 { A themed push button's face is transparent at the rounded corners: the caller's background

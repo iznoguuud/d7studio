@@ -11,6 +11,30 @@ installing in [README.md](source/README.md).
 
 ## [Unreleased]
 
+## [1.0.6.0] - 2026-11-28
+
+### Added
+
+- **IDE**: a filter box above the list of *View ▸ Units*, *View ▸ Forms*, *Remove From Project* and the other dialogs
+  that list names to choose from: only the names that hold the typed text (or match a mask with `*` and `?`) remain,
+  those that start with it first; the arrow keys move in the list while typing.
+- **IDE**: code metrics, as in RAD Studio: *Project ▸ Metrics* measures every routine, class and unit of the
+  project - size, cyclomatic complexity, nesting, inheritance, coupling and cohesion, Halstead's measures and a
+  maintainability index - and the new *Metrics* view shows them as a tree with a column per metric, the values
+  outside their limits in colour, sortable by any column, exported as HTML or CSV. Their limits and aggregations
+  are set in *Environment Options ▸ Metrics*.
+
+### Changed
+
+- **IDE**: dragging a view shows dock guides, as in Visual Studio: at the window's edges and in the middle of the
+  group, floating window or editor under the pointer. A view docks only when dropped on a guide; dropped anywhere
+  else - over the main window too - it floats, and a floating window can be moved over the IDE without docking.
+- **IDE**: the Components view has no filter box any more: type in its list to filter it (Backspace takes a letter
+  back, Esc clears the filter). A status line below the list shows the filter and how many components it leaves.
+  The components you have added from it before are in bold in the current look too, not only in the classic one.
+- **Code editor**: the line numbers between line 1 and the caret's line show on every 5th line instead of every 10th
+  (*Editor Options ▸ Display ▸ Line numbers ▸ Every 5th line*).
+
 ## [1.0.5.1] - 2026-11-28
 
 ### Added
@@ -386,7 +410,8 @@ The first release.
   its settings. It also installs Microsoft's WinHelp viewer, which shows Delphi 7's help on
   Windows 10 and 11.
 
-[Unreleased]: https://github.com/iznoguuud/d7studio/compare/v1.0.5.1...HEAD
+[Unreleased]: https://github.com/iznoguuud/d7studio/compare/v1.0.6.0...HEAD
+[1.0.6.0]: https://github.com/iznoguuud/d7studio/compare/v1.0.5.1...v1.0.6.0
 [1.0.5.1]: https://github.com/iznoguuud/d7studio/compare/v1.0.5.0...v1.0.5.1
 [1.0.5.0]: https://github.com/iznoguuud/d7studio/compare/v1.0.4.1...v1.0.5.0
 [1.0.4.1]: https://github.com/iznoguuud/d7studio/compare/v1.0.4.0...v1.0.4.1

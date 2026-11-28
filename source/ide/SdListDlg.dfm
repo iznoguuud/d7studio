@@ -1,11 +1,11 @@
 object ListDlg: TListDlg
   Left = 200
   Top = 120
-  ActiveControl = lbItems
+  ActiveControl = edFilter
   BorderIcons = [biSystemMenu]
   BorderStyle = bsDialog
   Caption = 'List'
-  ClientHeight = 338
+  ClientHeight = 367
   ClientWidth = 322
   Color = clWindow
   Font.Charset = DEFAULT_CHARSET
@@ -19,13 +19,22 @@ object ListDlg: TListDlg
   PixelsPerInch = 96
   TextHeight = 15
   OnCreate = FormCreate
-  object lbItems: TListBox
+  object edFilter: TEdit
     Left = 12
     Top = 12
     Width = 298
+    Height = 23
+    TabOrder = 0
+    OnChange = edFilterChange
+    OnKeyDown = edFilterKeyDown
+  end
+  object lbItems: TListBox
+    Left = 12
+    Top = 41
+    Width = 298
     Height = 263
     ItemHeight = 15
-    TabOrder = 0
+    TabOrder = 1
     OnDblClick = lbItemsDblClick
   end
   object Actions: TActionList
@@ -39,13 +48,13 @@ object ListDlg: TListDlg
   end
   object pnlFooter: TPanel
     Left = 0
-    Top = 287
+    Top = 316
     Width = 322
     Height = 51
     BevelOuter = bvNone
     Color = clBtnFace
     ParentBackground = False
-    TabOrder = 1
+    TabOrder = 2
     object lnFooter: TShape
       Left = 0
       Top = 0

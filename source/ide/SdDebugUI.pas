@@ -1982,11 +1982,7 @@ begin
       It.SubItems.Add(BP.Group);
       It.Checked := BP.Enabled;
       It.Data := BP;
-      if (Sel <> nil) and (BP = Sel) then
-      begin
-        It.Selected := True;
-        It.Focused := True;
-      end;
+      if (Sel <> nil) and (BP = Sel) then UIChooseItem(It, False);
     end;
   finally
     FBreaks.Items.EndUpdate;

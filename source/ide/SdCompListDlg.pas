@@ -74,20 +74,8 @@ end;
 { the names that start with what is typed (Delphi's list: the class names without their T; the
   Components view's filter, prefix matches only) }
 procedure TCompListDlg.Filter;
-var
-  I: Integer;
-  F: TSdNameFilter;
 begin
-  F := TSdNameFilter.Create(SearchText.Text);
-  ComponentList.Items.BeginUpdate;
-  try
-    ComponentList.Items.Clear;
-    for I := 0 to FAll.Count - 1 do
-      if F.Match(FAll[I]) = 1 then ComponentList.Items.AddObject(FAll[I], FAll.Objects[I]);
-  finally
-    ComponentList.Items.EndUpdate;
-    F.Free;
-  end;
+  FillFiltered(SearchText.Text, FAll, ComponentList.Items, True);
   if ComponentList.Items.Count > 0 then ComponentList.ItemIndex := 0;
 end;
 

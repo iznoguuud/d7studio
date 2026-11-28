@@ -27,7 +27,7 @@ checks its SHA-256 and starts it. Uninstalling D7 Studio gives Delphi 7 its own 
 - **The IDE**: one main window with docked, tabbed views; Delphi 7's form designer with
   Borland's design-time packages; the Object Inspector and Code Explorer in Delphi 7's layout; a
   Scintilla code editor with code insight, names coloured by kind, Error Insight, a minimap,
-  refactorings (Rename, Extract Method, Change Parameters ...) and a source formatter; the debugger; light and dark themes. It loads Delphi 7's experts and design packages.
+  refactorings (Rename, Extract Method, Change Parameters ...), code metrics and a source formatter; the debugger; light and dark themes. It loads Delphi 7's experts and design packages.
 - **Two experts of its own**: an AI assistant and Git, as docked views of the IDE.
 - **The modernized RTL/VCL**: programs built with it can run with UTF-8 as their code page, scale
   per monitor (per-monitor DPI awareness V2), use the current file and folder dialogs, task

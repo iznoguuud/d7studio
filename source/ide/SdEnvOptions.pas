@@ -18,7 +18,7 @@ unit SdEnvOptions;
 interface
 
 uses
-  Windows, SysUtils, Classes, Graphics;
+  Windows, SysUtils, Classes, Graphics, SdMetrics;
 
 type
   { a program of Tools | Configure Tools (Delphi's "Transfer" items) }
@@ -75,6 +75,9 @@ type
     CompResetDelay: Integer;            // seconds after which typing in the list starts a new filter
     CompColor: TColor;                  // the list's colour (clDefault: the look's)
     CompHotkey: Word;                   // the shortcut of View | Components (0: none)
+    { Metrics (D7 Studio's: Project | Metrics; [Metrics], a key per metric - on, aggregation, limits) }
+    Metrics: TMetricSettings;
+    MetricOpts: TMetricOptions;
     constructor Create;
     destructor Destroy; override;
     procedure Load;
@@ -153,6 +156,7 @@ uses
 const
   Sec = 'Environment';
   CompSec = 'Components';
+  MetricSec = 'Metrics';
 
 function ExpSortedCategories(const Sort: string): TExpCategories;
 var
@@ -430,6 +434,15 @@ begin
   end;
 end;
 
+function MetricTable(E: TSdEnvOptions): TSdOptions;
+begin
+  Result := nil;
+  with E do
+    AddOptions(Result, [
+      OptFlag('FormFields', MetricOpts.FormFields),
+      OptFlag('OutsideAncestors', MetricOpts.OutsideAncestors)]);
+end;
+
 function CompTable(E: TSdEnvOptions): TSdOptions;
 begin
   Result := nil;
@@ -448,6 +461,7 @@ var
   I: Integer;
   L: TStringList;
   X: TExpCategory;
+  M: TMetricId;
 begin
   if Settings = nil then Exit;
   { the defaults: what a value missing from the settings is (EnvTable) }
@@ -511,6 +525,11 @@ begin
   ExCategorySort := ExpSortText(ExpSortedCategories(ExCategorySort));
   ReadOptions(CompTable(Self), Settings, CompSec, []);
   CompHotkey := Settings.ReadInteger(CompSec, 'Hotkey', 0);
+  Metrics := MetricDefaults;
+  MetricOpts := MetricDefaultOptions;
+  ReadOptions(MetricTable(Self), Settings, MetricSec, []);
+  for M := Low(TMetricId) to High(TMetricId) do
+    ReadMetricSetting(Settings.ReadString(MetricSec, MetricDefs[M].Id, ''), Metrics[M]);
   L := TStringList.Create;
   try
     Settings.ReadSectionValues('Environment Variables', L);
@@ -523,6 +542,7 @@ end;
 function TSdEnvOptions.Save: Boolean;
 var
   I: Integer;
+  M: TMetricId;
 begin
   Result := True;
   if Settings = nil then Exit;
@@ -531,6 +551,9 @@ begin
   Settings.DeleteKey(Sec, 'ExFolders');
   WriteOptions(CompTable(Self), Settings, CompSec);
   Settings.WriteInteger(CompSec, 'Hotkey', CompHotkey);
+  WriteOptions(MetricTable(Self), Settings, MetricSec);
+  for M := Low(TMetricId) to High(TMetricId) do
+    Settings.WriteString(MetricSec, MetricDefs[M].Id, MetricSettingText(Metrics[M]));
   Settings.EraseSection('Environment Variables');
   for I := 0 to VarOverrides.Count - 1 do
     Settings.WriteString('Environment Variables', VarOverrides.Names[I], VarOverrides.ValueFromIndex[I]);

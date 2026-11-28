@@ -39,12 +39,15 @@ modernized RTL/VCL in full is in [MODERNIZATION.md](MODERNIZATION.md).
   Components, Messages, Search Results, To-Do List and the debugger views. In Delphi 7 the form,
   the code editor and the tool windows are windows of their own.
 - **Docking areas** left of, right of and below the editor, and one across the whole bottom of the
-  window. Views share an area in tabbed groups; a drop on the editor's edge makes a new column
-  beside the area. While you drag, a translucent mark shows where the view will land; Esc cancels.
-- **Docking inside the editor area.** Drop a view anywhere over the editor and it docks inside the
-  editor area, under the file tabs, at the side of the page you dropped it nearest to: left, top,
-  right or bottom. The page keeps the rest; these areas have tabbed groups, splitters and auto hide
-  like the others, and desktops keep them.
+  window. Views share an area in tabbed groups, or stand side by side in new columns.
+- **Dock guides.** While you drag a view, guides like Visual Studio's show where it can dock: at
+  the window's left, right and bottom edges, and in the middle of the group, floating window or
+  editor under the pointer - as a tab, before or after a group, or beside the editor. Drop it on a
+  guide to dock it there, with a translucent mark showing where it will land; drop it anywhere else
+  and it floats. Esc cancels.
+- **Docking inside the editor area.** The guides over the editor dock a view inside the editor
+  area, under the file tabs, at the left, top, right or bottom of the page. The page keeps the rest;
+  these areas have tabbed groups, splitters and auto hide like the others, and desktops keep them.
 - **The dock's commands in every view's menu** (right-click its caption or its tab): *Dock Left*,
   *Dock Right*, *Dock Bottom*, *Dock Bottom (Full Width)*, *Dock in Editor Area* (left, top, right or
   bottom), *Floating*, *Tabs* (top, bottom, left or right), *Auto Hide* and *Close*.
@@ -67,10 +70,16 @@ modernized RTL/VCL in full is in [MODERNIZATION.md](MODERNIZATION.md).
   is loading.
 - **The window's place** is kept at every close and restored, on its monitor.
 - **The Components view in place of the palette.** *View ▸ Components* lists the installed
-  components of one palette page, or of all, with a filter box (`*` and `?` for a mask). Enter or a
+  components of one palette page, or of all. Type in the list to filter it (`*` and `?` for a mask;
+  Backspace takes a letter back, Esc clears it); the status line below the list shows the filter
+  and how many components it leaves. Enter or a
   double click puts the chosen component on the form; drag it to drop it where you want it.
   *Tools ▸ Environment Options ▸ Components* chooses Delphi 7's tiles or icons beside the names,
   the order (by name, last used, most used or palette order) and a shortcut key for the view.
+- **Filter the lists you choose from.** *View ▸ Units* (Ctrl+F12), *View ▸ Forms* (Shift+F12), *Remove From
+  Project* and the other dialogs that list names have a filter box above the list: type part of a name (or a mask
+  with `*` and `?`) and only the names that hold it remain, those that start with it first. The arrow keys move in
+  the list while you type, and Enter opens the name chosen.
 - **The status bar** also shows Error Insight's count of errors (click it for the list), the
   file's encoding and, when it is not 100 %, the zoom of what the page shows.
 - **A tool bar on every page.** Above the code, the form, the diagram and a resource's editor, a bar
@@ -144,7 +153,7 @@ modernized RTL/VCL in full is in [MODERNIZATION.md](MODERNIZATION.md).
   Options ▸ Display ▸ Fold preview*). *Edit ▸
   Folding* and RAD Studio's Shift+Ctrl+K keys fold all, the methods, the classes, the sections, the
   nested routines or the regions, and turn folding on or off. **Line numbers** and **change bars** (unsaved and saved
-  changes) in the gutter; the line numbers of line 1, every 10th line and the caret's line, with dots between, or of
+  changes) in the gutter; the line numbers of line 1, every 5th line and the caret's line, with dots between, or of
   every line (*Editor Options ▸ Display ▸ Line numbers*).
 - **Highlighting** (*Editor Options ▸ Highlighting*): the bracket at the caret and its partner (a
   bracket without one in red); the words of the block at the caret (`begin` ... `end`, `try` ...
@@ -273,6 +282,21 @@ Delphi 7 has none of them.
   descendants, declared and implemented there.
 - **Sync Edit**: the names that occur more than once in the selected text are linked - typing over one changes them
   all; Tab goes to the next name, Esc ends it.
+
+## Code metrics
+
+- **Project ▸ Metrics** measures the active project's code as RAD Studio's QA Metrics do; Delphi 7 has nothing of
+  the kind. Each routine, class and unit and the project get their size (lines, code lines, comment ratio,
+  parameters, local declarations, fields, methods, properties), complexity (cyclomatic complexity, nesting depth,
+  weighted methods per class), inheritance (depth, child classes), coupling and cohesion (coupling between objects,
+  response for a class, lack of cohesion of methods, units used and used by), Halstead's measures and a
+  maintainability index. A class or unit shows the sum, average, maximum or minimum of the values below it, as you
+  choose for each metric.
+- The **Metrics** view (*View ▸ Metrics*) lists them as a tree with a column per metric: a value over its upper
+  limit is red, under its lower one blue, and the row's name bold. Click a column's header to sort by it; *Outside*
+  shows only what breaks a limit; a double click opens the code. The pointer on a header tells what the column
+  counts. *Unit* measures only the unit shown, *Export* writes the results as an HTML or CSV file.
+- **Environment Options ▸ Metrics**: which metrics are computed, each one's limits and aggregation.
 
 ## The formatter
 

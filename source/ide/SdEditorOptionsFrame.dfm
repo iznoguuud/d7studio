@@ -495,7 +495,7 @@ object EditorOptionsFrame: TEditorOptionsFrame
           TabOrder = 5
           Items.Strings = (
             'Every line'
-            'Every 10th line'
+            'Every 5th line'
             'Hidden')
         end
         object chkFolding: TCheckBox

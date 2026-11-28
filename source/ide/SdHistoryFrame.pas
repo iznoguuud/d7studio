@@ -254,6 +254,7 @@ begin
   AddSide(DiffHost, False);
   RoutineBox.Items.Add('All routines');
   RoutineBox.ItemIndex := 0;
+  UICueBanner(FindBox, 'Find in versions');
 end;
 
 destructor TSdHistoryView.Destroy;
@@ -290,17 +291,11 @@ end;
 procedure TSdHistoryView.FilterPanelResize(Sender: TObject);
 var
   W, R: Integer;
-  Cue: WideString;
 begin
   W := FilterPanel.ClientWidth;
   R := Min(260, W * 45 div 100);
   RoutineBox.SetBounds(0, RoutineBox.Top, R, RoutineBox.Height);
   FindBox.SetBounds(R + 6, FindBox.Top, Max(W - R - 6, 0), FindBox.Height);
-  if FindBox.HandleAllocated then
-  begin
-    Cue := 'Find in versions';
-    SendMessage(FindBox.Handle, EM_SETCUEBANNER, 0, LPARAM(PWideChar(Cue)));
-  end;
 end;
 
 { --- the versions --- }

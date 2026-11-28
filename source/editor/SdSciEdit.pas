@@ -89,7 +89,7 @@ const
   STYLE_DIFF_REMOVED_SIGN = 203;   // ... its sign
   STYLE_DIFF_ADDED_SIGN = 204;
   STYLE_DIFF_NOTE = 205;
-  { the caret line's number in the line numbers' margin of every 10th line (UpdateLineMarks): the
+  { the caret line's number in the line numbers' margin of every 5th line (UpdateLineMarks): the
     plain text's colour on the gutter's ground }
   STYLE_CARET_NUMBER = 206;
   { the styles of the names by kind, Type .. Unit (ShowNameKinds): their kinds' colours and font
@@ -6684,7 +6684,7 @@ begin
   Sci(SCI_SETMARGINWIDTHN, MARGIN_NUMBERS, SciS(SCI_TEXTWIDTH, STYLE_LINENUMBER, '_' + StringOfChar('9', Digits)) + 2);
 end;
 
-{ Line numbers: Every 10th line - the margin is a text margin: line 1, every 10th line and the caret's
+{ Line numbers: Every 5th line - the margin is a text margin: line 1, every 5th line and the caret's
   line show their number (the caret's in STYLE_CARET_NUMBER), the others a centred dot. Only the lines
   in view get their text, written again when the view scrolls, the caret changes line, lines come or go
   or a fold opens or closes (Force: always); Scintilla keeps a margin text with its line in the
@@ -6724,7 +6724,7 @@ begin
     if L >= Count then Break;
     if L = Prev then Continue;       // the next row of a wrapped line
     Prev := L;
-    if (L = Caret) or (L = 0) or ((L + 1) mod 10 = 0) then SciS(SCI_MARGINSETTEXT, L, IntToStr(L + 1))
+    if (L = Caret) or (L = 0) or ((L + 1) mod 5 = 0) then SciS(SCI_MARGINSETTEXT, L, IntToStr(L + 1))
     else SciS(SCI_MARGINSETTEXT, L, Dot);
     if L = Caret then Sci(SCI_MARGINSETSTYLE, L, STYLE_CARET_NUMBER)
     else Sci(SCI_MARGINSETSTYLE, L, STYLE_LINENUMBER);

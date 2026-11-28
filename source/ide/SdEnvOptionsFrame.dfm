@@ -1404,69 +1404,213 @@ object EnvOptionsFrame: TEnvOptionsFrame
         end
       end
     end
-  end
-  object Actions: TActionList
-    Left = 12
-    Top = 394
-    object aBrowseRepository: TAction
-      Caption = 'Br&owse...'
-      OnExecute = BrowseDirExecute
-    end
-    object aPageAdd: TAction
-      Caption = '&Add...'
-      OnExecute = aPageAddExecute
-    end
-    object aPageDelete: TAction
-      Caption = '&Delete'
-      OnExecute = aPageDeleteExecute
-      OnUpdate = PaletteUpdate
-    end
-    object aPageRename: TAction
-      Caption = '&Rename...'
-      OnExecute = aPageRenameExecute
-      OnUpdate = PaletteUpdate
-    end
-    object aMoveUp: TAction
-      Caption = 'Move &Up'
-      OnExecute = PaletteMoveExecute
-      OnUpdate = PaletteUpdate
-    end
-    object aMoveDown: TAction
-      Caption = 'Move D&own'
-      OnExecute = PaletteMoveExecute
-      OnUpdate = PaletteUpdate
-    end
-    object aDefaultPages: TAction
-      Caption = 'De&fault Pages'
-      OnExecute = aDefaultPagesExecute
-    end
-    object aListLibrary: TAction
-      Caption = '...'
-      OnExecute = EditListExecute
-    end
-    object aListBrowsing: TAction
-      Caption = '...'
-      OnExecute = EditListExecute
-    end
-    object aDirBpl: TAction
-      Caption = '...'
-      OnExecute = BrowseDirExecute
-    end
-    object aDirDcp: TAction
-      Caption = '...'
-      OnExecute = BrowseDirExecute
-    end
-    object aVarOverride: TAction
-      Caption = 'Add &Override...'
-    end
-    object aVarNew: TAction
-      Caption = '&New...'
-    end
-    object aVarEdit: TAction
-      Caption = '&Edit...'
-    end
-    object aVarDelete: TAction
-      Caption = '&Delete'
+    object tsMetrics: TTabSheet
+      Caption = 'Metrics'
+      TabVisible = False
+      object gbMetricList: TGroupBox
+        Left = 9
+        Top = 9
+        Width = 620
+        Height = 300
+        Caption = ' Metrics '
+        TabOrder = 0
+        object lblMetricAggr: TLabel
+          Left = 9
+          Top = 236
+          Width = 69
+          Height = 15
+          Caption = '&Aggregation:'
+          FocusControl = cbMetricAggr
+        end
+        object lblMetricLower: TLabel
+          Left = 214
+          Top = 236
+          Width = 64
+          Height = 15
+          Caption = '&Lower limit:'
+          FocusControl = edMetricLower
+        end
+        object lblMetricUpper: TLabel
+          Left = 362
+          Top = 236
+          Width = 66
+          Height = 15
+          Caption = '&Upper limit:'
+          FocusControl = edMetricUpper
+        end
+        object lblMetricNone: TLabel
+          Left = 508
+          Top = 236
+          Width = 61
+          Height = 15
+          Caption = '(0: no limit)'
+        end
+        object lvMetrics: TListView
+          Left = 9
+          Top = 20
+          Width = 602
+          Height = 205
+          Checkboxes = True
+          Columns = <
+            item
+              Caption = 'Metric'
+              Width = 230
+            end
+            item
+              Caption = 'Group'
+              Width = 150
+            end
+            item
+              Caption = 'Aggregation'
+              Width = 90
+            end
+            item
+              Alignment = taRightJustify
+              Caption = 'Lower'
+              Width = 55
+            end
+            item
+              Alignment = taRightJustify
+              Caption = 'Upper'
+              Width = 55
+            end>
+          ColumnClick = False
+          HideSelection = False
+          ReadOnly = True
+          RowSelect = True
+          TabOrder = 0
+          ViewStyle = vsReport
+          OnSelectItem = MetricSelect
+        end
+        object cbMetricAggr: TComboBox
+          Left = 84
+          Top = 233
+          Width = 116
+          Height = 23
+          Style = csDropDownList
+          ItemHeight = 15
+          TabOrder = 1
+          OnChange = MetricEdited
+          Items.Strings = (
+            'Sum'
+            'Average'
+            'Maximum'
+            'Minimum')
+        end
+        object edMetricLower: TEdit
+          Left = 284
+          Top = 233
+          Width = 64
+          Height = 23
+          TabOrder = 2
+          OnChange = MetricEdited
+        end
+        object edMetricUpper: TEdit
+          Left = 434
+          Top = 233
+          Width = 64
+          Height = 23
+          TabOrder = 3
+          OnChange = MetricEdited
+        end
+        object btnMetricDefaults: TButton
+          Left = 523
+          Top = 265
+          Width = 88
+          Height = 26
+          Caption = '&Defaults'
+          TabOrder = 4
+          OnClick = MetricDefaultsClick
+        end
+      end
+      object gbMetricOptions: TGroupBox
+        Left = 9
+        Top = 315
+        Width = 620
+        Height = 65
+        Caption = ' Options '
+        TabOrder = 1
+        object chkMetricFormFields: TCheckBox
+          Left = 9
+          Top = 18
+          Width = 593
+          Height = 19
+          Caption = 'Count a form'#39's &components as its fields'
+          TabOrder = 0
+        end
+        object chkMetricOutside: TCheckBox
+          Left = 9
+          Top = 38
+          Width = 593
+          Height = 19
+          Caption = 'Depth of inheritance counts the ancestors &outside the project'
+          TabOrder = 1
+        end
+      end
+      object Actions: TActionList
+        Left = 12
+        Top = 394
+        object aBrowseRepository: TAction
+          Caption = 'Br&owse...'
+          OnExecute = BrowseDirExecute
+        end
+        object aPageAdd: TAction
+          Caption = '&Add...'
+          OnExecute = aPageAddExecute
+        end
+        object aPageDelete: TAction
+          Caption = '&Delete'
+          OnExecute = aPageDeleteExecute
+          OnUpdate = PaletteUpdate
+        end
+        object aPageRename: TAction
+          Caption = '&Rename...'
+          OnExecute = aPageRenameExecute
+          OnUpdate = PaletteUpdate
+        end
+        object aMoveUp: TAction
+          Caption = 'Move &Up'
+          OnExecute = PaletteMoveExecute
+          OnUpdate = PaletteUpdate
+        end
+        object aMoveDown: TAction
+          Caption = 'Move D&own'
+          OnExecute = PaletteMoveExecute
+          OnUpdate = PaletteUpdate
+        end
+        object aDefaultPages: TAction
+          Caption = 'De&fault Pages'
+          OnExecute = aDefaultPagesExecute
+        end
+        object aListLibrary: TAction
+          Caption = '...'
+          OnExecute = EditListExecute
+        end
+        object aListBrowsing: TAction
+          Caption = '...'
+          OnExecute = EditListExecute
+        end
+        object aDirBpl: TAction
+          Caption = '...'
+          OnExecute = BrowseDirExecute
+        end
+        object aDirDcp: TAction
+          Caption = '...'
+          OnExecute = BrowseDirExecute
+        end
+        object aVarOverride: TAction
+          Caption = 'Add &Override...'
+        end
+        object aVarNew: TAction
+          Caption = '&New...'
+        end
+        object aVarEdit: TAction
+          Caption = '&Edit...'
+        end
+        object aVarDelete: TAction
+          Caption = '&Delete'
+        end
+      end
     end
   end
 end

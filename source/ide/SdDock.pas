@@ -48,20 +48,18 @@ unit SdDock;
     repaint everything on a resize; the tab strips paint without erasing first.
 
   Dragging a caption or the free part of a tab strip moves the group, dragging a tab moves
-  that panel: onto the caption, the
-  tabs or the middle half of a group it becomes a tab of that group; onto the first or last
-  quarter of a group it becomes a group of its own before or after it; onto the 48 px band at
-  an edge of the centre it goes into a new column beside the areas of that edge, or into that
-  edge's area while the edge shows no other group; onto the 24 px band at the dock's edge of an
-  outer area, into that area while the outer areas of the edge show no other group, else into a
-  new row at the dock's edge (before any other target there); anywhere else over the centre, into
-  the centre area of the side of Center it is nearest to (the page cut by its diagonals into four
-  triangles), last. A translucent window marks the target.
+  that panel. Dock guides (TSdDockGuide, Visual Studio's) show where it can dock, and a drop
+  docks only on one of their buttons: the outer guides at the dock's left and right edges put it
+  into the area beside the centre there (a new column beside that edge's areas while the edge
+  shows another group), the one at the bottom edge into the full-width outer area (a new row at
+  the dock's edge while that shows a group); the compass in the middle of what is under the
+  pointer makes it a tab of a group or a group of its own before or after it, a tab of a floating
+  group, or - over the centre - puts it into the centre area of a side of Center, or into the
+  area below the centre. A translucent window marks the target of the button under the pointer.
   Esc, or another window taking the mouse, ends a drag of a caption, a tab or a splitter without
   a change.
 
-  Floating: a group dropped where no
-  target is - outside the window, over the centre while the dock has no centre areas - floats in a window of its own
+  Floating: a group dropped anywhere but on a guide (and not on its own place) floats in a window of its own
   (TDockFloatForm, owned by the dock's form), with its caption, tabs and views; FloatGroup /
   FloatPanel do it without a drag. Its caption moves the window, and over a target docks it
   again; a double click on it, or DockBack, puts it back where it was docked last. Views dropped
@@ -355,6 +353,48 @@ type
     Column: Boolean;                // a new column beside the areas of Area's edge (AddColumn; Area its base)
   end;
 
+  { what a dock guide's button shows: the view as a tab, or docked at that side }
+  TSdGuideKind = (gkTab, gkLeft, gkTop, gkRight, gkBottom);
+
+  { a button of the dock guides: its place on the screen, what it shows - Edge: beside the centre
+    or along the dock's edge, a thin strip at that side, else inside what it is over, a half -,
+    and where a drop on it docks (Mark: the drop marker, on the screen) }
+  TSdGuideButton = record
+    Bounds: TRect;
+    Kind: TSdGuideKind;
+    Edge: Boolean;
+    Target: TSdDockTarget;
+    Mark: TRect;
+  end;
+
+  { A window of the dock guides while a group or a view is dragged: the compass over what lies
+    under the pointer, or an outer guide at an edge of the dock. Visual Studio's guides - the
+    buttons on a pale backdrop with a soft shadow, the one under the pointer highlighted - drawn
+    with per-pixel alpha (UpdateLayeredWindow); never activated, the mouse passes through it. }
+  TSdDockGuide = class(TForm)
+  private
+    FButtons: array of TSdGuideButton;
+    FBacks: array of TRect;         // the backdrop: these rectangles (screen), the buttons on them
+    FHot: Integer;                  // the button under the pointer (-1: none)
+    FDrawn: string;                 // what the window shows now (Render draws only a change)
+    FFailed: Boolean;               // UpdateLayeredWindow refused the last drawing (the test dump's !)
+  protected
+    procedure CreateParams(var Params: TCreateParams); override;
+    procedure CreateWnd; override;
+  public
+    procedure Clear;
+    procedure AddBack(const R: TRect);
+    procedure AddButton(const R: TRect; Kind: TSdGuideKind; Edge: Boolean; const T: TSdDockTarget;
+      const Mark: TRect);
+    function ButtonAt(const P: TPoint): Integer;
+    function ButtonCount: Integer;
+    function Button(Index: Integer): TSdGuideButton;
+    { drawn (only a change) and shown above every window when it appears or Lift (hidden without
+      buttons), Hot highlighted }
+    procedure Render(Hot: Integer; Lift: Boolean = False);
+    procedure HideGuide;
+  end;
+
   TSdDockPanelEvent = procedure(Sender: TObject; Panel: TSdDockPanel) of object;
 
   TSdDock = class(TCustomControl)
@@ -385,6 +425,14 @@ type
     FDragWindow: TPoint;            // a floating group's window: where it was when the drag began
     FDragGrab: TPoint;              // the pointer from the top left of the dragged group
     FMarker: TForm;
+    { the dock guides of a drag: 0 the compass, 1 - 3 the outer guides (left, right, bottom); what
+      the compass lies over (a group, the dock itself for the centre, nil: none), and the button
+      under the pointer (window, button; -1: none) }
+    FGuides: array[0..3] of TSdDockGuide;
+    FGuideHost: TObject;
+    FGuideRect: TRect;              // the compass's backdrop on the screen (empty: none)
+    FLiftGuides: Boolean;           // the marker has just appeared: the guides go above it (ShowGuides)
+    FHotGuide, FHotButton: Integer;
     { floating: the area of the floating groups (not one of Areas: it takes no room), whether
       their windows may be shown (FloatsShown), and the change a drag ended with (WM_SDDOCKDROP) }
     FFloatArea: TSdDockArea;
@@ -446,7 +494,17 @@ type
     procedure DragStage(C: TControl; Stage: TSdDockDragStage; X, Y: Integer);
     procedure CancelDrag(Restore: Boolean);
     procedure PressCancelled(Sender: TObject);
-    function DropTarget(const P: TPoint; var T: TSdDockTarget; var R: TRect): Boolean;
+    function Guide(Index: Integer): TSdDockGuide;
+    procedure BuildGuides(const P: TPoint);
+    procedure BuildCompass(const P: TPoint);
+    procedure ShowGuides;
+    procedure HideGuides;
+    function GuideTarget(var T: TSdDockTarget; var R: TRect): Boolean;
+    function GroupUnder(const P: TPoint): TSdDockGroup;
+    procedure BesideTarget(A: TSdDockArea; var T: TSdDockTarget; var R: TRect);
+    procedure OuterTarget(A: TSdDockArea; var T: TSdDockTarget; var R: TRect);
+    procedure CenterTarget(A: TSdDockArea; var T: TSdDockTarget; var R: TRect);
+    procedure GroupTarget(G: TSdDockGroup; Kind: TSdGuideKind; var T: TSdDockTarget; var R: TRect);
     function FloatAt(const P: TPoint): TSdDockGroup;
     function WouldChange(const T: TSdDockTarget): Boolean;
     function DragSource: TSdDockGroup;
@@ -581,8 +639,7 @@ const
   Gap = 3;                // splitters
   MinArea = 60;           // what an area splitter leaves to the area and to the centre
   ReorderSlack = 6;       // pixels above and below the strip that still move the tab along it
-  DropZone = 48;          // pixels at an edge of the centre that take a panel
-  EdgeZone = 24;          // pixels at the dock's edge that take a panel into an outer area
+  EdgeZone = 24;          // pixels at the dock's edge that take a panel into an outer area (EdgeBand)
   DockVersion = 2;        // of the settings; 1 = the panes of SdPanes (only the area sizes carry over)
   NoRect: TRect = (Left: 0; Top: 0; Right: 0; Bottom: 0);
   TabSideNames: array[TUITabSide] of string = ('Bottom', 'Top', 'Left', 'Right');
@@ -1656,13 +1713,13 @@ begin
     end;
 end;
 
-{ A column made by a drop (DropTarget), an area of its own named after Base ("Left2", "Left3" ...,
-  "BottomFull2") and as wide or high as Base. Beside an inner area - where a drop on the band at
-  an edge of the centre goes while the edge shows a group - it comes right after the inner areas
-  of its edge in the order of the areas, on the centre's side: a left or right column runs from
-  top to bottom as the left and right areas do (the bottom area stays under the centre), a bottom
-  column lies above the bottom area, as wide as it. Beside an outer area - a drop on the band at
-  the dock's edge while the outer areas of that edge show a group - it is a row at the dock's
+{ A column made by a drop (BesideTarget, OuterTarget), an area of its own named after Base
+  ("Left2", "Left3" ..., "BottomFull2") and as wide or high as Base. Beside an inner area - where
+  a drop on the guide of that edge goes while the edge shows a group - it comes right after the
+  inner areas of its edge in the order of the areas, on the centre's side: a left or right column
+  runs from top to bottom as the left and right areas do (the bottom area stays under the
+  centre), a bottom column lies above the bottom area, as wide as it. Beside an outer area - a
+  drop on the dock's bottom guide while the outer areas of that edge show a group - it is a row at the dock's
   edge: an outer area too, before the outer areas of its edge, so it spans the edge as they do.
   It goes again with its last group (DropEmptyColumns). }
 function TSdDock.AddColumn(Base: TSdDockArea): TSdDockArea;
@@ -3272,6 +3329,7 @@ begin
     if InStrip then
     begin
       HideMarker;
+      HideGuides;
       DragCursor(crDefault);
       if TSdDockTabs(C).Vertical then ReorderTab(TSdDockTabs(C), Y) else ReorderTab(TSdDockTabs(C), X);
       Exit;
@@ -3282,9 +3340,10 @@ begin
     Moving := (FDragGroup <> nil) and (FDragGroup.FFloat <> nil);
     if Moving then
       FDragGroup.FFloat.MoveTo(FDragWindow.X + P.X - FDragFrom.X, FDragWindow.Y + P.Y - FDragFrom.Y);
-    { the pointer says what letting go does: dock there, float there (the marker the window it
-      would float in), or nothing }
-    if CanDock and DropTarget(P, T, R) then
+    { the pointer says what letting go does: dock on the guide it is on, float there (the marker
+      the window it would float in), or nothing }
+    BuildGuides(P);
+    if GuideTarget(T, R) then
     begin
       ShowMarker(R);
       DragCursor(crDrag);
@@ -3304,13 +3363,21 @@ begin
       HideMarker;
       DragCursor(crNo);
     end;
+    { above the marker }
+    ShowGuides;
     Exit;
   end;
   { let go: the change is made by a posted message (it gives the caption or the tab strip that
     holds the mouse another parent when a group floats or docks again) }
   HideMarker;
   DragCursor(crDefault);
-  Ok := not InStrip and FDragging and CanDock and DropTarget(P, T, R);
+  Ok := False;
+  if not InStrip and FDragging then
+  begin
+    BuildGuides(P);
+    Ok := GuideTarget(T, R);
+  end;
+  HideGuides;
   Floats := not Ok and not InStrip and FDragging and WouldFloat(P);
   if (FDragGroup <> nil) and (FDragGroup.FFloat <> nil) then
     FDragGroup.FFloatRect := FDragGroup.FFloat.BoundsRect;      // where its caption took it
@@ -3378,6 +3445,7 @@ var
   Restored: Boolean;
 begin
   HideMarker;
+  HideGuides;
   DragCursor(crDefault);
   Restored := False;
   if Restore then
@@ -3417,174 +3485,731 @@ begin
   if Restored then Layout;
 end;
 
-{ Where the dragged group or panel goes when dropped at P (screen); R (screen) is the area to
-  mark. Over a floating group's window: a tab of it. Over the 24 px band at the dock's edge of
-  an outer area (before the groups and the centre's band there): that area while the outer areas
-  of that edge show no other group, else a row of its own at the dock's edge. Over a group: its
-  caption, its tabs and its middle half make a tab, its first and last quarter a group before or
-  after it. Over the 48 px band at an edge of the centre: a column of its own beside the areas of
-  that edge while the edge shows another group (AddColumn; ColumnRect marks its place), else the
-  area of that edge (not an outer one), last. Targets that change nothing do not count. }
-function TSdDock.DropTarget(const P: TPoint; var T: TSdDockTarget; var R: TRect): Boolean;
+{ --- the dock guides: where a drop docks ---
+  While a group or a view is dragged and docking is allowed (CanDock), guides show where it can
+  dock; a drop docks only on one of their buttons, anywhere else it floats (a floating group's
+  window just moves). The outer guides lie at the dock's left, right and bottom edges: the areas
+  beside the centre at its left and right (BesideTarget), the full-width bottom area
+  (OuterTarget). The compass lies in the middle of what is under the pointer: a docked group - a
+  tab of it, a group of their own before or after it along its area (GroupTarget) -, a floating
+  group's window - a tab of it -, or the centre - the centre areas at its four sides
+  (CenterTarget) and, further out below, the area under it (BesideTarget). A button whose drop
+  would change nothing is left out (WouldChange). }
+
+const
+  EdgeGuide: array[TSdDockEdge] of TSdGuideKind = (gkLeft, gkTop, gkRight, gkBottom);
+  { a compass cell's direction from the middle, by what its button shows }
+  GuideStep: array[TSdGuideKind] of TPoint = ((X: 0; Y: 0), (X: -1; Y: 0), (X: 0; Y: -1), (X: 1; Y: 0), (X: 0; Y: 1));
+  GuideKindNames: array[TSdGuideKind] of string = ('tab', 'left', 'top', 'right', 'bottom');
+
+{ the guides' measures, from the UI font (they follow its DPI): a button, the room between the
+  buttons and around them on the backdrop, the shadow's reach }
+function GuideSize: Integer;
+begin
+  Result := 2 * UITextHeight + 2;
+end;
+
+function GuideSpacing: Integer;
+begin
+  Result := GuideSize div 8;
+end;
+
+function GuideShadow: Integer;
+begin
+  Result := GuideSize div 4;
+end;
+
+function NoTarget: TSdDockTarget;
+begin
+  Result.Area := nil;
+  Result.Index := -1;
+  Result.Group := nil;
+  Result.Column := False;
+end;
+
+function Middle(const R: TRect): TPoint;
+begin
+  Result := Point((R.Left + R.Right) div 2, (R.Top + R.Bottom) div 2);
+end;
+
+function Inflated(const R: TRect; N: Integer): TRect;
+begin
+  Result := R;
+  InflateRect(Result, N, N);
+end;
+
+{ the views beside the centre at A's edge: a new column beside the areas of that edge while the
+  edge shows another group (AddColumn; ColumnRect marks its place), else last into A; R the
+  marker (client) }
+procedure TSdDock.BesideTarget(A: TSdDockArea; var T: TSdDockTarget; var R: TRect);
+begin
+  T.Area := A;
+  T.Column := EdgeShows(A.FEdge, dkBeside, DragWhole);
+  if T.Column then
+    R := ColumnRect(A)
+  else
+    R := AreaPart(A, FCenterRect, 0);       // the edge's area as wide (high) as it is, at most the centre
+end;
+
+{ the views along the dock's edge of the outer area A (the outermost of its edge, its rows lie
+  before it): into A while the outer areas of that edge show no other group, else a row of
+  their own at the dock's edge (AddColumn); R the marker as Layout will make it (client) }
+procedure TSdDock.OuterTarget(A: TSdDockArea; var T: TSdDockTarget; var R: TRect);
+begin
+  T.Area := A;
+  T.Column := EdgeShows(A.FEdge, dkOuter, DragWhole);
+  if T.Column then
+    R := AreaPart(A, FirstArea(A.FEdge, dkOuter).FSpan, Gap)
+  else
+    R := AreaPart(A, A.FRoom, Gap);
+end;
+
+{ the views last into the centre area A; R the area, or its place as Layout will make it while
+  it takes no room (client) }
+procedure TSdDock.CenterTarget(A: TSdDockArea; var T: TSdDockTarget; var R: TRect);
+begin
+  T.Area := A;
+  if GroupAt(A, 0) <> nil then R := A.FBounds else R := AreaPart(A, FPageRect, MinArea + Gap);
+end;
+
+{ the views onto the docked group G: its tabs (gkTab), or a group of their own before it (the
+  arm towards its area's start, gkTop / gkLeft) or after it; R the marker (client) }
+procedure TSdDock.GroupTarget(G: TSdDockGroup; Kind: TSdGuideKind; var T: TSdDockTarget; var R: TRect);
+var
+  L: TList;
+  K, N, Lo, Hi: Integer;
+  B: TRect;
+begin
+  B := G.FBounds;
+  T.Area := G.FArea;
+  if Kind = gkTab then
+  begin
+    T.Group := G;
+    R := B;
+    Exit;
+  end;
+  if G.FArea.Vertical then
+  begin
+    Lo := B.Top;
+    Hi := B.Bottom;
+  end
+  else
+  begin
+    Lo := B.Left;
+    Hi := B.Right;
+  end;
+  L := VisibleGroups(G.FArea);
+  try
+    K := L.IndexOf(G);
+    N := L.Count;
+  finally
+    L.Free;
+  end;
+  if Kind in [gkLeft, gkTop] then
+  begin
+    T.Index := K;
+    R := Along(B, G.FArea.Vertical, Lo, (Lo + Hi) div 2);
+  end
+  else
+  begin
+    if K < N - 1 then T.Index := K + 1;
+    R := Along(B, G.FArea.Vertical, (Lo + Hi) div 2, Hi);
+  end;
+end;
+
+{ the docked group at P (screen): in an area beside the centre, else in a centre area; nil: none }
+function TSdDock.GroupUnder(const P: TPoint): TSdDockGroup;
 var
   Q: TPoint;
-  I, W, H: Integer;
-  D: array[TSdDockEdge] of Integer;
-  E, Near: TSdDockEdge;
-  A, O: TSdDockArea;
-  G: TSdDockGroup;
-  B: TRect;
-
-  { Q over a group of the first area that holds it - a centre area (InCenter) or one beside the
-    centre: the group's caption, its tabs and its middle half take the views as tabs, its first or
-    last quarter as a group of their own before or after it }
-  function OnGroups(InCenter: Boolean): Boolean;
-  var
-    I, K, Lo, Hi, V, Quarter: Integer;
-    A: TSdDockArea;
-    L: TList;
-    G: TSdDockGroup;
-    B: TRect;
-  begin
-    Result := False;
-    A := nil;
+  I, K: Integer;
+  InCenter: Boolean;
+  L: TList;
+begin
+  Result := nil;
+  Q := ScreenToClient(P);
+  for InCenter := False to True do
     for I := 0 to FAreas.Count - 1 do
-      if ((Areas[I].Kind = dkCenter) = InCenter) and PtInRect(Areas[I].FBounds, Q) then
-      begin
-        A := Areas[I];
-        Break;
+    begin
+      if ((Areas[I].Kind = dkCenter) <> InCenter) or not PtInRect(Areas[I].FBounds, Q) then Continue;
+      L := VisibleGroups(Areas[I]);
+      try
+        for K := 0 to L.Count - 1 do
+          if PtInRect(TSdDockGroup(L[K]).FBounds, Q) then
+          begin
+            Result := TSdDockGroup(L[K]);
+            Exit;
+          end;
+      finally
+        L.Free;
       end;
-    if A = nil then Exit;
-    L := VisibleGroups(A);
-    try
-      for K := 0 to L.Count - 1 do
-      begin
-        G := TSdDockGroup(L[K]);
-        B := G.FBounds;
-        if not PtInRect(B, Q) then Continue;
-        T.Area := A;
-        if A.Vertical then
-        begin
-          Lo := B.Top;
-          Hi := B.Bottom;
-          V := Q.Y;
-        end
-        else
-        begin
-          Lo := B.Left;
-          Hi := B.Right;
-          V := Q.X;
-        end;
-        Quarter := (Hi - Lo) div 4;
-        if (Q.Y < B.Top + UIPaneCaptionHeight) or (G.ShowsTabs and PtInRect(G.TabsRect, Q)) or
-          ((V >= Lo + Quarter) and (V < Hi - Quarter)) then
-        begin
-          T.Group := G;
-          R := B;
-        end
-        else if V < Lo + Quarter then
-        begin
-          T.Index := K;
-          R := Along(B, A.Vertical, Lo, (Lo + Hi) div 2);
-        end
-        else
-        begin
-          if K < L.Count - 1 then T.Index := K + 1;
-          R := Along(B, A.Vertical, (Lo + Hi) div 2, Hi);
-        end;
-        Result := True;
-        Exit;
-      end;
-    finally
-      L.Free;
     end;
+end;
+
+function TSdDock.Guide(Index: Integer): TSdDockGuide;
+begin
+  if FGuides[Index] = nil then
+  begin
+    FGuides[Index] := TSdDockGuide.CreateNew(Self);
+    FGuides[Index].Tag := Index;
+    FGuides[Index].FHot := -1;
+  end;
+  Result := FGuides[Index];
+end;
+
+{ the guides for the pointer at P (screen) and the button under it (FHotGuide, FHotButton); none
+  while docking is not allowed or a float-only view is dragged }
+procedure TSdDock.BuildGuides(const P: TPoint);
+const
+  OuterEdges: array[1..3] of TSdDockEdge = (deLeft, deRight, deBottom);
+var
+  I, K, S, Pad: Integer;
+  A: TSdDockArea;
+  T: TSdDockTarget;
+  R, B: TRect;
+begin
+  FHotGuide := -1;
+  FHotButton := -1;
+  for I := 0 to High(FGuides) do Guide(I).Clear;
+  if not CanDock or (DragSource = nil) or DragSource.FloatOnly then
+  begin
+    FGuideHost := nil;
+    FGuideRect := NoRect;
+    Exit;
+  end;
+  S := GuideSize;
+  Pad := S div 2;
+  for I := 1 to 3 do
+  begin
+    if OuterEdges[I] = deBottom then
+    begin
+      { the outer area itself, not one of its rows (they lie before it), while it has its room }
+      A := FirstArea(deBottom, dkOuter);
+      if (A <> nil) and IsRectEmpty(A.FRoom) then A := nil;
+      if (A <> nil) and A.FColumn then A := A.FBase;
+    end
+    else
+      A := FirstArea(OuterEdges[I], dkBeside);
+    if A = nil then Continue;
+    T := NoTarget;
+    if A.FOuter then OuterTarget(A, T, R) else BesideTarget(A, T, R);
+    if not WouldChange(T) then Continue;
+    case OuterEdges[I] of
+      deLeft: B := Bounds(Pad, (ClientHeight - S) div 2, S, S);
+      deRight: B := Bounds(ClientWidth - Pad - S, (ClientHeight - S) div 2, S, S);
+    else
+      B := Bounds((ClientWidth - S) div 2, ClientHeight - Pad - S, S, S);
+    end;
+    B := ScreenRect(Self, B);
+    FGuides[I].AddBack(Inflated(B, GuideSpacing));
+    FGuides[I].AddButton(B, EdgeGuide[OuterEdges[I]], True, T, ScreenRect(Self, R));
+  end;
+  BuildCompass(P);
+  { the button under the pointer, the compass's first }
+  for I := 0 to High(FGuides) do
+  begin
+    K := FGuides[I].ButtonAt(P);
+    if K >= 0 then
+    begin
+      FHotGuide := I;
+      FHotButton := K;
+      Exit;
+    end;
+  end;
+end;
+
+{ The compass over what lies under P (screen) - it stays over what it was over while the pointer
+  is on it: a cross of buttons in cells of the guides' size, the centre's cell in the middle of
+  the group, of the floating window or of the centre's page; its backdrop the row and the column
+  of the cells shown, with the middle one }
+procedure TSdDock.BuildCompass(const P: TPoint);
+var
+  W: TSdDockGuide;
+  Host: TObject;
+  G: TSdDockGroup;
+  C: TPoint;
+  S, Pitch, Col0, Col1, Row0, Row1: Integer;
+  E: TSdDockEdge;
+  A: TSdDockArea;
+  T: TSdDockTarget;
+  R: TRect;
+
+  function Cell(Col, Row: Integer): TRect;
+  begin
+    Result := Bounds(C.X - S div 2 + Col * Pitch, C.Y - S div 2 + Row * Pitch, S, S);
+  end;
+
+  { a button Steps cells from the middle in the direction of Kind, unless its drop changes
+    nothing (2 away, the outer cell docks beside the centre: Edge); Mark on the screen }
+  procedure Add(Kind: TSdGuideKind; Steps: Integer; const T: TSdDockTarget; const Mark: TRect);
+  var
+    Col, Row: Integer;
+  begin
+    if not WouldChange(T) then Exit;
+    Col := GuideStep[Kind].X * Steps;
+    Row := GuideStep[Kind].Y * Steps;
+    W.AddButton(Cell(Col, Row), Kind, Steps = 2, T, Mark);
+    if Col < Col0 then Col0 := Col;
+    if Col > Col1 then Col1 := Col;
+    if Row < Row0 then Row0 := Row;
+    if Row > Row1 then Row1 := Row;
+  end;
+
+  { ... for the target T with its marker R in the dock's coordinates }
+  procedure AddAt(Kind: TSdGuideKind; Steps: Integer);
+  begin
+    Add(Kind, Steps, T, ScreenRect(Self, R));
+  end;
+
+  procedure AddGroup(Kind: TSdGuideKind);
+  begin
+    T := NoTarget;
+    GroupTarget(G, Kind, T, R);
+    AddAt(Kind, 1);
   end;
 
 begin
-  Result := False;
-  Q := ScreenToClient(P);
-  T.Area := nil;
-  T.Index := -1;
-  T.Group := nil;
-  T.Column := False;
-  { a float-only view docks nowhere }
-  if (DragSource <> nil) and DragSource.FloatOnly then Exit;
-  { a floating group's window (they lie above the dock): the dragged views become its tabs }
-  G := FloatAt(P);
-  if G <> nil then
+  W := FGuides[0];
+  if (FGuideHost <> nil) and PtInRect(FGuideRect, P) and
+    ((FGuideHost = Self) or IsGroup(TSdDockGroup(FGuideHost))) then
+    Host := FGuideHost
+  else
   begin
-    T.Area := FFloatArea;
-    T.Group := G;
-    R := G.FFloat.BoundsRect;
-    Result := WouldChange(T);
-    Exit;
+    Host := FloatAt(P);
+    if Host = nil then Host := GroupUnder(P);
+    if (Host = nil) and PtInRect(FCenterRect, ScreenToClient(P)) and not IsRectEmpty(FPageRect) then Host := Self;
   end;
-  { the band at the dock's edge of an outer area - at the outermost of its edge (its rows lie
-    before it) -, before the groups and the centre's band that lie there too: while the outer
-    areas of that edge show no other group the views go into it, else into a row of their own at
-    the dock's edge (AddColumn); the marker is the place as Layout will make it }
-  for I := 0 to FAreas.Count - 1 do
+  FGuideHost := Host;
+  FGuideRect := NoRect;
+  if Host = nil then Exit;
+  S := GuideSize;
+  Pitch := S + GuideSpacing;
+  Col0 := 0;
+  Col1 := 0;
+  Row0 := 0;
+  Row1 := 0;
+  if Host = Self then
   begin
-    A := Areas[I];
-    if not A.FOuter or A.FColumn then Continue;
-    O := FirstArea(A.FEdge, dkOuter);
-    if IsRectEmpty(O.FRoom) or not PtInRect(EdgeBand(O.FRoom, A.FEdge), Q) then Continue;
-    T.Area := A;
-    T.Column := EdgeShows(A.FEdge, dkOuter, DragWhole);
-    if T.Column then B := O.FSpan else B := A.FRoom;
-    R := AreaPart(A, B, Gap);
-    Result := True;
-    Break;
-  end;
-  { over an area beside the centre: its groups }
-  if not Result then Result := OnGroups(False);
-  { the band at an edge of the centre (before the centre areas' groups that lie there too): a new
-    column beside the areas of that edge, or into the edge's area }
-  if not Result and PtInRect(FCenterRect, Q) then
-    for I := 0 to FAreas.Count - 1 do
-    begin
-      A := Areas[I];
-      if A.Kind <> dkBeside then Continue;   // the dock's edge (above); inside the centre (below)
-      Result := PtInRect(EdgePart(FCenterRect, A.FEdge, DropZone), Q);
-      if Result then
-      begin
-        T.Area := A;
-        T.Column := EdgeShows(A.FEdge, dkBeside, DragWhole);
-        if T.Column then
-          R := ColumnRect(A)
-        else
-          R := AreaPart(A, FCenterRect, 0);       // the edge's area as wide (high) as it is, at most the centre
-        Break;
-      end;
-    end;
-  { a centre area's groups }
-  if not Result then Result := OnGroups(True);
-  { anywhere else in the centre (the page, its header): last into the centre area of the side of
-    the page the pointer is nearest to - the page cut by its diagonals into four triangles. The
-    marker is the area: its place as Layout will make it while it takes no room }
-  if not Result and PtInRect(FCenterRect, Q) and not IsRectEmpty(FPageRect) then
-  begin
-    B := FPageRect;
-    W := B.Right - B.Left;
-    H := B.Bottom - B.Top;
-    { the distances to the four sides, each scaled by the other side's length (W * H across) }
-    D[deLeft] := (Q.X - B.Left) * H;
-    D[deRight] := (B.Right - Q.X) * H;
-    D[deTop] := (Q.Y - B.Top) * W;
-    D[deBottom] := (B.Bottom - Q.Y) * W;
-    Near := deLeft;
+    { the centre: its areas at the page's four sides, the area under it further out below }
+    C := Middle(ScreenRect(Self, FPageRect));
     for E := Low(TSdDockEdge) to High(TSdDockEdge) do
-      if D[E] < D[Near] then Near := E;
-    A := FirstArea(Near, dkCenter);
+    begin
+      A := FirstArea(E, dkCenter);
+      if A = nil then Continue;
+      T := NoTarget;
+      CenterTarget(A, T, R);
+      AddAt(EdgeGuide[E], 1);
+    end;
+    A := FirstArea(deBottom, dkBeside);
     if A <> nil then
     begin
-      T.Area := A;
-      if GroupAt(A, 0) <> nil then R := A.FBounds else R := AreaPart(A, B, MinArea + Gap);
-      Result := True;
+      T := NoTarget;
+      BesideTarget(A, T, R);
+      AddAt(gkBottom, 2);
+    end;
+  end
+  else
+  begin
+    G := TSdDockGroup(Host);
+    if G.Floating then
+    begin
+      C := Middle(G.FFloat.BoundsRect);
+      T := NoTarget;
+      T.Area := FFloatArea;
+      T.Group := G;
+      Add(gkTab, 0, T, G.FFloat.BoundsRect);
+    end
+    else
+    begin
+      C := Middle(ScreenRect(Self, G.FBounds));
+      AddGroup(gkTab);
+      if G.FArea.Vertical then
+      begin
+        AddGroup(gkTop);
+        AddGroup(gkBottom);
+      end
+      else
+      begin
+        AddGroup(gkLeft);
+        AddGroup(gkRight);
+      end;
     end;
   end;
-  Result := Result and WouldChange(T);
-  if Result then R := ScreenRect(Self, R);
+  if W.ButtonCount = 0 then Exit;
+  W.AddBack(Inflated(Rect(Cell(Col0, 0).Left, Cell(0, 0).Top, Cell(Col1, 0).Right, Cell(0, 0).Bottom), GuideSpacing));
+  W.AddBack(Inflated(Rect(Cell(0, 0).Left, Cell(0, Row0).Top, Cell(0, 0).Right, Cell(0, Row1).Bottom), GuideSpacing));
+  UnionRect(FGuideRect, W.FBacks[0], W.FBacks[1]);
+end;
+
+{ the guides drawn and above the marker, the button under the pointer highlighted }
+procedure TSdDock.ShowGuides;
+var
+  I: Integer;
+begin
+  for I := 0 to High(FGuides) do
+    if FGuides[I] <> nil then
+      if I = FHotGuide then FGuides[I].Render(FHotButton, FLiftGuides) else FGuides[I].Render(-1, FLiftGuides);
+  FLiftGuides := False;
+end;
+
+procedure TSdDock.HideGuides;
+var
+  I: Integer;
+begin
+  for I := 0 to High(FGuides) do
+    if FGuides[I] <> nil then FGuides[I].HideGuide;
+  FGuideHost := nil;
+  FGuideRect := NoRect;
+  FHotGuide := -1;
+  FHotButton := -1;
+end;
+
+{ where a drop docks: the target of the button under the pointer, R its marker (screen) }
+function TSdDock.GuideTarget(var T: TSdDockTarget; var R: TRect): Boolean;
+var
+  B: TSdGuideButton;
+begin
+  Result := FHotGuide >= 0;
+  if not Result then
+  begin
+    T := NoTarget;
+    Exit;
+  end;
+  B := FGuides[FHotGuide].Button(FHotButton);
+  T := B.Target;
+  R := B.Mark;
+end;
+
+{ --- TSdDockGuide --- }
+
+const
+  { Visual Studio 2022's guides: the accent, the tint of the docked part, the backdrop and its
+    edge, a button's face and edge, the face under the pointer }
+  GuideBlue = $00CC7A00;          // #007ACC
+  GuideTint = $00F0D7B8;          // #B8D7F0
+  GuideBack = $00F5F2F2;          // #F2F2F5
+  GuideBackEdge = $00C5C5C5;
+  GuideFace = $00FFFFFF;
+  GuideEdge = $00B3B3B3;
+  GuideHotFace = $00F7E4CC;       // #CCE4F7
+  GuideKey = $00FF00FF;           // the ground while drawing: none of the colours above
+  GuideShadowAlpha = 72;          // the shadow's alpha at the backdrop's edge
+  { a guide window: a layered pop-up that is never activated and lets the mouse through }
+  GuideExStyle = WS_EX_LAYERED or WS_EX_TRANSPARENT or WS_EX_TOOLWINDOW or WS_EX_NOACTIVATE;
+
+{ a button in R: its face (the accent's tint under the pointer) and edge, inside it a window in
+  the accent with its title bar, the part where the views dock tinted (all of it but a margin:
+  as a tab; Edge: a strip a quarter wide at that side, else a half), and towards that side an
+  arrow }
+procedure DrawGuideButton(C: TCanvas; const R: TRect; Kind: TSdGuideKind; Edge, Hot: Boolean);
+var
+  S, I, H, M, X, Y, Q: Integer;
+  F, Inner, Part: TRect;
+  Tip: array[0..2] of TPoint;
+begin
+  S := R.Right - R.Left;
+  if Hot then C.Brush.Color := GuideHotFace else C.Brush.Color := GuideFace;
+  C.FillRect(R);
+  if Hot then C.Brush.Color := GuideBlue else C.Brush.Color := GuideEdge;
+  C.FrameRect(R);
+  I := S * 9 div 32;
+  F := Inflated(R, -I);
+  C.Brush.Color := GuideBlue;
+  C.FrameRect(F);
+  C.FillRect(Rect(F.Left, F.Top, F.Right, F.Top + 2));
+  Inner := Rect(F.Left + 1, F.Top + 2, F.Right - 1, F.Bottom - 1);
+  C.Brush.Color := GuideFace;
+  C.FillRect(Inner);
+  Part := Inner;
+  if Edge then Q := 4 else Q := 2;
+  case Kind of
+    gkTab: InflateRect(Part, -2, -2);
+    gkLeft: Part.Right := Inner.Left + (Inner.Right - Inner.Left) div Q;
+    gkRight: Part.Left := Inner.Right - (Inner.Right - Inner.Left) div Q;
+    gkTop: Part.Bottom := Inner.Top + (Inner.Bottom - Inner.Top) div Q;
+    gkBottom: Part.Top := Inner.Bottom - (Inner.Bottom - Inner.Top) div Q;
+  end;
+  C.Brush.Color := GuideTint;
+  C.FillRect(Part);
+  { the docked part's edge towards the rest of the window }
+  C.Brush.Color := GuideBlue;
+  case Kind of
+    gkTab: C.FrameRect(Part);
+    gkLeft: C.FillRect(Rect(Part.Right - 1, Part.Top, Part.Right, Part.Bottom));
+    gkRight: C.FillRect(Rect(Part.Left, Part.Top, Part.Left + 1, Part.Bottom));
+    gkTop: C.FillRect(Rect(Part.Left, Part.Bottom - 1, Part.Right, Part.Bottom));
+    gkBottom: C.FillRect(Rect(Part.Left, Part.Top, Part.Right, Part.Top + 1));
+  end;
+  if Kind = gkTab then Exit;
+  { the arrow, in the margin between the window and the button's edge on that side }
+  H := I div 2;
+  if H < 2 then H := 2;
+  M := (I - H) div 2;
+  X := (R.Left + R.Right) div 2;
+  Y := (R.Top + R.Bottom) div 2;
+  case Kind of
+    gkLeft:
+      begin
+        Tip[0] := Point(R.Left + M, Y);
+        Tip[1] := Point(R.Left + M + H, Y - H);
+        Tip[2] := Point(R.Left + M + H, Y + H);
+      end;
+    gkRight:
+      begin
+        Tip[0] := Point(R.Right - 1 - M, Y);
+        Tip[1] := Point(R.Right - 1 - M - H, Y - H);
+        Tip[2] := Point(R.Right - 1 - M - H, Y + H);
+      end;
+    gkTop:
+      begin
+        Tip[0] := Point(X, R.Top + M);
+        Tip[1] := Point(X - H, R.Top + M + H);
+        Tip[2] := Point(X + H, R.Top + M + H);
+      end;
+  else
+    Tip[0] := Point(X, R.Bottom - 1 - M);
+    Tip[1] := Point(X - H, R.Bottom - 1 - M - H);
+    Tip[2] := Point(X + H, R.Bottom - 1 - M - H);
+  end;
+  C.Pen.Color := GuideBlue;
+  C.Polygon(Tip);
+end;
+
+{ test mode with D7S_GUIDES set to a folder: what a guide window shows, on a light grey ground,
+  as guide<n>.bmp there (a cloaked layered window cannot be captured) }
+procedure SaveGuideShot(Bits: PCardinal; W, H, Index: Integer);
+var
+  Folder: string;
+  B: TBitmap;
+  X, Y: Integer;
+  Px: PCardinal;
+  Row: PByteArray;
+  A, V: Cardinal;
+begin
+  Folder := GetEnvironmentVariable('D7S_GUIDES');
+  if (Folder = '') or not UITestMode then Exit;
+  B := TBitmap.Create;
+  try
+    B.PixelFormat := pf24bit;
+    B.Width := W;
+    B.Height := H;
+    Px := Bits;
+    for Y := 0 to H - 1 do
+    begin
+      Row := B.ScanLine[Y];
+      for X := 0 to W - 1 do
+      begin
+        A := Px^ shr 24;
+        { premultiplied colour over the ground $E0 }
+        V := Px^;
+        Row[3 * X] := Byte((V and $FF) + $E0 * (255 - A) div 255);
+        Row[3 * X + 1] := Byte(((V shr 8) and $FF) + $E0 * (255 - A) div 255);
+        Row[3 * X + 2] := Byte(((V shr 16) and $FF) + $E0 * (255 - A) div 255);
+        Inc(Px);
+      end;
+    end;
+    B.SaveToFile(IncludeTrailingPathDelimiter(Folder) + 'guide' + IntToStr(Index) + '.bmp');
+  finally
+    B.Free;
+  end;
+end;
+
+procedure TSdDockGuide.CreateParams(var Params: TCreateParams);
+begin
+  inherited CreateParams(Params);
+  Params.Style := WS_POPUP;
+  Params.ExStyle := Params.ExStyle or GuideExStyle;
+end;
+
+{ TCustomForm.CreateWindowHandle makes the window without WS_EX_LAYERED and takes it away again
+  unless AlphaBlend or TransparentColor is set: without it UpdateLayeredWindow fails and the
+  window shows nothing }
+procedure TSdDockGuide.CreateWnd;
+begin
+  inherited CreateWnd;
+  SetWindowLong(Handle, GWL_EXSTYLE, GetWindowLong(Handle, GWL_EXSTYLE) or GuideExStyle);
+end;
+
+procedure TSdDockGuide.Clear;
+begin
+  SetLength(FButtons, 0);
+  SetLength(FBacks, 0);
+end;
+
+procedure TSdDockGuide.AddBack(const R: TRect);
+begin
+  SetLength(FBacks, Length(FBacks) + 1);
+  FBacks[High(FBacks)] := R;
+end;
+
+procedure TSdDockGuide.AddButton(const R: TRect; Kind: TSdGuideKind; Edge: Boolean; const T: TSdDockTarget;
+  const Mark: TRect);
+begin
+  SetLength(FButtons, Length(FButtons) + 1);
+  FButtons[High(FButtons)].Bounds := R;
+  FButtons[High(FButtons)].Kind := Kind;
+  FButtons[High(FButtons)].Edge := Edge;
+  FButtons[High(FButtons)].Target := T;
+  FButtons[High(FButtons)].Mark := Mark;
+end;
+
+function TSdDockGuide.ButtonAt(const P: TPoint): Integer;
+var
+  I: Integer;
+begin
+  Result := -1;
+  for I := 0 to High(FButtons) do
+    if PtInRect(FButtons[I].Bounds, P) then
+    begin
+      Result := I;
+      Exit;
+    end;
+end;
+
+function TSdDockGuide.ButtonCount: Integer;
+begin
+  Result := Length(FButtons);
+end;
+
+function TSdDockGuide.Button(Index: Integer): TSdGuideButton;
+begin
+  Result := FButtons[Index];
+end;
+
+procedure TSdDockGuide.HideGuide;
+begin
+  if HandleAllocated then ShowWindow(Handle, SW_HIDE);
+  FDrawn := '';
+end;
+
+{ The window over the backdrop and its shadow: drawn with GDI on a 32-bit DIB whose ground is
+  GuideKey, then the drawing made opaque and the ground the shadow - black, its alpha falling off
+  with the distance from the backdrop (moved down by a quarter of its reach) -, and given to the
+  window whole (UpdateLayeredWindow: no flicker). Drawn again only when what it shows changed. }
+procedure TSdDockGuide.Render(Hot: Integer; Lift: Boolean = False);
+var
+  WasShown: Boolean;
+  W, R: TRect;
+  I, X, Y, Wd, Ht, Reach, Down, Dx, Dy, D2, Best: Integer;
+  Key: string;
+  Dib: HBITMAP;
+  Bits, Px: PCardinal;
+  DC, ScreenDC: HDC;
+  Old: HGDIOBJ;
+  C: TCanvas;
+  Blend: TBlendFunction;
+  Dst, Src: TPoint;
+  Size: TSize;
+  Fall: Double;
+  Backs: array of TRect;
+begin
+  if Length(FButtons) = 0 then
+  begin
+    HideGuide;
+    Exit;
+  end;
+  Reach := GuideShadow;
+  W := FBacks[0];
+  for I := 1 to High(FBacks) do UnionRect(W, W, FBacks[I]);
+  InflateRect(W, Reach, Reach);
+  Key := Format('%d|%d,%d,%d,%d', [Hot, W.Left, W.Top, W.Right, W.Bottom]);
+  for I := 0 to High(FButtons) do
+    Key := Key + Format('|%d%d:%d,%d', [Ord(FButtons[I].Kind), Ord(FButtons[I].Edge), FButtons[I].Bounds.Left,
+      FButtons[I].Bounds.Top]);
+  WasShown := IsWindowVisible(Handle);
+  if (Key <> FDrawn) or not WasShown then
+  begin
+    FDrawn := Key;
+    FHot := Hot;
+    Wd := W.Right - W.Left;
+    Ht := W.Bottom - W.Top;
+    Dib := UICreateDib32(Wd, Ht, Bits);
+    if Dib = 0 then Exit;
+    DC := CreateCompatibleDC(0);
+    Old := SelectObject(DC, Dib);
+    try
+      SetLength(Backs, Length(FBacks));
+      for I := 0 to High(FBacks) do
+      begin
+        Backs[I] := FBacks[I];
+        OffsetRect(Backs[I], -W.Left, -W.Top);
+      end;
+      C := TCanvas.Create;
+      try
+        C.Handle := DC;
+        C.Brush.Color := GuideKey;
+        C.FillRect(Rect(0, 0, Wd, Ht));
+        { the backdrop: the union's outline, each rectangle's frame covered inside the others }
+        C.Brush.Color := GuideBackEdge;
+        for I := 0 to High(Backs) do C.FrameRect(Backs[I]);
+        C.Brush.Color := GuideBack;
+        for I := 0 to High(Backs) do C.FillRect(Inflated(Backs[I], -1));
+        for I := 0 to High(FButtons) do
+        begin
+          R := FButtons[I].Bounds;
+          OffsetRect(R, -W.Left, -W.Top);
+          DrawGuideButton(C, R, FButtons[I].Kind, FButtons[I].Edge, I = Hot);
+        end;
+      finally
+        C.Handle := 0;
+        C.Free;
+      end;
+      GdiFlush;
+      Down := Reach div 4;
+      Px := Bits;
+      for Y := 0 to Ht - 1 do
+        for X := 0 to Wd - 1 do
+        begin
+          if (Px^ and $FFFFFF) = GuideKey then
+          begin
+            Best := MaxInt;
+            for I := 0 to High(Backs) do
+            begin
+              Dx := Backs[I].Left - X;
+              if X - (Backs[I].Right - 1) > Dx then Dx := X - (Backs[I].Right - 1);
+              if Dx < 0 then Dx := 0;
+              Dy := Backs[I].Top + Down - Y;
+              if Y - (Backs[I].Bottom - 1 + Down) > Dy then Dy := Y - (Backs[I].Bottom - 1 + Down);
+              if Dy < 0 then Dy := 0;
+              D2 := Dx * Dx + Dy * Dy;
+              if D2 < Best then Best := D2;
+            end;
+            if Best >= Reach * Reach then
+              Px^ := 0
+            else
+            begin
+              Fall := 1 - Sqrt(Best) / Reach;
+              Px^ := Cardinal(Round(GuideShadowAlpha * Fall * Fall)) shl 24;
+            end;
+          end
+          else
+            Px^ := Px^ or $FF000000;
+          Inc(Px);
+        end;
+      ScreenDC := GetDC(0);
+      try
+        Dst := W.TopLeft;
+        Size.cx := Wd;
+        Size.cy := Ht;
+        Src := Point(0, 0);
+        Blend.BlendOp := AC_SRC_OVER;
+        Blend.BlendFlags := 0;
+        Blend.SourceConstantAlpha := 255;
+        Blend.AlphaFormat := AC_SRC_ALPHA;
+        FFailed := not UpdateLayeredWindow(Handle, ScreenDC, @Dst, @Size, DC, @Src, 0, @Blend, ULW_ALPHA);
+      finally
+        ReleaseDC(0, ScreenDC);
+      end;
+      SaveGuideShot(Bits, Wd, Ht, Tag);
+    finally
+      SelectObject(DC, Old);
+      DeleteDC(DC);
+      DeleteObject(Dib);
+    end;
+  end;
+  { shown without activation, above the drop marker - only when it appears or the marker has just
+    appeared: a change of the z-order at every move of the pointer makes the windows flicker }
+  if Lift or not WasShown then
+    SetWindowPos(Handle, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE or SWP_NOSIZE or SWP_NOACTIVATE or SWP_SHOWWINDOW);
 end;
 
 { The floating window at P (screen) that the pointer is over - not the one being moved, and not
@@ -3641,7 +4266,7 @@ begin
     Result := T.Group <> G;
     Exit;
   end;
-  { a new column (the edge shows another group, DropTarget): a change, but for the only group of
+  { a new column (the edge shows another group, BesideTarget): a change, but for the only group of
     the innermost column of that edge, or of the outermost outer area that shows one - the new
     one would take its place }
   if T.Column then
@@ -3689,6 +4314,8 @@ end;
   nothing is drawn on the screen of other programs; the test guard cloaks it like any window
   of D7 Studio). }
 procedure TSdDock.ShowMarker(const R: TRect);
+var
+  Old: TRect;
 begin
   if FMarker = nil then
   begin
@@ -3698,9 +4325,24 @@ begin
     FMarker.AlphaBlend := True;
     FMarker.AlphaBlendValue := 80;
   end;
-  { shown without activation: Visible := True would take the focus from the main window }
-  SetWindowPos(FMarker.Handle, HWND_TOPMOST, R.Left, R.Top, R.Right - R.Left, R.Bottom - R.Top,
-    SWP_NOACTIVATE or SWP_SHOWWINDOW);
+  if IsWindowVisible(FMarker.Handle) then
+  begin
+    { shown already: moved only when its place changed, and kept where it is in the z-order -
+      under the dock guides (raising it at every move of the pointer, and the guides above it
+      again, made them flicker) }
+    GetWindowRect(FMarker.Handle, Old);
+    if not EqualRect(Old, R) then
+      SetWindowPos(FMarker.Handle, 0, R.Left, R.Top, R.Right - R.Left, R.Bottom - R.Top,
+        SWP_NOACTIVATE or SWP_NOZORDER);
+  end
+  else
+  begin
+    { shown without activation: Visible := True would take the focus from the main window; the
+      guides go above it again (ShowGuides) }
+    SetWindowPos(FMarker.Handle, HWND_TOPMOST, R.Left, R.Top, R.Right - R.Left, R.Bottom - R.Top,
+      SWP_NOACTIVATE or SWP_SHOWWINDOW);
+    FLiftGuides := True;
+  end;
 end;
 
 procedure TSdDock.HideMarker;
@@ -4034,14 +4676,32 @@ begin
 end;
 
 { test mode: area:panel@left-right,... per group with tabs (positions in its tab strip); then
-  area^:panel@top-bottom,... per auto-hide strip (positions along it) }
+  area^:panel@top-bottom,... per auto-hide strip (positions along it); during a drag first
+  Guide<n>:kind>area[=tab|+column|#index]@left,top,right,bottom[*][!] per guide button shown (n
+  0 the compass, 1 - 3 the outer guides; the bounds on the screen, * under the pointer, ! its
+  window could not be drawn) }
 function TSdDock.DebugTabs: string;
 var
-  I: Integer;
+  I, K: Integer;
   L: TList;
   T: TSdDockTabs;
+  B: TSdGuideButton;
 begin
   Result := '';
+  for I := 0 to High(FGuides) do
+    if (FGuides[I] <> nil) and FGuides[I].HandleAllocated and IsWindowVisible(FGuides[I].Handle) then
+      for K := 0 to FGuides[I].ButtonCount - 1 do
+      begin
+        B := FGuides[I].Button(K);
+        Result := Result + Format('Guide%d:%s>%s', [I, GuideKindNames[B.Kind], B.Target.Area.FName]);
+        if B.Target.Group <> nil then Result := Result + '=tab'
+        else if B.Target.Column then Result := Result + '+column'
+        else if B.Target.Index >= 0 then Result := Result + '#' + IntToStr(B.Target.Index);
+        Result := Result + Format('@%d,%d,%d,%d', [B.Bounds.Left, B.Bounds.Top, B.Bounds.Right, B.Bounds.Bottom]);
+        if (I = FHotGuide) and (K = FHotButton) then Result := Result + '*';
+        if FGuides[I].FFailed then Result := Result + '!';
+        Result := Result + ';';
+      end;
   for I := 0 to FAreas.Count - 1 do
     if Areas[I].FAutoTabs.Visible then
       Result := Result + Areas[I].FName + '^:' + Areas[I].FAutoTabs.DebugPositions + ';';

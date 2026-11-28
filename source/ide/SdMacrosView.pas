@@ -178,9 +178,7 @@ begin
     MarkCurrent;
     if (Select >= 0) and (Select < MacroList.Items.Count) then
     begin
-      MacroList.Items[Select].Selected := True;
-      MacroList.Items[Select].Focused := True;
-      MacroList.Items[Select].MakeVisible(False);
+      UIChooseItem(MacroList.Items[Select]);
     end;
   finally
     MacroList.Items.EndUpdate;

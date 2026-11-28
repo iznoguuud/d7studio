@@ -12,7 +12,7 @@ unit SdEnvOptionsFrame;
 { D7 Studio - Tools | Environment Options: Delphi 7's dialog, D7 Studio's additions on its pages
   (Preferences: Auto close on successful compile under Show compiler progress, User interface -
   the UI font, the fixed-size font, the zoom key, the dialogs' background; Designer: Show form positioner,
-  Snap lines) and its own page Components. The values: SdEnvOptions, the form grid in
+  Snap lines) and its own pages Components and Metrics. The values: SdEnvOptions, the form grid in
   DesignEnv. A frame: the section Environment Options of the Options dialog (SdOptionsDlg), its
   pages without tabs. The editor's options are a section of their own (SdEditorOptionsFrame). }
 
@@ -20,7 +20,7 @@ interface
 
 uses
   Windows, SysUtils, Classes, Graphics, Controls, Forms, StdCtrls, ComCtrls, ExtCtrls,
-  CheckLst, ActnList, SdEnvOptions, SdVarLists;
+  CheckLst, ActnList, SdEnvOptions, SdVarLists, SdMetrics;
 
 type
   TEnvOptionsFrame = class(TFrame)
@@ -180,6 +180,20 @@ type
     cbCompColor: TColorBox;
     hkComp: THotKey;
     lblCompNote: TLabel;
+    tsMetrics: TTabSheet;
+    gbMetricList: TGroupBox;
+    lblMetricAggr: TLabel;
+    lblMetricLower: TLabel;
+    lblMetricUpper: TLabel;
+    lblMetricNone: TLabel;
+    lvMetrics: TListView;
+    cbMetricAggr: TComboBox;
+    edMetricLower: TEdit;
+    edMetricUpper: TEdit;
+    btnMetricDefaults: TButton;
+    gbMetricOptions: TGroupBox;
+    chkMetricFormFields: TCheckBox;
+    chkMetricOutside: TCheckBox;
     Actions: TActionList;
     aBrowseRepository: TAction;
     aPageAdd: TAction;
@@ -222,7 +236,12 @@ type
     procedure CategoryListDragDrop(Sender, Source: TObject; X, Y: Integer);
     procedure CategoryListEndDrag(Sender, Target: TObject; X, Y: Integer);
     procedure CategoryListKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
+    procedure MetricSelect(Sender: TObject; Item: TListItem; Selected: Boolean);
+    procedure MetricEdited(Sender: TObject);
+    procedure MetricDefaultsClick(Sender: TObject);
   private
+    FMetrics: TMetricSettings;      // Metrics: the settings as the page has them (the check boxes: On)
+    FMetricShowing: Boolean;        // ... the chosen metric's boxes being filled
     FVars: TSdVarLists;             // the Environment Variables page and its commands (aVar...)
     FColors: array[TOIColor] of TColor;
     FPages: TStringList;            // palette pages; Objects: TStringList of class names
@@ -251,6 +270,9 @@ type
     function OnTools: Boolean;
     { component class Cls off the pages that have it; the first one's name ('' none) }
     function TakeClass(const Cls: string): string;
+    procedure FillMetrics;
+    procedure ShowMetricRow(Item: TListItem);
+    procedure MetricRowTexts(Item: TListItem);
   public
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
@@ -472,6 +494,11 @@ begin
   udCompReset.Position := E.CompResetDelay;
   cbCompColor.Selected := E.CompColor;
   hkComp.HotKey := E.CompHotkey;
+  { Metrics }
+  FMetrics := E.Metrics;
+  FillMetrics;
+  chkMetricFormFields.Checked := E.MetricOpts.FormFields;
+  chkMetricOutside.Checked := E.MetricOpts.OutsideAncestors;
 end;
 
 procedure TEnvOptionsFrame.SaveOptions;
@@ -571,8 +598,111 @@ begin
   E.CompResetDelay := udCompReset.Position;
   E.CompColor := cbCompColor.Selected;
   E.CompHotkey := hkComp.HotKey;
+  for I := 0 to lvMetrics.Items.Count - 1 do
+    FMetrics[TMetricId(lvMetrics.Items[I].Data)].On := lvMetrics.Items[I].Checked;
+  E.Metrics := FMetrics;
+  E.MetricOpts.FormFields := chkMetricFormFields.Checked;
+  E.MetricOpts.OutsideAncestors := chkMetricOutside.Checked;
   E.Save;
   E.ApplyVariables;
+end;
+
+{ ---------------------------------------------------------------- Metrics }
+
+{ a limit as the list and the boxes show it: '' for none }
+function LimitText(M: TMetricId; V: Double): string;
+begin
+  if V > 0 then Result := MetricValueText(M, V) else Result := '';
+end;
+
+{ every metric, a row each in the order of their groups: checked when it is computed, its
+  aggregation and limits; the first one chosen }
+procedure TEnvOptionsFrame.FillMetrics;
+var
+  M: TMetricId;
+  It: TListItem;
+begin
+  lvMetrics.Items.BeginUpdate;
+  try
+    lvMetrics.Items.Clear;
+    for M := Low(TMetricId) to High(TMetricId) do
+    begin
+      It := lvMetrics.Items.Add;
+      It.Caption := MetricDefs[M].Name + ' (' + MetricDefs[M].Id + ')';
+      It.Data := Pointer(Ord(M));
+      It.Checked := FMetrics[M].On;
+      It.SubItems.Add(MetricGroupNames[MetricDefs[M].Group]);
+      MetricRowTexts(It);
+    end;
+  finally
+    lvMetrics.Items.EndUpdate;
+  end;
+  if lvMetrics.Items.Count > 0 then UIChooseItem(lvMetrics.Items[0], False);
+  ShowMetricRow(lvMetrics.Selected);
+end;
+
+{ a metric's row after its group: its aggregation and limits as the page has them }
+procedure TEnvOptionsFrame.MetricRowTexts(Item: TListItem);
+var
+  M: TMetricId;
+begin
+  M := TMetricId(Item.Data);
+  while Item.SubItems.Count < 4 do Item.SubItems.Add('');
+  Item.SubItems[1] := MetricAggrNames[FMetrics[M].Aggr];
+  Item.SubItems[2] := LimitText(M, FMetrics[M].Lower);
+  Item.SubItems[3] := LimitText(M, FMetrics[M].Upper);
+end;
+
+{ the chosen metric's aggregation and limits in their boxes }
+procedure TEnvOptionsFrame.ShowMetricRow(Item: TListItem);
+var
+  M: TMetricId;
+begin
+  FMetricShowing := True;
+  try
+    cbMetricAggr.Enabled := Item <> nil;
+    edMetricLower.Enabled := Item <> nil;
+    edMetricUpper.Enabled := Item <> nil;
+    if Item = nil then Exit;
+    M := TMetricId(Item.Data);
+    cbMetricAggr.ItemIndex := Ord(FMetrics[M].Aggr);
+    edMetricLower.Text := LimitText(M, FMetrics[M].Lower);
+    edMetricUpper.Text := LimitText(M, FMetrics[M].Upper);
+  finally
+    FMetricShowing := False;
+  end;
+end;
+
+procedure TEnvOptionsFrame.MetricSelect(Sender: TObject; Item: TListItem; Selected: Boolean);
+begin
+  if Selected then ShowMetricRow(Item);
+end;
+
+{ an aggregation or a limit typed: the chosen metric's, also in its row (a box that holds no
+  number: no limit) }
+procedure TEnvOptionsFrame.MetricEdited(Sender: TObject);
+var
+  It: TListItem;
+  M: TMetricId;
+  V: Double;
+begin
+  It := lvMetrics.Selected;
+  if FMetricShowing or (It = nil) then Exit;
+  M := TMetricId(It.Data);
+  if cbMetricAggr.ItemIndex >= 0 then FMetrics[M].Aggr := TMetricAggr(cbMetricAggr.ItemIndex);
+  if not MetricNumber(edMetricLower.Text, V) or (V < 0) then V := 0;
+  FMetrics[M].Lower := V;
+  if not MetricNumber(edMetricUpper.Text, V) or (V < 0) then V := 0;
+  FMetrics[M].Upper := V;
+  MetricRowTexts(It);
+end;
+
+procedure TEnvOptionsFrame.MetricDefaultsClick(Sender: TObject);
+begin
+  FMetrics := MetricDefaults;
+  FillMetrics;
+  chkMetricFormFields.Checked := MetricDefaultOptions.FormFields;
+  chkMetricOutside.Checked := MetricDefaultOptions.OutsideAncestors;
 end;
 
 { ---------------------------------------------------------------- shared commands }

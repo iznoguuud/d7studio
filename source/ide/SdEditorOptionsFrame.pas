@@ -272,7 +272,7 @@ const
     'Borland.EditOptions.XML,Borland.EditOptions.Default,';
   { the values of the Display page's Minimap box, in the order of its items }
   MinimapItems: array[0..2] of Integer = (MinimapOn, MinimapPreview, MinimapNone);
-  { the Display page's Line numbers box: Every line, Every 10th line (SparseLineNumbers), Hidden }
+  { the Display page's Line numbers box: Every line, Every 5th line (SparseLineNumbers), Hidden }
   LineNumbersHidden = 2;
   { The Color page's sample, after Delphi 7's: each element somewhere - the debugger's lines, a
     line saved since it changed and one changed since, a word selected (the caret after it, its

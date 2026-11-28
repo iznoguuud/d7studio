@@ -110,7 +110,9 @@ type
     iiCheckUpdates, iiBugReport,
     { Edit | Macros and the Macro Library: Record Macro (Stop is iiStop), Play Macro, Play Macro
       Repeatedly, the Macro Library; its Import and Export }
-    iiMacroRecord, iiMacroPlay, iiMacroRepeat, iiMacroLibrary, iiImport, iiExport);
+    iiMacroRecord, iiMacroPlay, iiMacroRepeat, iiMacroLibrary, iiImport, iiExport,
+    { Project | Metrics and the Metrics view }
+    iiMetrics);
 
 const
   { the icons that also come at 32 x 32 (ICONS32, in this order): File | New | Other's items.

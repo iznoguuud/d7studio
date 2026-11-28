@@ -68,7 +68,7 @@ type
     ErrorInsight: Boolean;          // D7 Studio's own: a Pascal text's errors marked after a pause (Diagnose)
     { D7 Studio's own }
     ShowLineNumbers, ShowFolding, ShowChangeBars, HighlightBraces, HighlightOccurrences: Boolean;
-    SparseLineNumbers: Boolean;     // ... the numbers of line 1, every 10th line and the caret's, dots between (TSciEdit.UpdateLineMarks)
+    SparseLineNumbers: Boolean;     // ... the numbers of line 1, every 5th line and the caret's, dots between (TSciEdit.UpdateLineMarks)
     FoldPreview: Boolean;           // the code a folded line hides, in a tip over its box (TSciEdit.FoldPreview)
     WordWrap, ScrollBarMarkers: Boolean;
     Minimap: Integer;               // the text in miniature beside the vertical scroll bar (SdSciMinimap): MinimapNone ...

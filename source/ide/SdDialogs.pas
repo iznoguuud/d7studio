@@ -126,6 +126,7 @@ const
   EnvOptionsPalettePage = 3;
   EnvOptionsExplorerPage = 5;
   EnvOptionsComponentsPage = 8;
+  EnvOptionsMetricsPage = 9;          { the Metrics view's Options }
   DebuggerOptionsEventLogPage = 1;     { Debugger Options: General, Event Log, ... }
   { Delphi's name for no desktop (Select debug desktop, the Desktops dialog's debug desktop) }
   NoDesktopName = '<None>';

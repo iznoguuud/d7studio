@@ -28,7 +28,7 @@ uses
   SdCustomizeDlg, SdKeymaps, SdCpuView, SdDebugInspector, SdWatchViewFrame, SdTodo, SdAddTodoDlg, SdNewCompDlg, SdPackageViewFrame,
   SdPackageAddDlg, SdNavHistory, SdOptionsDlg, SdOtaCore, SdMessageView, SdResourceViewFrame, SdResources,
   SdResImage, SdResPage, SdOtaPalette, SdOtaViews, SdOtaToDo, SdNavBar, SdPageBar, SdZoom, SdHistory,
-  SdHistoryFrame, SdUpdate, SdRefactor, SdRefactorGen, SdRefactorClean, SdRefactorMove, SdRefactorView,
+  SdHistoryFrame, SdUpdate, SdRefactor, SdRefactorGen, SdRefactorClean, SdRefactorMove, SdRefactorView, SdMetrics, SdMetricsView,
   SdRefactorDlg, SdRefactorListDlg, SdChangeParamsDlg, SdMacros, SdMacrosView, SdMacroPlayDlg;
 
 const
@@ -767,6 +767,8 @@ type
     mcLibrary: TMenuItem;
     miMacroMenu: TMenuItem;
     miViewMacros: TMenuItem;
+    miViewMetrics: TMenuItem;
+    miProjectMetrics: TMenuItem;
     ThreadList: TListView;
     ModuleList: TListView;
     tbAlGrid: TToolButton;
@@ -802,6 +804,8 @@ type
     aPlayMacro: TAction;
     aPlayMacroRepeat: TAction;
     aViewMacros: TAction;
+    aViewMetrics: TAction;
+    aProjectMetrics: TAction;
     aMacroMenu: TAction;
     aRefMenu: TAction;
     aOpenFileAtCursor: TAction;
@@ -1238,6 +1242,9 @@ type
     FMacros: TSdMacroLibrary;        // the keystroke macros kept (SdMacros), [Macros] of the settings
     FMacroView: TMacrosView;         // ... the Macro Library view (SdMacrosView)
     FMacroPanel: TSdDockPanel;       // ... its view of the dock
+    FMetricsView: TMetricsView;      // Project | Metrics: the results (SdMetricsView)
+    FMetricsPanel: TSdDockPanel;     // ... its view of the dock
+    FMetricsCancel: Boolean;         // ... Esc pressed while they are computed
     FRefFiles: TStringList;          // while a refactoring is planned: the files it reaches (RefactorFiles) ...
     FRefSources: TStringList;        // ... the texts of those that are not open, as the editor reads them (CIGetSource)
     FBrowserFresh: Boolean;          // just built (Browse Symbol): showing it builds nothing
@@ -1484,6 +1491,9 @@ type
     procedure MacroChanged(Sender: TObject);
     procedure RefDiscard(Sender: TObject);
     procedure RefOpen(Sender: TObject; const FileName: string; Line: Integer);
+    procedure MetricsRun(Sender: TObject; UnitOnly: Boolean);
+    procedure MetricsProgress(Done, Total: Integer; const UnitName: string; var Cancel: Boolean);
+    procedure MetricsOptions(Sender: TObject);
     procedure BrowserGoto(Sender: TObject; const FileName: string; Line, Col: Integer);
     function AlignActionKind(A: TObject; out Kind: TAlignKind; out Need: Integer): Boolean;
     procedure OpenFileAtCursor;
@@ -1765,6 +1775,7 @@ type
     procedure DropVerbs;
     procedure DesVerbExecute(Sender: TObject);
     procedure CompBarAdd(Sender: TObject; Cls: TComponentClass; var Done: Boolean);
+    procedure CompBarStatus(Sender: TObject);
     procedure CompBarCanDrop(Sender: TObject; const ScreenPt: TPoint; var Accept: Boolean);
     procedure CompBarDrop(Sender: TObject; Cls: TComponentClass; const ScreenPt: TPoint; var Done: Boolean);
     function PaletteToolClick(Designer: TFormDesigner; const ScreenPt: TPoint; Shift: TShiftState): Boolean;
@@ -3299,6 +3310,10 @@ begin
   FCompPanel.FocusControl := FCompBar.List;
   FCompBar.List.PopupMenu := FCompBar.CompPopup;
   FCompPanel.PopupMenu := FCompBar.CompPopup;
+  { the filter typed into the list and the count at the view's foot }
+  FCompPanel.ShowStatus := True;
+  FCompBar.OnStatusChange := CompBarStatus;
+  CompBarStatus(FCompBar);
   ApplyCompBarOptions;
   FCompBar.Used.CommaText := Settings.ReadString(CompSection, 'Used', '');
   FInspector.Grid.Split := Settings.ReadInteger('Layout', 'InspectorSplit', FInspector.Grid.SplitWanted);
@@ -3443,6 +3458,18 @@ begin
   FMacroPanel.FocusControl := FMacroView.MacroList;
   FMacroPanel.PopupMenu := FMacroView.MacroPopup;
   FDock.HidePanel(FMacroPanel);
+  { Project | Metrics: the code metrics of the active project or the unit shown }
+  FMetricsView := TMetricsView.Create(Self);
+  FMetricsView.OnMenuPopup := PaneMenuPopup;
+  FMetricsView.OnRun := MetricsRun;
+  FMetricsView.OnOpen := SearchOpen;
+  FMetricsView.OnOptions := MetricsOptions;
+  FMetricsPanel := FDock.AddTab(FMetricsView, 'Metrics', 'Metrics', FBottomPanels[BT_MESSAGES]);
+  FMetricsPanel.ToolBar := FMetricsView.Bar;
+  FMetricsPanel.FocusControl := FMetricsView.MetricList;
+  FMetricsPanel.PopupMenu := FMetricsView.MetricsPopup;
+  FMetricsPanel.ShowStatus := True;
+  FDock.HidePanel(FMetricsPanel);
   { Delphi's package editors: one view for each open package (NewPackageView), the first made now
     for the arrangement to place }
   FPkgViews := TList.Create;
@@ -3497,7 +3524,7 @@ begin
   FBottomPanels[BT_TODO].PopupMenu := FTodoView.TodoPopup;
   AddDockItems([FProjView.ProjPopup, FCodeExp.ExpPopup, FObjTree.ObjTreePopup, FInspector.InspPopup, FCompBar.CompPopup, FWatchView.WatchPopup, FDebugInsp.DebugInspPopup,
     MsgHintsPopup, FBrowser.BrowserPopup, FTypeLibView.TypeLibPopup, FResView.ResPopup, MsgPopup, FBreakView.BreakPopup,
-    FBreakView.BreakItemPopup, StackPopup, LocalsPopup, LogPopup, FTodoView.TodoPopup, FCpuView.CpuPopup, FRefView.RefPopup, FMacroView.MacroPopup, DockPopup]);
+    FBreakView.BreakItemPopup, StackPopup, LocalsPopup, LogPopup, FTodoView.TodoPopup, FCpuView.CpuPopup, FRefView.RefPopup, FMacroView.MacroPopup, FMetricsView.MetricsPopup, DockPopup]);
   { a view without a menu of its own - an expert's, made later too - has the dock's commands alone
     on its caption, its tab and its auto-hide tab (TSdDock.CaptionMenu) }
   FDock.CaptionMenu := DockPopup;
@@ -4425,6 +4452,7 @@ begin
     { the dialogs opened from now on take the body colour chosen }
     UISetDialogBackground(Settings.ReadInteger('UI', 'DialogBackground', 0));
     ApplyEditorOptions;
+    FMetricsView.SettingsChanged(EnvOptions.Metrics);
     FDebug.LogFontChanged;
     EventLogList.Invalidate;
     SaveState;
@@ -5414,6 +5442,7 @@ begin
     L.Add('pkgviews=' + S);
     if Pv <> nil then L.Add('pkgview=' + Pv.DebugText) else L.Add('pkgview=|');
     L.Add('resview=' + FResView.DebugText);
+    L.Add('metrics=' + FMetricsView.DebugText);
     { the resource page shown: kind of editor|title|modified|key, and its editor's state }
     RP := ActiveResPage;
     S := '';
@@ -6126,6 +6155,8 @@ begin
   SearchFindErrCommand.Enabled := HasProj and not FCompiler.Running;
   SearchSymbolCommand.Enabled := HasProj or Pas;
   ProjectInformationCommand.Enabled := HasProj;
+  aProjectMetrics.Enabled := HasProj;
+  if FMetricsView <> nil then FMetricsView.SetState(HasProj, Pas);
   { Align to Grid, Bring to Front, Send to Back and Flip Children | Selected act on the selected
     controls, never on the form: enabled while one is selected; Flip Children | All mirrors the
     form's controls: enabled while it has one }
@@ -13396,6 +13427,11 @@ begin
   pmDesignControl.Visible := Controls;
 end;
 
+procedure TMainForm.CompBarStatus(Sender: TObject);
+begin
+  if FCompPanel <> nil then FCompPanel.StatusText := FCompBar.StatusText;
+end;
+
 { the Components view: Enter or a double click adds the component (PlaceComponent), a drag
   onto the form drops it at the point }
 procedure TMainForm.CompBarAdd(Sender: TObject; Cls: TComponentClass; var Done: Boolean);
@@ -13933,6 +13969,78 @@ end;
 procedure TMainForm.SearchOpen(Sender: TObject; const FileName: string; Line: Integer);
 begin
   ShowFileLine(FileName, Line, 1);
+end;
+{ Project | Metrics and the Metrics view's Run: the code metrics of the active project's files - or
+  of the Pascal file shown (UnitOnly) - with the settings of Environment Options | Metrics, shown in
+  the Metrics view; the view's status line tells how far the run is, Esc stops it }
+procedure TMainForm.MetricsRun(Sender: TObject; UnitOnly: Boolean);
+var
+  Files: TStringList;
+  Run: TMetricsRun;
+  Root: TMetricNode;
+  Page: TEditorPage;
+  T0: Cardinal;
+  Title, S: string;
+begin
+  Files := TStringList.Create;
+  Run := TMetricsRun.Create(FCodeInsight);
+  try
+    if UnitOnly then
+    begin
+      Page := ActivePage;
+      if (Page = nil) or not Page.IsPascal then Exit;
+      Files.Add(Page.FileName);
+      Title := ExtractFileName(Page.FileName);
+    end
+    else
+    begin
+      if FProject = nil then Exit;
+      AddProjectFiles(FProject, Files, True);
+      Title := FProject.Name;
+    end;
+    ViewDockPanel(FMetricsPanel);
+    FMetricsCancel := False;
+    T0 := GetTickCount;
+    Screen.Cursor := crHourGlass;
+    try
+      Root := Run.Run(Files, Title, EnvOptions.Metrics, EnvOptions.MetricOpts, MetricsProgress);
+    finally
+      Screen.Cursor := crDefault;
+    end;
+    if Root = nil then
+    begin
+      FMetricsPanel.StatusText := 'Stopped';
+      Exit;
+    end;
+    FMetricsView.ShowResults(Root, EnvOptions.Metrics);
+    S := FMetricsView.Summary + Format(' (%.1f s)', [(GetTickCount - T0) / 1000]);
+    if Run.Errors > 0 then S := S + Format('; %d not analysed: %s', [Run.Errors, Run.LastError]);
+    FMetricsPanel.StatusText := S;
+  finally
+    Run.Free;
+    Files.Free;
+  end;
+end;
+
+{ a step of the metrics' run: the keys pressed meanwhile are taken from the queue - Esc stops the
+  run, the others would reach the editor afterwards -, the status line says where it is }
+procedure TMainForm.MetricsProgress(Done, Total: Integer; const UnitName: string; var Cancel: Boolean);
+var
+  Msg: TMsg;
+begin
+  while PeekMessage(Msg, 0, WM_KEYFIRST, WM_KEYLAST, PM_REMOVE) do
+    if (Msg.message = WM_KEYDOWN) and (Msg.wParam = VK_ESCAPE) then FMetricsCancel := True;
+  Cancel := FMetricsCancel;
+  if UnitName <> '' then
+    FMetricsPanel.StatusText := Format('Unit %d of %d: %s - Esc stops', [Done + 1, Total, UnitName])
+  else
+    FMetricsPanel.StatusText := 'The classes'' ancestors - Esc stops';
+  UIPaintNow(Self);
+end;
+
+procedure TMainForm.MetricsOptions(Sender: TObject);
+begin
+  ShowOptions(osEnvironment, EnvOptionsMetricsPage);
 end;
 
 
@@ -16134,6 +16242,7 @@ begin
   else if Sender = aViewMessages then ViewDockPanel(FBottomPanels[BT_MESSAGES])
   else if Sender = aViewRefactorings then ViewDockPanel(FRefPanel)
   else if Sender = aViewMacros then ViewDockPanel(FMacroPanel)
+  else if Sender = aViewMetrics then ViewDockPanel(FMetricsPanel)
   else if Sender = aViewErrorList then ViewDockPanel(FBottomPanels[BT_ERRORS])
   else if Sender = DebugBreakPointsCommand then ViewDockPanel(FBottomPanels[BT_BREAKS])
   else if Sender = DebugCallStackCommand then ViewDockPanel(FBottomPanels[BT_STACK])
@@ -17391,6 +17500,7 @@ begin
   else if Sender = ProjectBuildCommand then DoCompile(True, False, False)
   else if (Sender = ProjectCompileAllCommand) or (Sender = ProjectBuildAllCommand) then CompileAllProjects(Sender = ProjectBuildAllCommand)
   else if Sender = ProjectSyntaxCommand then DoCompile(False, False, True)
+  else if Sender = aProjectMetrics then MetricsRun(Self, False)
   else if Sender = ProjectInformationCommand then ShowProjectInfo
   else if Sender = aInstallPackage then InstallPackageProject(FProject)
   else if Sender = aUninstallPackage then UninstallPackageOf(FProject)

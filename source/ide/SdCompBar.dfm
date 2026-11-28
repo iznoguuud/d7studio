@@ -26,25 +26,15 @@ object ComponentBar: TSdComponentBar
     TabOrder = 0
     OnChange = CategoryChange
   end
-  object Filter: TEdit
-    Left = 0
-    Top = 25
-    Width = 232
-    Height = 23
-    TabOrder = 1
-    OnChange = FilterChange
-    OnKeyDown = FilterKeyDown
-    OnKeyPress = SwallowKeyPress
-  end
   object List: TListBox
     Left = 1
-    Top = 51
+    Top = 26
     Width = 230
-    Height = 348
+    Height = 373
     Style = lbOwnerDrawFixed
     BorderStyle = bsNone
     ItemHeight = 32
-    TabOrder = 2
+    TabOrder = 1
     OnClick = ListClick
     OnDblClick = ListDblClick
     OnDrawItem = ListDrawItem

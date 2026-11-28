@@ -259,9 +259,7 @@ end;
 procedure TStringTableFrame.SelectRow(It: TListItem; Show: Boolean);
 begin
   List.Selected := nil;
-  It.Selected := True;
-  It.Focused := True;
-  if Show then It.MakeVisible(False);
+  UIChooseItem(It, Show);
 end;
 
 { the rows that Find lets through, sorted; KeepIndex: the item chosen afterwards (-1 the first) }

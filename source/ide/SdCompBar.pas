@@ -45,10 +45,10 @@ type
   { Component Bar's sort modes: by name, the last used first, the most used first, the palette's order }
   TSdCompSort = (csName, csRecentlyUsed, csMostUsed, csPaletteOrder);
 
-  { A filter of component names, typed in a search box (the Components view, View | Component
-    List): the text, or a mask with * and ?. A text that cannot be a mask ("[" without "]", more
-    than 30 "*") matches nothing - the box is being typed in, an exception on every key would
-    be no help. }
+  { A filter of names, typed into a list (the Components view) or a search box (View | Component
+    List, the list dialogs): the text, or a mask with * and ?. A text that cannot be a mask ("["
+    without "]", more than 30 "*") matches nothing - it is being typed, an exception on every key
+    would be no help. }
   TSdNameFilter = class
   private
     FText: string;
@@ -62,11 +62,10 @@ type
     function Match(const Name: string): Integer;
   end;
 
-  { the view: a form made once (its boxes, its list and their events in the .dfm), docked by
+  { the view: a form made once (its category box, its list and their events in the .dfm), docked by
     the IDE - a child window then, without a border }
   TSdComponentBar = class(TForm)
     Category: TComboBox;
-    Filter: TEdit;
     List: TListBox;
     MenuActions: TActionList;
     aCompAdd: TAction;
@@ -90,9 +89,6 @@ type
     pmComp5: TMenuItem;
     pmComp11: TMenuItem;
     procedure CategoryChange(Sender: TObject);
-    procedure FilterChange(Sender: TObject);
-    procedure FilterKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
-    procedure SwallowKeyPress(Sender: TObject; var Key: Char);
     procedure ListClick(Sender: TObject);
     procedure ListKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
     procedure ListKeyPress(Sender: TObject; var Key: Char);
@@ -111,6 +107,8 @@ type
     FOnChoose: TNotifyEvent;
     FOnDrop: TSdCompDropEvent;
     FOnCanDrop: TSdCompCanDropEvent;
+    FOnStatusChange: TNotifyEvent;
+    FFilter: string;              // typed in the list: TSdNameFilter's text or mask
     FClassic: Boolean;
     FHideCategory: Boolean;
     FUsed: TStringList;           // the components added from the view: Class=count;last use
@@ -138,7 +136,7 @@ type
     procedure Refill;
     procedure NoteChoice;
     procedure StepCategory(Delta: Integer);
-    procedure FilterKey(var Key: Word; Shift: TShiftState);
+    procedure SetFilter(const Value: string);
     procedure ListCancel;
     procedure StopDrag;
   protected
@@ -157,7 +155,10 @@ type
     function SelectedItem: TPaletteItem;
     property DragItem: TPaletteItem read FDragItem;
     function SelectedCategory: string;
+    { the status line's text: the filter and how many components the list shows }
+    function StatusText: string;
     function DebugText: string;
+    property FilterText: string read FFilter write SetFilter;
     property Classic: Boolean read FClassic write SetClassic;              // Component Bar's look (default)
     property HideCategory: Boolean read FHideCategory write SetHideCategory;   // False by default
     property Used: TStrings read GetUsed;      // kept by the owner (the settings): Class=count;last use
@@ -168,21 +169,24 @@ type
     property OnChoose: TNotifyEvent read FOnChoose write FOnChoose;
     property OnDrop: TSdCompDropEvent read FOnDrop write FOnDrop;
     property OnCanDrop: TSdCompCanDropEvent read FOnCanDrop write FOnCanDrop;
+    { the list or the filter changed: StatusText says something new }
+    property OnStatusChange: TNotifyEvent read FOnStatusChange write FOnStatusChange;
   end;
 
 const
   AllComponents = 'All Components';
 
-{ the keys of a list that the search box above it passes on (Up, Down, Page Up, Page Down): the
+{ the keys of a list that a search box above it passes on (Up, Down, Page Up, Page Down): the
   list box moves its own selection; True and Key 0 when it was one of them }
 function ForwardListKey(List: TWinControl; var Key: Word): Boolean;
+
+{ Into: the names of All that the filter Text keeps, with their objects - those that start with
+  it, then (unless PrefixOnly) those that hold it further on, each in All's order }
+procedure FillFiltered(const Text: string; All, Into: TStrings; PrefixOnly: Boolean = False);
 
 implementation
 
 {$R *.dfm}
-
-uses
-  CommCtrl;
 
 function ForwardListKey(List: TWinControl; var Key: Word): Boolean;
 begin
@@ -220,8 +224,33 @@ begin
   else Result := Pos(FText, AnsiUpperCase(Name));
 end;
 
+procedure FillFiltered(const Text: string; All, Into: TStrings; PrefixOnly: Boolean = False);
+var
+  F: TSdNameFilter;
+  Further: TStringList;
+  I, M: Integer;
+begin
+  F := TSdNameFilter.Create(Text);
+  Further := TStringList.Create;
+  Into.BeginUpdate;
+  try
+    Into.Clear;
+    for I := 0 to All.Count - 1 do
+    begin
+      M := F.Match(All[I]);
+      if M = 1 then Into.AddObject(All[I], All.Objects[I])
+      else if (M > 1) and not PrefixOnly then Further.AddObject(All[I], All.Objects[I]);
+    end;
+    Into.AddStrings(Further);
+  finally
+    Into.EndUpdate;
+    Further.Free;
+    F.Free;
+  end;
+end;
+
 const
-  Gap = 2;                    // between the boxes and the list
+  Gap = 2;                    // between the category box and the list
 
 var
   { the numbers of the usage list (TSdComponentBar.Used): '.' as the decimal separator, whatever
@@ -229,16 +258,10 @@ var
   UsageFormat: TFormatSettings;
 
 
-{ ---------------------------------------------------------------- the boxes' hooks }
+{ ---------------------------------------------------------------- the list's hook }
 
 type
   TListAccess = class(TListBox);
-
-  { the filter box: a hint in it while it is empty, set again with each new window }
-  TFilterHook = class(TUIWindowHook)
-  protected
-    procedure Hook(var Message: TMessage); override;
-  end;
 
   { The list: the left button is handled here, not by the list box. A press chooses the item
     under it and takes the mouse; moving and letting go then belong to the drag alone - the
@@ -251,14 +274,6 @@ type
   protected
     procedure Hook(var Message: TMessage); override;
   end;
-
-procedure TFilterHook.Hook(var Message: TMessage);
-const
-  Cue: WideString = 'Filter (* and ? for a mask)';
-begin
-  FOldProc(Message);
-  if Message.Msg = WM_CREATE then SendMessage(FControl.Handle, EM_SETCUEBANNER, 0, Integer(PWideChar(Cue)));
-end;
 
 procedure TCompListHook.Hook(var Message: TMessage);
 var
@@ -342,12 +357,9 @@ begin
   inherited Create(AOwner);
   { the UI font, as every form of the IDE: a form docked as a child keeps its own font }
   UIApplyFont(Self);
-  { the boxes paint in one go: a resize repaints them at every step of a splitter drag }
+  { the box paints in one go: a resize repaints it at every step of a splitter drag }
   Category.DoubleBuffered := True;
-  Filter.DoubleBuffered := True;
   UIFlatBorder(Category);          // the list's border colour, not the theme's
-  UIFlatBorder(Filter);
-  TFilterHook.Create(Filter, True);
   TCompListHook.Create(List, True).FBar := Self;
   UINoListTracking(List);           // long names end in "...", as in Component Bar
   FUsed := TStringList.Create;
@@ -472,7 +484,7 @@ begin
   if FClassic then List.Invalidate;
 end;
 
-{ the gaps between the boxes and the list are the background; the border around the list }
+{ the gap between the box and the list is the background; the border around the list }
 procedure TSdComponentBar.Paint;
 begin
   if FListFrame.Bottom > FListFrame.Top then UIDrawBorder(Canvas.Handle, FListFrame);
@@ -487,15 +499,14 @@ end;
 
 procedure TSdComponentBar.Resize;
 var
-  Y, F: Integer;
+  Y: Integer;
 begin
   inherited;
   Y := Category.Height + Gap;
-  F := Y + Filter.Height + Gap;
   { the list has no border of its own: it lies in a flat 1 px border, as the Object Inspector's }
-  FListFrame := Rect(0, F, ClientWidth, ClientHeight);
-  UIMoveControls([Category, Filter, List], [Rect(0, 0, ClientWidth, Category.Height),
-    Rect(0, Y, ClientWidth, Y + Filter.Height), Rect(1, F + 1, ClientWidth - 1, ClientHeight - 1)]);
+  FListFrame := Rect(0, Y, ClientWidth, ClientHeight);
+  UIMoveControls([Category, List], [Rect(0, 0, ClientWidth, Category.Height),
+    Rect(1, Y + 1, ClientWidth - 1, ClientHeight - 1)]);
   { filled while it was small, the list may have scrolled: from the top when the chosen item
     fits there }
   if List.HandleAllocated and (List.ItemIndex >= 0) and
@@ -604,7 +615,7 @@ begin
   if DesignHost = nil then Exit;
   Keep := FChosenClass;
   KeepCaption := FChosenCaption;
-  Matcher := TSdNameFilter.Create(Filter.Text);
+  Matcher := TSdNameFilter.Create(FFilter);
   All := Category.ItemIndex <= 0;
   Cat := Category.Text;
   First := TStringList.Create;
@@ -679,6 +690,24 @@ begin
   end;
   if (List.ItemIndex < 0) and (List.Items.Count > 0) then List.ItemIndex := 0;
   NoteChoice;
+  if Assigned(FOnStatusChange) then FOnStatusChange(Self);
+end;
+
+function TSdComponentBar.StatusText: string;
+var
+  N: string;
+begin
+  if List.Items.Count = 1 then N := '1 component'
+  else N := Format('%d components', [List.Items.Count]);
+  if FFilter = '' then Result := N + ' - type to filter'
+  else Result := Format('Filter: %s - %s', [FFilter, N]);
+end;
+
+procedure TSdComponentBar.SetFilter(const Value: string);
+begin
+  if Value = FFilter then Exit;
+  FFilter := Value;
+  Refill;
 end;
 
 { The item chosen, by its class and its caption (a component template's, '' for a component):
@@ -772,19 +801,14 @@ begin
   Refill;
 end;
 
-procedure TSdComponentBar.FilterChange(Sender: TObject);
-begin
-  Refill;
-end;
-
-{ the keys of the filter box and of the list: Enter adds, Esc clears the filter and then the
-  category, Shift+Up / Shift+Down step through the categories }
-procedure TSdComponentBar.FilterKey(var Key: Word; Shift: TShiftState);
+{ the list's keys: Enter adds, Esc clears the filter and then the category, Shift+Up /
+  Shift+Down step through the categories }
+procedure TSdComponentBar.ListKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
 begin
   case Key of
     VK_RETURN: Choose;
     VK_ESCAPE:
-      if Filter.Text <> '' then Filter.Text := ''
+      if FFilter <> '' then SetFilter('')
       else ShowCategory('');
     VK_UP, VK_DOWN:
       if ssShift in Shift then
@@ -799,44 +823,30 @@ begin
   Key := 0;
 end;
 
-procedure TSdComponentBar.FilterKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
-begin
-  FilterKey(Key, Shift);
-  { the list's keys work in the filter box as well }
-  ForwardListKey(List, Key);
-end;
-
-{ Enter and Esc are done in OnKeyDown: no beep from the box }
-procedure TSdComponentBar.SwallowKeyPress(Sender: TObject; var Key: Char);
-begin
-  if Key in [#13, #27] then Key := #0;
-end;
-
-procedure TSdComponentBar.ListKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
-begin
-  FilterKey(Key, Shift);
-end;
-
-{ what is typed in the list goes to the filter (Component Bar does so) }
+{ what is typed in the list is the filter (Component Bar does so), Backspace takes its last
+  character back; the status line shows it }
 procedure TSdComponentBar.ListKeyPress(Sender: TObject; var Key: Char);
+const
+  FilterChars = ['A'..'Z', 'a'..'z', '0'..'9', '_', '*', '?'];
 var
   S: string;
 begin
+  S := FFilter;
   { Component Bar's Mask input reset delay: typed after a pause, it starts a new filter }
-  if (Key in ['A'..'Z', 'a'..'z', '0'..'9', '_', '*', '?']) and (FResetDelay > 0) and (FLastTyped <> 0) and
-    (GetTickCount - FLastTyped > Cardinal(FResetDelay) * 1000) then Filter.Text := '';
+  if (Key in FilterChars) and (FResetDelay > 0) and (FLastTyped <> 0) and
+    (GetTickCount - FLastTyped > Cardinal(FResetDelay) * 1000) then S := '';
   FLastTyped := GetTickCount;
-  if Key in ['A'..'Z', 'a'..'z', '0'..'9', '_', '*', '?'] then
-    S := Filter.Text + Key
-  else if (Key = #8) and (Filter.Text <> '') then
-    S := Copy(Filter.Text, 1, Length(Filter.Text) - 1)
+  if Key in FilterChars then
+    S := S + Key
+  else if (Key = #8) and (S <> '') then
+    S := Copy(S, 1, Length(S) - 1)
   else
   begin
-    if Key in [#13, #27] then Key := #0;
+    if Key in [#8, #13, #27] then Key := #0;      // done in OnKeyDown, or nothing to take back: no beep
     Exit;
   end;
   Key := #0;
-  Filter.Text := S;
+  SetFilter(S);
 end;
 
 procedure TSdComponentBar.ListDblClick(Sender: TObject);
@@ -901,12 +911,12 @@ begin
   C.Brush.Color := Back;
   C.Font.Color := Fore;
   C.FillRect(Classes.Rect(0, 0, W, H));
+  { a component added from the view before: its name in bold }
+  Used := UsageOf(Item.ComponentClass.ClassName, UseCount, UseLast);
   if FClassic then
   begin
     R := Classes.Rect(2, (H - 28) div 2, 30, (H - 28) div 2 + 28);
     UIDrawComponentTile(C.Handle, R, Bmp);
-    { a component added from the view before: in bold (the classic look only) }
-    Used := UsageOf(Item.ComponentClass.ClassName, UseCount, UseLast);
     if Used then C.Font.Style := [fsBold];
     HC := C.TextHeight('Wg');
     X := 3 + 28 + 4;
@@ -928,6 +938,7 @@ begin
   else
   begin
     if Bmp <> nil then C.Draw(4, (H - Bmp.Height) div 2, Bmp);
+    if Used then C.Font.Style := [fsBold];
     SelectObject(C.Handle, C.Font.Handle);
     HC := UITextHeight;
     if FHideCategory then
@@ -939,6 +950,11 @@ begin
     begin
       R := Classes.Rect(34, 2, W - 2, 2 + HC);
       UIText(C.Handle, List.Items[Index], R, DT_LEFT or DT_SINGLELINE or DT_NOPREFIX or DT_END_ELLIPSIS, C.Font.Color);
+      if Used then
+      begin
+        C.Font.Style := [];
+        SelectObject(C.Handle, C.Font.Handle);
+      end;
       R := Classes.Rect(34, 2 + HC, W - 2, 2 + 2 * HC);
       UIText(C.Handle, Item.Page, R, DT_LEFT or DT_SINGLELINE or DT_NOPREFIX or DT_END_ELLIPSIS, Grey);
     end;
@@ -1020,7 +1036,7 @@ var
   S: string;
 begin
   if SelectedClass <> nil then S := SelectedClass.ClassName else S := '';
-  Result := Format('%s|%s|%d|%s', [Category.Text, Filter.Text, List.Items.Count, S]);
+  Result := Format('%s|%s|%d|%s', [Category.Text, FFilter, List.Items.Count, S]);
 end;
 
 initialization
